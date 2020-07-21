@@ -48,7 +48,7 @@ import (
 	apiregistrationclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 	informers "k8s.io/kube-aggregator/pkg/client/informers/externalversions/apiregistration/v1"
 	"k8s.io/kube-aggregator/pkg/controllers/autoregister"
-	"k8s.io/kubernetes/cmd/kube-apiserver/app/options"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
 	"k8s.io/kubernetes/pkg/controlplane/controller/crdregistration"
 )
 
@@ -245,52 +245,23 @@ type priority struct {
 var apiVersionPriorities = map[schema.GroupVersion]priority{
 	{Group: "", Version: "v1"}: {group: 18000, version: 1},
 	// to my knowledge, nothing below here collides
-	{Group: "apps", Version: "v1"}:                               {group: 17800, version: 15},
 	{Group: "events.k8s.io", Version: "v1"}:                      {group: 17750, version: 15},
 	{Group: "events.k8s.io", Version: "v1beta1"}:                 {group: 17750, version: 5},
 	{Group: "authentication.k8s.io", Version: "v1"}:              {group: 17700, version: 15},
 	{Group: "authentication.k8s.io", Version: "v1beta1"}:         {group: 17700, version: 9},
 	{Group: "authorization.k8s.io", Version: "v1"}:               {group: 17600, version: 15},
 	{Group: "authorization.k8s.io", Version: "v1beta1"}:          {group: 17600, version: 9},
-	{Group: "autoscaling", Version: "v1"}:                        {group: 17500, version: 15},
-	{Group: "autoscaling", Version: "v2beta1"}:                   {group: 17500, version: 9},
-	{Group: "autoscaling", Version: "v2beta2"}:                   {group: 17500, version: 1},
-	{Group: "batch", Version: "v1"}:                              {group: 17400, version: 15},
-	{Group: "batch", Version: "v1beta1"}:                         {group: 17400, version: 9},
-	{Group: "batch", Version: "v2alpha1"}:                        {group: 17400, version: 9},
 	{Group: "certificates.k8s.io", Version: "v1"}:                {group: 17300, version: 15},
 	{Group: "certificates.k8s.io", Version: "v1beta1"}:           {group: 17300, version: 9},
-	{Group: "networking.k8s.io", Version: "v1"}:                  {group: 17200, version: 15},
-	{Group: "networking.k8s.io", Version: "v1beta1"}:             {group: 17200, version: 9},
 	{Group: "extensions", Version: "v1beta1"}:                    {group: 17150, version: 1}, // prioritize below networking.k8s.io, which contains the GA version of Ingress, the only resource remaining in extensions/v1beta1
-	{Group: "policy", Version: "v1"}:                             {group: 17100, version: 15},
-	{Group: "policy", Version: "v1beta1"}:                        {group: 17100, version: 9},
 	{Group: "rbac.authorization.k8s.io", Version: "v1"}:          {group: 17000, version: 15},
 	{Group: "rbac.authorization.k8s.io", Version: "v1beta1"}:     {group: 17000, version: 12},
 	{Group: "rbac.authorization.k8s.io", Version: "v1alpha1"}:    {group: 17000, version: 9},
-	{Group: "storage.k8s.io", Version: "v1"}:                     {group: 16800, version: 15},
-	{Group: "storage.k8s.io", Version: "v1beta1"}:                {group: 16800, version: 9},
-	{Group: "storage.k8s.io", Version: "v1alpha1"}:               {group: 16800, version: 1},
 	{Group: "apiextensions.k8s.io", Version: "v1"}:               {group: 16700, version: 15},
-	{Group: "apiextensions.k8s.io", Version: "v1beta1"}:          {group: 16700, version: 9},
-	{Group: "admissionregistration.k8s.io", Version: "v1"}:       {group: 16700, version: 15},
-	{Group: "admissionregistration.k8s.io", Version: "v1beta1"}:  {group: 16700, version: 12},
-	{Group: "scheduling.k8s.io", Version: "v1"}:                  {group: 16600, version: 15},
-	{Group: "scheduling.k8s.io", Version: "v1beta1"}:             {group: 16600, version: 12},
-	{Group: "scheduling.k8s.io", Version: "v1alpha1"}:            {group: 16600, version: 9},
 	{Group: "coordination.k8s.io", Version: "v1"}:                {group: 16500, version: 15},
 	{Group: "coordination.k8s.io", Version: "v1beta1"}:           {group: 16500, version: 9},
-	{Group: "node.k8s.io", Version: "v1"}:                        {group: 16300, version: 15},
-	{Group: "node.k8s.io", Version: "v1alpha1"}:                  {group: 16300, version: 1},
-	{Group: "node.k8s.io", Version: "v1beta1"}:                   {group: 16300, version: 9},
-	{Group: "discovery.k8s.io", Version: "v1"}:                   {group: 16200, version: 15},
-	{Group: "discovery.k8s.io", Version: "v1beta1"}:              {group: 16200, version: 12},
 	{Group: "flowcontrol.apiserver.k8s.io", Version: "v1beta1"}:  {group: 16100, version: 12},
 	{Group: "flowcontrol.apiserver.k8s.io", Version: "v1alpha1"}: {group: 16100, version: 9},
-	{Group: "internal.apiserver.k8s.io", Version: "v1alpha1"}:    {group: 16000, version: 9},
-	// Append a new group to the end of the list if unsure.
-	// You can use min(existing group)-100 as the initial value for a group.
-	// Version can be set to 9 (to have space around) for a new group.
 }
 
 func apiServicesToRegister(delegateAPIServer genericapiserver.DelegationTarget, registration autoregister.AutoAPIServiceRegistration) []*v1.APIService {
