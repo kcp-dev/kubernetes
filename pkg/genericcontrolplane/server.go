@@ -26,11 +26,10 @@ import (
 	"time"
 
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
+	"k8s.io/apiserver/pkg/authorization/union"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -42,19 +41,24 @@ import (
 	"k8s.io/apiserver/pkg/util/webhook"
 	clientgoinformers "k8s.io/client-go/informers"
 	clientgoclientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/util/keyutil"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
-	"k8s.io/kubernetes/cmd/kube-apiserver/app/options"
-	"k8s.io/kubernetes/pkg/controlplane"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
-	controlplaneadmission "k8s.io/kubernetes/pkg/genericcontrolplane/admission"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/apis"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
 	"k8s.io/kubernetes/pkg/kubeapiserver"
-	"k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes"
-	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
 	"k8s.io/kubernetes/pkg/serviceaccount"
+	"k8s.io/kubernetes/plugin/pkg/auth/authorizer/rbac"
+)
+
+const Include = "kube-control-plane"
+
+const (
+	etcdRetryLimit    = 60
+	etcdRetryInterval = 1 * time.Second
 )
 
 // Run runs the specified APIServer.  This should never exit.
@@ -82,10 +86,10 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 	}
 
 	// If additional API servers are added, they should be gated.
-	apiExtensionsConfig, err := createAPIExtensionsConfig(*kubeAPIServerConfig.GenericConfig, kubeAPIServerConfig.ExtraConfig.VersionedInformers, pluginInitializer, completedOptions.ServerRunOptions, completedOptions.MasterCount,
+	apiExtensionsConfig, err := createAPIExtensionsConfig(*kubeAPIServerConfig.GenericConfig, kubeAPIServerConfig.ExtraConfig.VersionedInformers, pluginInitializer, completedOptions.ServerRunOptions,
 		serviceResolver, webhook.NewDefaultAuthenticationInfoResolverWrapper(nil, kubeAPIServerConfig.GenericConfig.EgressSelector, kubeAPIServerConfig.GenericConfig.LoopbackClientConfig, kubeAPIServerConfig.GenericConfig.TracerProvider))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("configure api extensions: %v", err)
 	}
 	apiExtensionsServer, err := createAPIExtensionsServer(apiExtensionsConfig, genericapiserver.NewEmptyDelegate())
 	if err != nil {
@@ -112,7 +116,7 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 }
 
 // CreateKubeAPIServer creates and wires a workable kube-apiserver
-func CreateKubeAPIServer(kubeAPIServerConfig *controlplane.Config, delegateAPIServer genericapiserver.DelegationTarget) (*controlplane.Instance, error) {
+func CreateKubeAPIServer(kubeAPIServerConfig *apis.Config, delegateAPIServer genericapiserver.DelegationTarget) (*apis.ControlPlane, error) {
 	kubeAPIServer, err := kubeAPIServerConfig.Complete().New(delegateAPIServer)
 	if err != nil {
 		return nil, err
@@ -123,12 +127,12 @@ func CreateKubeAPIServer(kubeAPIServerConfig *controlplane.Config, delegateAPISe
 
 // CreateKubeAPIServerConfig creates all the resources for running the API server, but runs none of them
 func CreateKubeAPIServerConfig(s completedServerRunOptions) (
-	*controlplane.Config,
+	*apis.Config,
 	aggregatorapiserver.ServiceResolver,
 	[]admission.PluginInitializer,
 	error,
 ) {
-	genericConfig, versionedInformers, serviceResolver, pluginInitializers, admissionPostStartHook, storageFactory, err := buildGenericConfig(s.ServerRunOptions)
+	genericConfig, serviceResolver, pluginInitializers, storageFactory, err := BuildGenericConfig(s.ServerRunOptions)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -136,11 +140,18 @@ func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 	s.Metrics.Apply()
 	serviceaccount.RegisterMetrics()
 
+	kubeClientConfig := genericConfig.LoopbackClientConfig
+	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to create real external clientset: %v", err)
+	}
+	versionedInformers := clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
+
 	s.Logs.Apply()
 
-	config := &controlplane.Config{
+	config := &apis.Config{
 		GenericConfig: genericConfig,
-		ExtraConfig: controlplane.ExtraConfig{
+		ExtraConfig: apis.ExtraConfig{
 			APIResourceConfigSource: storageFactory.APIResourceConfigSource,
 			StorageFactory:          storageFactory,
 			EventTTL:                s.EventTTL,
@@ -171,40 +182,39 @@ func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 		config.ExtraConfig.ClusterAuthenticationInfo.RequestHeaderUsernameHeaders = requestHeaderConfig.UsernameHeaders
 	}
 
-	if err := config.GenericConfig.AddPostStartHook("start-kube-apiserver-admission-initializer", admissionPostStartHook); err != nil {
-		return nil, nil, nil, err
-	}
+	// if err := config.GenericConfig.AddPostStartHook("start-kube-apiserver-admission-initializer", admissionPostStartHook); err != nil {
+	// 	return nil, nil, nil, err
+	// }
 
-	// Load the public keys.
-	var pubKeys []interface{}
-	for _, f := range s.Authentication.ServiceAccounts.KeyFiles {
-		keys, err := keyutil.PublicKeysFromFile(f)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to parse key file %q: %v", f, err)
-		}
-		pubKeys = append(pubKeys, keys...)
-	}
-	// Plumb the required metadata through ExtraConfig.
-	config.ExtraConfig.ServiceAccountIssuerURL = s.Authentication.ServiceAccounts.Issuers[0]
-	config.ExtraConfig.ServiceAccountJWKSURI = s.Authentication.ServiceAccounts.JWKSURI
-	config.ExtraConfig.ServiceAccountPublicKeys = pubKeys
+	// // Load the public keys.
+	// var pubKeys []interface{}
+	// for _, f := range s.Authentication.ServiceAccounts.KeyFiles {
+	// 	keys, err := keyutil.PublicKeysFromFile(f)
+	// 	if err != nil {
+	// 		return nil, nil, nil, fmt.Errorf("failed to parse key file %q: %v", f, err)
+	// 	}
+	// 	pubKeys = append(pubKeys, keys...)
+	// }
+	// // Plumb the required metadata through ExtraConfig.
+	// config.ExtraConfig.ServiceAccountIssuerURL = s.Authentication.ServiceAccounts.Issuers[0]
+	// config.ExtraConfig.ServiceAccountJWKSURI = s.Authentication.ServiceAccounts.JWKSURI
+	// config.ExtraConfig.ServiceAccountPublicKeys = pubKeys
 
 	return config, serviceResolver, pluginInitializers, nil
 }
 
 // BuildGenericConfig takes the master server options and produces the genericapiserver.Config associated with it
-func buildGenericConfig(
+func BuildGenericConfig(
 	s *options.ServerRunOptions,
 ) (
 	genericConfig *genericapiserver.Config,
-	versionedInformers clientgoinformers.SharedInformerFactory,
 	serviceResolver aggregatorapiserver.ServiceResolver,
 	pluginInitializers []admission.PluginInitializer,
-	admissionPostStartHook genericapiserver.PostStartHookFunc,
+	// admissionPostStartHook genericapiserver.PostStartHookFunc,
 	storageFactory *serverstorage.DefaultStorageFactory,
 	lastErr error,
 ) {
-	genericConfig = genericapiserver.NewConfig(serializer.NewCodecFactory(runtime.NewScheme()))
+	genericConfig = genericapiserver.NewConfig(legacyscheme.Codecs)
 
 	if lastErr = s.GenericServerRunOptions.ApplyTo(genericConfig); lastErr != nil {
 		return
@@ -216,7 +226,7 @@ func buildGenericConfig(
 	if lastErr = s.Features.ApplyTo(genericConfig); lastErr != nil {
 		return
 	}
-	if lastErr = s.APIEnablement.ApplyTo(genericConfig, serverstorage.NewResourceConfig(), runtime.NewScheme()); lastErr != nil {
+	if lastErr = s.APIEnablement.ApplyTo(genericConfig, apis.DefaultAPIResourceConfigSource(), legacyscheme.Scheme); lastErr != nil {
 		return
 	}
 	if lastErr = s.EgressSelector.ApplyTo(genericConfig); lastErr != nil {
@@ -268,74 +278,78 @@ func buildGenericConfig(
 	// on a fast local network
 	genericConfig.LoopbackClientConfig.DisableCompression = true
 
-	kubeClientConfig := genericConfig.LoopbackClientConfig
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
-	if err != nil {
-		lastErr = fmt.Errorf("failed to create real external clientset: %v", err)
-		return
-	}
-	versionedInformers = clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
+	// kubeClientConfig := genericConfig.LoopbackClientConfig
+	// clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
+	// if err != nil {
+	// 	lastErr = fmt.Errorf("failed to create real external clientset: %v", err)
+	// 	return
+	// }
+	// versionedInformers = clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
 
 	// Authentication.ApplyTo requires already applied OpenAPIConfig and EgressSelector if present
-	if lastErr = s.Authentication.ApplyTo(&genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig, clientgoExternalClient, versionedInformers); lastErr != nil {
+	if lastErr = AuthenticationApplyTo(s.Authentication, &genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig); lastErr != nil {
 		return
 	}
 
-	genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, err = BuildAuthorizer(s, genericConfig.EgressSelector, versionedInformers)
-	if err != nil {
-		lastErr = fmt.Errorf("invalid authorization config: %v", err)
-		return
-	}
-	if !sets.NewString(s.Authorization.Modes...).Has(modes.ModeRBAC) {
-		genericConfig.DisabledPostStartHooks.Insert(rbacrest.PostStartHookName)
-	}
+	// genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, err = BuildAuthorizer(s, genericConfig.EgressSelector, versionedInformers)
+	// if err != nil {
+	// 	lastErr = fmt.Errorf("invalid authorization config: %v", err)
+	// 	return
+	// }
+	// if !sets.NewString(s.Authorization.Modes...).Has(modes.ModeRBAC) {
+	// 	genericConfig.DisabledPostStartHooks.Insert(rbacrest.PostStartHookName)
+	// }
 
-	lastErr = s.Audit.ApplyTo(genericConfig)
-	if lastErr != nil {
-		return
-	}
+	// lastErr = s.Audit.ApplyTo(genericConfig)
+	// if lastErr != nil {
+	// 	return
+	// }
 
-	admissionConfig := &controlplaneadmission.Config{
-		ExternalInformers:    versionedInformers,
-		LoopbackClientConfig: genericConfig.LoopbackClientConfig,
-	}
-	pluginInitializers, admissionPostStartHook, err = admissionConfig.New()
-	if err != nil {
-		lastErr = fmt.Errorf("failed to create admission plugin initializer: %v", err)
-		return
-	}
+	// admissionConfig := &controlplaneadmission.Config{
+	// 	ExternalInformers:    versionedInformers,
+	// 	LoopbackClientConfig: genericConfig.LoopbackClientConfig,
+	// }
+	// pluginInitializers, admissionPostStartHook, err = admissionConfig.New()
+	// if err != nil {
+	// 	lastErr = fmt.Errorf("failed to create admission plugin initializer: %v", err)
+	// 	return
+	// }
 
-	err = s.Admission.ApplyTo(
-		genericConfig,
-		versionedInformers,
-		kubeClientConfig,
-		utilfeature.DefaultFeatureGate,
-		pluginInitializers...)
-	if err != nil {
-		lastErr = fmt.Errorf("failed to initialize admission: %v", err)
-		return
-	}
+	// err = s.Admission.ApplyTo(
+	// 	genericConfig,
+	// 	versionedInformers,
+	// 	kubeClientConfig,
+	// 	utilfeature.DefaultFeatureGate,
+	// 	pluginInitializers...)
+	// if err != nil {
+	// 	lastErr = fmt.Errorf("failed to initialize admission: %v", err)
+	// 	return
+	// }
 
-	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIPriorityAndFairness) && s.GenericServerRunOptions.EnablePriorityAndFairness {
-		genericConfig.FlowControl, lastErr = BuildPriorityAndFairness(s, clientgoExternalClient, versionedInformers)
-	}
+	// if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIPriorityAndFairness) && s.GenericServerRunOptions.EnablePriorityAndFairness {
+	// 	genericConfig.FlowControl, lastErr = BuildPriorityAndFairness(s, clientgoExternalClient, versionedInformers)
+	// }
 
 	return
 }
 
 // BuildAuthorizer constructs the authorizer
 func BuildAuthorizer(s *options.ServerRunOptions, egressSelector *egressselector.EgressSelector, versionedInformers clientgoinformers.SharedInformerFactory) (authorizer.Authorizer, authorizer.RuleResolver, error) {
-	authorizationConfig := s.Authorization.ToAuthorizationConfig(versionedInformers)
+	var (
+		authorizers   []authorizer.Authorizer
+		ruleResolvers []authorizer.RuleResolver
+	)
 
-	if egressSelector != nil {
-		egressDialer, err := egressSelector.Lookup(egressselector.ControlPlane.AsNetworkContext())
-		if err != nil {
-			return nil, nil, err
-		}
-		authorizationConfig.CustomDial = egressDialer
-	}
+	rbacAuthorizer := rbac.New(
+		&rbac.RoleGetter{Lister: versionedInformers.Rbac().V1().Roles().Lister()},
+		&rbac.RoleBindingLister{Lister: versionedInformers.Rbac().V1().RoleBindings().Lister()},
+		&rbac.ClusterRoleGetter{Lister: versionedInformers.Rbac().V1().ClusterRoles().Lister()},
+		&rbac.ClusterRoleBindingLister{Lister: versionedInformers.Rbac().V1().ClusterRoleBindings().Lister()},
+	)
+	authorizers = append(authorizers, rbacAuthorizer)
+	ruleResolvers = append(ruleResolvers, rbacAuthorizer)
 
-	return authorizationConfig.New()
+	return union.New(authorizers...), union.NewRuleResolvers(ruleResolvers...), nil
 }
 
 // BuildPriorityAndFairness constructs the guts of the API Priority and Fairness filter
@@ -365,6 +379,10 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		return options, err
 	}
 
+	if err := s.SecureServing.MaybeDefaultWithSelfSignedCerts(s.GenericServerRunOptions.AdvertiseAddress.String(), nil, nil); err != nil {
+		return options, fmt.Errorf("error creating self-signed certificates: %v", err)
+	}
+
 	if len(s.GenericServerRunOptions.ExternalHost) == 0 {
 		if len(s.GenericServerRunOptions.AdvertiseAddress) > 0 {
 			s.GenericServerRunOptions.ExternalHost = s.GenericServerRunOptions.AdvertiseAddress.String()
@@ -377,8 +395,6 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		}
 		klog.Infof("external host was not specified, using %v", s.GenericServerRunOptions.ExternalHost)
 	}
-
-	s.Authentication.ApplyAuthorization(s.Authorization)
 
 	for key, value := range s.APIEnablement.RuntimeConfig {
 		if key == "v1" || strings.HasPrefix(key, "v1/") ||
