@@ -22,11 +22,11 @@ import (
 )
 
 var (
-	// Scheme is the default instance of runtime.Scheme to which types in the Kubernetes API are already registered.
-	// NOTE: If you are copying this file to start a new api group, STOP! Copy the
-	// extensions group instead. This Scheme is special and should appear ONLY in
-	// the api group, unless you really know what you're doing.
-	// TODO(lavalamp): make the above error impossible.
+	// Scheme is the default instance of runtime.Scheme to which control plane types
+	// in the Kubernetes API are already registered.
+	// NOTE: If you are copying this file to start a new api group, STOP! This Scheme
+	// is special and should appear ONLY in the api group, unless you really know what
+	// you're doing.
 	Scheme = runtime.NewScheme()
 
 	// Codecs provides access to encoding and decoding for the scheme

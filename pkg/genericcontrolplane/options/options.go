@@ -19,6 +19,8 @@ package options
 import (
 	"time"
 
+	"k8s.io/apiserver/pkg/admission/plugin/webhook/mutating"
+	"k8s.io/apiserver/pkg/admission/plugin/webhook/validating"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	"k8s.io/component-base/logs"
@@ -71,7 +73,7 @@ func NewServerRunOptions() *ServerRunOptions {
 	s := ServerRunOptions{
 		GenericServerRunOptions: genericoptions.NewServerRunOptions(),
 		Etcd:                    genericoptions.NewEtcdOptions(storagebackend.NewDefaultConfig(kubeoptions.DefaultEtcdPathPrefix, nil)),
-		SecureServing:           kubeoptions.NewSecureServingOptions(),
+		SecureServing:           kubeoptions.NewSecureServingOptions().WithLoopback(),
 		Audit:                   genericoptions.NewAuditOptions(),
 		Features:                genericoptions.NewFeatureOptions(),
 		Admission:               genericoptions.NewAdmissionOptions(),
@@ -88,6 +90,9 @@ func NewServerRunOptions() *ServerRunOptions {
 		IdentityLeaseDurationSeconds:      3600,
 		IdentityLeaseRenewIntervalSeconds: 10,
 	}
+
+	// TODO: turn off the admission webhooks for now
+	s.Admission.DefaultOffPlugins.Insert(validating.PluginName, mutating.PluginName)
 
 	// Overwrite the default for storage data format.
 	s.Etcd.DefaultStorageMediaType = "application/vnd.kubernetes.protobuf"

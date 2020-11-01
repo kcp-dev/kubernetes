@@ -27,8 +27,8 @@ import (
 	authorizationapiv1 "k8s.io/api/authorization/v1"
 	certificatesapiv1 "k8s.io/api/certificates/v1"
 	coordinationapiv1 "k8s.io/api/coordination/v1"
-	apiv1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	corev1 "k8s.io/api/core/v1"
 	flowcontrolv1alpha1 "k8s.io/api/flowcontrol/v1alpha1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	rbacv1alpha1 "k8s.io/api/rbac/v1alpha1"
@@ -61,6 +61,7 @@ import (
 	authorizationrest "k8s.io/kubernetes/pkg/registry/authorization/rest"
 	certificatesrest "k8s.io/kubernetes/pkg/registry/certificates/rest"
 	coordinationrest "k8s.io/kubernetes/pkg/registry/coordination/rest"
+	corerest "k8s.io/kubernetes/pkg/registry/core/rest/genericcontrolplane"
 	eventsrest "k8s.io/kubernetes/pkg/registry/events/rest"
 	flowcontrolrest "k8s.io/kubernetes/pkg/registry/flowcontrol/rest"
 	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
@@ -127,8 +128,8 @@ type CompletedConfig struct {
 	*completedConfig
 }
 
-// ControlPlane contains state for a Kubernetes cluster master/api server.
-type ControlPlane struct {
+// GenericControlPlane contains state for a Kubernetes cluster master/api server.
+type GenericControlPlane struct {
 	GenericAPIServer *genericapiserver.GenericAPIServer
 
 	ClusterAuthenticationInfo clusterauthenticationtrust.ClusterAuthenticationInfo
@@ -147,11 +148,11 @@ func (c *Config) Complete() CompletedConfig {
 	return CompletedConfig{&cfg}
 }
 
-// New returns a new instance of ControlPlane from the given config.
+// New returns a new instance of GenericControlPlane from the given config.
 // Certain config fields will be set to a default value if unset.
 // Certain config fields must be specified, including:
 //   KubeletClientConfig
-func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget) (*ControlPlane, error) {
+func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget) (*GenericControlPlane, error) {
 	s, err := c.GenericConfig.New("kube-control-plane", delegationTarget)
 	if err != nil {
 		return nil, err
@@ -192,9 +193,23 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 	// 		Install(s.Handler.GoRestfulContainer)
 	// }
 
-	m := &ControlPlane{
+	m := &GenericControlPlane{
 		GenericAPIServer:          s,
 		ClusterAuthenticationInfo: c.ExtraConfig.ClusterAuthenticationInfo,
+	}
+
+	// install legacy rest storage
+	if c.ExtraConfig.APIResourceConfigSource.VersionEnabled(corev1.SchemeGroupVersion) {
+		legacyRESTStorageProvider := corerest.LegacyRESTStorageProvider{
+			StorageFactory:              c.ExtraConfig.StorageFactory,
+			EventTTL:                    c.ExtraConfig.EventTTL,
+			ServiceAccountIssuer:        c.ExtraConfig.ServiceAccountIssuer,
+			ServiceAccountMaxExpiration: c.ExtraConfig.ServiceAccountMaxExpiration,
+			APIAudiences:                c.GenericConfig.Authentication.APIAudiences,
+		}
+		if err := m.InstallLegacyAPI(&c, c.GenericConfig.RESTOptionsGetter, legacyRESTStorageProvider); err != nil {
+			return nil, err
+		}
 	}
 
 	// The order here is preserved in discovery.
@@ -303,7 +318,7 @@ type RESTStorageProvider interface {
 }
 
 // InstallAPIs will install the APIs for the restStorageProviders if they are enabled.
-func (m *ControlPlane) InstallAPIs(apiResourceConfigSource serverstorage.APIResourceConfigSource, restOptionsGetter generic.RESTOptionsGetter, restStorageProviders ...RESTStorageProvider) error {
+func (m *GenericControlPlane) InstallAPIs(apiResourceConfigSource serverstorage.APIResourceConfigSource, restOptionsGetter generic.RESTOptionsGetter, restStorageProviders ...RESTStorageProvider) error {
 	apiGroupsInfo := []*genericapiserver.APIGroupInfo{}
 
 	// used later in the loop to filter the served resource by those that have expired.
@@ -355,13 +370,32 @@ func (m *ControlPlane) InstallAPIs(apiResourceConfigSource serverstorage.APIReso
 	return nil
 }
 
+// InstallLegacyAPI will install the legacy APIs for the restStorageProviders if they are enabled.
+func (m *GenericControlPlane) InstallLegacyAPI(c *completedConfig, restOptionsGetter generic.RESTOptionsGetter, legacyRESTStorageProvider corerest.LegacyRESTStorageProvider) error {
+	_, apiGroupInfo, err := legacyRESTStorageProvider.NewLegacyRESTStorage(restOptionsGetter)
+	if err != nil {
+		return fmt.Errorf("error building core storage: %v", err)
+	}
+
+	// controllerName := "bootstrap-controller"
+	// coreClient := corev1client.NewForConfigOrDie(c.GenericConfig.LoopbackClientConfig)
+	// bootstrapController := c.NewBootstrapController(legacyRESTStorage, coreClient, coreClient, coreClient, coreClient.RESTClient())
+	// m.GenericAPIServer.AddPostStartHookOrDie(controllerName, bootstrapController.PostStartHook)
+	// m.GenericAPIServer.AddPreShutdownHookOrDie(controllerName, bootstrapController.PreShutdownHook)
+
+	if err := m.GenericAPIServer.InstallLegacyAPIGroup(genericapiserver.DefaultLegacyAPIPrefix, &apiGroupInfo); err != nil {
+		return fmt.Errorf("error in registering group versions: %v", err)
+	}
+	return nil
+}
+
 type nodeAddressProvider struct {
 	nodeClient corev1client.NodeInterface
 }
 
 func (n nodeAddressProvider) externalAddresses() ([]string, error) {
-	preferredAddressTypes := []apiv1.NodeAddressType{
-		apiv1.NodeExternalIP,
+	preferredAddressTypes := []corev1.NodeAddressType{
+		corev1.NodeExternalIP,
 	}
 	nodes, err := n.nodeClient.List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -395,6 +429,7 @@ func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 	ret := serverstorage.NewResourceConfig()
 	// NOTE: GroupVersions listed here will be enabled by default. Don't put alpha versions in the list.
 	ret.EnableVersions(
+		corev1.SchemeGroupVersion,
 		authenticationv1.SchemeGroupVersion,
 		authorizationapiv1.SchemeGroupVersion,
 		certificatesapiv1.SchemeGroupVersion,

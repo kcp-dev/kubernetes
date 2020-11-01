@@ -159,6 +159,9 @@ func (p *PolicyData) EnsureRBACPolicy() genericapiserver.PostStartHookFunc {
 		// starts, the roles don't initialize, and nothing works.
 		err := wait.Poll(1*time.Second, 30*time.Second, func() (done bool, err error) {
 			client, err := clientset.NewForConfig(hookContext.LoopbackClientConfig)
+
+			klog.Infof("DEBUG: loopback context: %#v", hookContext.LoopbackClientConfig)
+			
 			if err != nil {
 				utilruntime.HandleError(fmt.Errorf("unable to initialize client set: %v", err))
 				return false, nil
