@@ -19,13 +19,10 @@ package kubeapiserver
 import (
 	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	serveroptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/server/options/encryptionconfig"
 	"k8s.io/apiserver/pkg/server/resourceconfig"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
-	"k8s.io/apiserver/pkg/storage/storagebackend"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/apis/apps"
 	api "k8s.io/kubernetes/pkg/apis/core"
@@ -58,7 +55,7 @@ func DefaultWatchCacheSizes() map[schema.GroupResource]int {
 }
 
 // NewStorageFactoryConfig returns a new StorageFactoryConfig set up with necessary resource overrides.
-func NewStorageFactoryConfig() *StorageFactoryConfig {
+func LegacyStorageFactoryConfig() *StorageFactoryConfig {
 
 	resources := []schema.GroupVersionResource{
 		apisstorage.Resource("csistoragecapacities").WithVersion("v1beta1"),
@@ -71,37 +68,8 @@ func NewStorageFactoryConfig() *StorageFactoryConfig {
 	}
 }
 
-// StorageFactoryConfig is a configuration for creating storage factory.
-type StorageFactoryConfig struct {
-	StorageConfig                    storagebackend.Config
-	APIResourceConfig                *serverstorage.ResourceConfig
-	DefaultResourceEncoding          *serverstorage.DefaultResourceEncodingConfig
-	DefaultStorageMediaType          string
-	Serializer                       runtime.StorageSerializer
-	ResourceEncodingOverrides        []schema.GroupVersionResource
-	EtcdServersOverrides             []string
-	EncryptionProviderConfigFilepath string
-}
-
-// Complete completes the StorageFactoryConfig with provided etcdOptions returning completedStorageFactoryConfig.
-func (c *StorageFactoryConfig) Complete(etcdOptions *serveroptions.EtcdOptions) (*completedStorageFactoryConfig, error) {
-	c.StorageConfig = etcdOptions.StorageConfig
-	c.DefaultStorageMediaType = etcdOptions.DefaultStorageMediaType
-	c.EtcdServersOverrides = etcdOptions.EtcdServersOverrides
-	c.EncryptionProviderConfigFilepath = etcdOptions.EncryptionProviderConfigFilepath
-	return &completedStorageFactoryConfig{c}, nil
-}
-
-// completedStorageFactoryConfig is a wrapper around StorageFactoryConfig completed with etcd options.
-//
-// Note: this struct is intentionally unexported so that it can only be constructed via a StorageFactoryConfig.Complete
-// call. The implied consequence is that this does not comply with golint.
-type completedStorageFactoryConfig struct {
-	*StorageFactoryConfig
-}
-
 // New returns a new storage factory created from the completed storage factory configuration.
-func (c *completedStorageFactoryConfig) New() (*serverstorage.DefaultStorageFactory, error) {
+func (c *completedStorageFactoryConfig) Legacy() (*serverstorage.DefaultStorageFactory, error) {
 	resourceEncodingConfig := resourceconfig.MergeResourceEncodingConfigs(c.DefaultResourceEncoding, c.ResourceEncodingOverrides)
 	storageFactory := serverstorage.NewDefaultStorageFactory(
 		c.StorageConfig,
@@ -110,6 +78,8 @@ func (c *completedStorageFactoryConfig) New() (*serverstorage.DefaultStorageFact
 		resourceEncodingConfig,
 		c.APIResourceConfig,
 		SpecialDefaultResourcePrefixes)
+
+	storageFactory.UseResourceAsPrefixDefault = true
 
 	storageFactory.AddCohabitatingResources(networking.Resource("networkpolicies"), extensions.Resource("networkpolicies"))
 	storageFactory.AddCohabitatingResources(apps.Resource("deployments"), extensions.Resource("deployments"))

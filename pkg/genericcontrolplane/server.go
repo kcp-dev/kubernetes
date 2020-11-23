@@ -20,8 +20,11 @@ limitations under the License.
 package genericcontrolplane
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -247,7 +250,7 @@ func BuildGenericConfig(
 	kubeVersion := version.Get()
 	genericConfig.Version = &kubeVersion
 
-	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig()
+	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(controlplanescheme.Scheme, controlplanescheme.Codecs)
 	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
 	completedStorageFactoryConfig, err := storageFactoryConfig.Complete(s.Etcd)
 	if err != nil {
