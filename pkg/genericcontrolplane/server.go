@@ -250,7 +250,7 @@ func BuildGenericConfig(
 	kubeVersion := version.Get()
 	genericConfig.Version = &kubeVersion
 
-	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(controlplanescheme.Scheme, controlplanescheme.Codecs)
+	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(genericcontrolplanescheme.Scheme, genericcontrolplanescheme.Codecs)
 	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
 	completedStorageFactoryConfig, err := storageFactoryConfig.Complete(s.Etcd)
 	if err != nil {
@@ -298,8 +298,32 @@ func BuildGenericConfig(
 	    lastErr = fmt.Errorf("invalid authorization config: %v", err)
 	    return
 	}
+
 	// if !sets.NewString(s.Authorization.Modes...).Has(modes.ModeRBAC) {
 	//     genericConfig.DisabledPostStartHooks.Insert(rbacrest.PostStartHookName)
+	// }
+
+	var originalHandler = genericConfig.BuildHandlerChainFunc
+	var reClusterName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,78}[a-z0-9]$`)
+	genericConfig.BuildHandlerChainFunc = func(handler http.Handler, c *genericapiserver.Config) http.Handler {
+		return originalHandler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			cluster := req.Header.Get("X-Kubernetes-Cluster")
+			if len(cluster) == 0 {
+				cluster = "default"
+			}
+			if !reClusterName.MatchString(cluster) {
+				http.Error(w, "Unknown cluster", http.StatusNotFound)
+				return
+			}
+			klog.V(5).Infof("DEBUG: running with cluster %s", cluster)
+			ctx := context.WithValue(req.Context(), "cluster", cluster)
+			handler.ServeHTTP(w, req.WithContext(ctx))
+		}), c)
+	}
+
+	// admissionConfig := &controlplaneadmission.Config{
+	// 	ExternalInformers:    versionedInformers,
+	// 	LoopbackClientConfig: genericConfig.LoopbackClientConfig,
 	// }
 
 	// lastErr = s.Audit.ApplyTo(genericConfig)
