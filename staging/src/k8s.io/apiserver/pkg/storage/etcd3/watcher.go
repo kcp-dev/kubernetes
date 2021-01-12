@@ -36,6 +36,7 @@ import (
 
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"k8s.io/klog/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -90,6 +91,9 @@ type watchChan struct {
 	incomingEventChan chan *event
 	resultChan        chan watch.Event
 	errChan           chan error
+
+	// HACK: testing watch across multiple prefixes
+	extractCluster bool
 }
 
 func newWatcher(client *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
@@ -115,11 +119,11 @@ func newWatcher(client *clientv3.Client, codec runtime.Codec, newFunc func() run
 // If recursive is false, it watches on given key.
 // If recursive is true, it watches any children and directories under the key, excluding the root key itself.
 // pred must be non-nil. Only if pred matches the change, it will be returned.
-func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
+func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive, clusterAsFirstSegment bool, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
 	if recursive && !strings.HasSuffix(key, "/") {
 		key += "/"
 	}
-	wc := w.createWatchChan(ctx, key, rev, recursive, progressNotify, pred)
+	wc := w.createWatchChan(ctx, key, rev, recursive, clusterAsFirstSegment, progressNotify, pred)
 	go wc.run()
 
 	// For etcd watch we don't have an easy way to answer whether the watch
@@ -132,7 +136,7 @@ func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive, p
 	return wc, nil
 }
 
-func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
+func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive, clusterAsFirstSegment, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
 	wc := &watchChan{
 		watcher:           w,
 		key:               key,
@@ -143,6 +147,9 @@ func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, re
 		incomingEventChan: make(chan *event, incomingBufSize),
 		resultChan:        make(chan watch.Event, outgoingBufSize),
 		errChan:           make(chan error, 1),
+
+		// HACK: assume structure of key is <prefix><cluster>/...
+		extractCluster: clusterAsFirstSegment,
 	}
 	if pred.Empty() {
 		// The filter doesn't filter out any object.
@@ -434,6 +441,18 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
+		if wc.extractCluster {
+			sub := strings.TrimPrefix(e.key, wc.key)
+			if i := strings.Index(sub, "/"); i != -1 {
+				sub = sub[:i]
+			}
+			if s, ok := curObj.(metav1.ObjectMetaAccessor); ok {
+				klog.Infof("SUB: %s", sub)
+				s.GetObjectMeta().SetClusterName(sub)
+			} else {
+				klog.Infof("NO SUB: %T %s", curObj, sub)
+			}
+		}
 	}
 	// We need to decode prevValue, only if this is deletion event or
 	// the underlying filter doesn't accept all objects (otherwise we
@@ -451,6 +470,19 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
+		if wc.extractCluster {
+			sub := strings.TrimPrefix(e.key, wc.key)
+			if i := strings.Index(sub, "/"); i != -1 {
+				sub = sub[:i]
+			}
+			if s, ok := oldObj.(metav1.ObjectMetaAccessor); ok {
+				klog.Infof("SUB: %s", sub)
+				s.GetObjectMeta().SetClusterName(sub)
+			} else {
+				klog.Infof("NO SUB: %T %s", oldObj, sub)
+			}
+		}
+
 	}
 	return curObj, oldObj, nil
 }
