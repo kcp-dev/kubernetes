@@ -70,6 +70,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	"k8s.io/apiserver/pkg/endpoints/metrics"
+	"k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/generic"
@@ -676,9 +677,17 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 	}
 
 	openAPIModels, err := buildOpenAPIModelsForApply(r.staticOpenAPISpec, crd)
+	var modelsByGKV openapi.ModelsByGKV
+
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("error building openapi models for %s: %v", crd.Name, err))
 		openAPIModels = nil
+	} else {
+		modelsByGKV, err = openapi.GetModelsByGKV(openAPIModels)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("error gathering openapi models by GKV for %s: %v", crd.Name, err))
+			modelsByGKV = nil
+		}
 	}
 
 	var typeConverter fieldmanager.TypeConverter = fieldmanager.DeducedTypeConverter{}
@@ -901,6 +910,8 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 			Authorizer: r.authorizer,
 
 			MaxRequestBodyBytes: r.maxRequestBodyBytes,
+
+			OpenapiModels: modelsByGKV,
 		}
 		if utilfeature.DefaultFeatureGate.Enabled(features.ServerSideApply) {
 			resetFields := storages[v.Name].CustomResource.GetResetFields()

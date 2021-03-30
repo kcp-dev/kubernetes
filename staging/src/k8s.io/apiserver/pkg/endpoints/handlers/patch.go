@@ -51,6 +51,7 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/util/dryrun"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kube-openapi/pkg/util/proto"
 	utiltrace "k8s.io/utils/trace"
 )
 
@@ -428,6 +429,7 @@ type smpPatcher struct {
 	// Schema
 	schemaReferenceObj runtime.Object
 	fieldManager       *fieldmanager.FieldManager
+	openapiModel       proto.Schema
 }
 
 func (p *smpPatcher) applyPatchToCurrentObject(requestContext context.Context, currentObject runtime.Object) (runtime.Object, error) {
@@ -441,7 +443,7 @@ func (p *smpPatcher) applyPatchToCurrentObject(requestContext context.Context, c
 	if err != nil {
 		return nil, err
 	}
-	if err := strategicPatchObject(requestContext, p.defaulter, currentVersionedObject, p.patchBytes, versionedObjToUpdate, p.schemaReferenceObj, p.validationDirective); err != nil {
+	if err := strategicPatchObject(requestContext, p.defaulter, currentVersionedObject, p.patchBytes, versionedObjToUpdate, p.schemaReferenceObj, p.validationDirective, p.openapiModel); err != nil {
 		return nil, err
 	}
 	// Convert the object back to the hub version
@@ -523,6 +525,7 @@ func strategicPatchObject(
 	objToUpdate runtime.Object,
 	schemaReferenceObj runtime.Object,
 	validationDirective string,
+	openapiModel proto.Schema,
 ) error {
 	originalObjMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(originalObject)
 	if err != nil {
@@ -542,7 +545,7 @@ func strategicPatchObject(
 		}
 	}
 
-	if err := applyPatchToObject(requestContext, defaulter, originalObjMap, patchMap, objToUpdate, schemaReferenceObj, strictErrs, validationDirective); err != nil {
+	if err := applyPatchToObject(requestContext, defaulter, originalObjMap, patchMap, objToUpdate, schemaReferenceObj, strictErrs, validationDirective, openapiModel); err != nil {
 		return err
 	}
 	return nil
@@ -628,10 +631,17 @@ func (p *patcher) patchResource(ctx context.Context, scope *RequestScope) (runti
 		if err != nil {
 			return nil, false, err
 		}
+
+		var schema proto.Schema
+		modelsByGKV := scope.OpenapiModels
+		if modelsByGKV != nil {
+			schema = modelsByGKV[p.kind]
+		}
 		p.mechanism = &smpPatcher{
 			patcher:            p,
 			schemaReferenceObj: schemaReferenceObj,
 			fieldManager:       scope.FieldManager,
+			openapiModel:       schema,
 		}
 	// this case is unreachable if ServerSideApply is not enabled because we will have already rejected the content type
 	case types.ApplyPatchType:
@@ -699,8 +709,12 @@ func applyPatchToObject(
 	schemaReferenceObj runtime.Object,
 	strictErrs []error,
 	validationDirective string,
+	openapiModel proto.Schema,
 ) error {
 	patchedObjMap, err := strategicpatch.StrategicMergeMapPatch(originalMap, patchMap, schemaReferenceObj)
+	if err == mergepatch.ErrUnsupportedStrategicMergePatchFormat && openapiModel != nil {
+		patchedObjMap, err = strategicpatch.StrategicMergeMapPatchUsingLookupPatchMeta(originalMap, patchMap, strategicpatch.NewPatchMetaFromOpenAPI(openapiModel))
+	}
 	if err != nil {
 		return interpretStrategicMergePatchError(err)
 	}
