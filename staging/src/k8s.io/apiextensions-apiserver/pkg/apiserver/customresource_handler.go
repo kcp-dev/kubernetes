@@ -657,11 +657,18 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 	}
 
 	openAPIModels, err := buildOpenAPIModelsForApply(r.staticOpenAPISpec, crd)
+	var modelsByGKV openapi.ModelsByGKV
+
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("error building openapi models for %s: %v", crd.Name, err))
 		openAPIModels = nil
+	} else {
+		modelsByGKV, err = openapi.GetModelsByGKV(openAPIModels)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("error gathering openapi models by GKV for %s: %v", crd.Name, err))
+			modelsByGKV = nil
+		}
 	}
-
 	safeConverter, unsafeConverter, err := r.converterFactory.NewConverter(crd)
 	if err != nil {
 		return nil, err
@@ -804,10 +811,6 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 			standardSerializers = append(standardSerializers, s)
 		}
 
-		modelsByGKV, err := openapi.GetModelsByGKV(openAPIModels)
-		if err != nil {
-			klog.V(2).Infof("The CRD cannot gather openapi models by GKV: %v", err)
-		}
 		requestScopes[v.Name] = &handlers.RequestScope{
 			Namer: handlers.ContextBasedNaming{
 				SelfLinker:         meta.NewAccessor(),

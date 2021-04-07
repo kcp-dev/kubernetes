@@ -509,11 +509,6 @@ func (b *builder) getOpenAPIConfig() *common.Config {
 		GetOperationIDAndTags: openapi.GetOperationIDAndTags,
 		GetDefinitionName: func(name string) (string, spec.Extensions) {
 			buildDefinitions.Do(buildDefinitionsFunc)
-			// HACK: support the case when we add core or other legacy scheme resources through CRDs (KCP scenario)
-			parts := strings.Split(name, "/")
-			if len(parts) == 2 {
-				name = packagePrefix(parts[0])
-			}
 			return namer.GetDefinitionName(name)
 		},
 		GetDefinitions: func(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
