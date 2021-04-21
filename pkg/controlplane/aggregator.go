@@ -183,7 +183,10 @@ func makeAPIService(gv schema.GroupVersion) *v1.APIService {
 		return nil
 	}
 	return &v1.APIService{
-		ObjectMeta: metav1.ObjectMeta{Name: gv.Version + "." + gv.Group},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        gv.Version + "." + gv.Group,
+			ClusterName: RootClusterName,
+		},
 		Spec: v1.APIServiceSpec{
 			Group:                gv.Group,
 			Version:              gv.Version,
@@ -271,7 +274,7 @@ var apiVersionPriorities = map[schema.GroupVersion]priority{
 func apiServicesToRegister(delegateAPIServer genericapiserver.DelegationTarget, registration autoregister.AutoAPIServiceRegistration) []*v1.APIService {
 	apiServices := []*v1.APIService{}
 
-	for _, curr := range delegateAPIServer.ListedPaths() {
+	for _, curr := range delegateAPIServer.ListedPaths("") {
 		if curr == "/api/v1" {
 			apiService := makeAPIService(schema.GroupVersion{Group: "", Version: "v1"})
 			registration.AddAPIServiceToSyncOnStart(apiService)

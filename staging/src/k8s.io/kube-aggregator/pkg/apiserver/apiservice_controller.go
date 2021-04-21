@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	"k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
+	v1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	informers "k8s.io/kube-aggregator/pkg/client/informers/externalversions/apiregistration/v1"
 	listers "k8s.io/kube-aggregator/pkg/client/listers/apiregistration/v1"
 	"k8s.io/kube-aggregator/pkg/controllers"
@@ -37,7 +37,7 @@ import (
 // APIHandlerManager defines the behaviour that an API handler should have.
 type APIHandlerManager interface {
 	AddAPIService(apiService *v1.APIService) error
-	RemoveAPIService(apiServiceName string)
+	RemoveAPIService(clusterAndApiServiceName string)
 }
 
 // APIServiceRegistrationController is responsible for registering and removing API services.
