@@ -25,8 +25,8 @@ import (
 // <group/version/kind> tuple.
 // WARNING: this function is subject to change. Clients shouldn't depend on
 // this function.
-func StorageVersionHash(group, version, kind string) string {
-	gvk := group + "/" + version + "/" + kind
+func StorageVersionHash(clusterName, group, version, kind string) string {
+	gvk := clusterName + "/" + group + "/" + version + "/" + kind
 	if gvk == "" {
 		return ""
 	}

@@ -23,12 +23,13 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 )
 
 type versionDiscoveryHandler struct {
 	// TODO, writing is infrequent, optimize this
 	discoveryLock sync.RWMutex
-	discovery     map[schema.GroupVersion]*discovery.APIVersionHandler
+	discovery     map[string]map[schema.GroupVersion]*discovery.APIVersionHandler
 
 	delegate http.Handler
 }
@@ -40,7 +41,14 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 		r.delegate.ServeHTTP(w, req)
 		return
 	}
-	discovery, ok := r.getDiscovery(schema.GroupVersion{Group: pathParts[1], Version: pathParts[2]})
+
+	clusterName := ""
+	cluster := genericapirequest.ClusterFrom(req.Context())
+	if cluster != nil {
+		clusterName = cluster.Name
+	}
+
+	discovery, ok := r.getDiscovery(clusterName, schema.GroupVersion{Group: pathParts[1], Version: pathParts[2]})
 	if !ok {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -49,32 +57,46 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 	discovery.ServeHTTP(w, req)
 }
 
-func (r *versionDiscoveryHandler) getDiscovery(gv schema.GroupVersion) (*discovery.APIVersionHandler, bool) {
+func (r *versionDiscoveryHandler) getDiscovery(clusterName string, gv schema.GroupVersion) (*discovery.APIVersionHandler, bool) {
 	r.discoveryLock.RLock()
 	defer r.discoveryLock.RUnlock()
 
-	ret, ok := r.discovery[gv]
+	clusterDiscovery, clusterExists := r.discovery[clusterName]
+	if !clusterExists {
+		return nil, false
+	}
+	ret, ok := clusterDiscovery[gv]
 	return ret, ok
 }
 
-func (r *versionDiscoveryHandler) setDiscovery(gv schema.GroupVersion, discovery *discovery.APIVersionHandler) {
+func (r *versionDiscoveryHandler) setDiscovery(clusterName string, gv schema.GroupVersion, discoveryHandler *discovery.APIVersionHandler) {
 	r.discoveryLock.Lock()
 	defer r.discoveryLock.Unlock()
 
-	r.discovery[gv] = discovery
+	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
+		r.discovery[clusterName] = map[schema.GroupVersion]*discovery.APIVersionHandler{}
+	}
+	r.discovery[clusterName][gv] = discoveryHandler
 }
 
-func (r *versionDiscoveryHandler) unsetDiscovery(gv schema.GroupVersion) {
+func (r *versionDiscoveryHandler) unsetDiscovery(clusterName string, gv schema.GroupVersion) {
 	r.discoveryLock.Lock()
 	defer r.discoveryLock.Unlock()
 
-	delete(r.discovery, gv)
+	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
+		return
+	}
+
+	delete(r.discovery[clusterName], gv)
+	if len(r.discovery[clusterName]) == 0 {
+		delete(r.discovery, clusterName)
+	}
 }
 
 type groupDiscoveryHandler struct {
 	// TODO, writing is infrequent, optimize this
 	discoveryLock sync.RWMutex
-	discovery     map[string]*discovery.APIGroupHandler
+	discovery     map[string]map[string]*discovery.APIGroupHandler
 
 	delegate http.Handler
 }
@@ -86,7 +108,14 @@ func (r *groupDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		r.delegate.ServeHTTP(w, req)
 		return
 	}
-	discovery, ok := r.getDiscovery(pathParts[1])
+
+	clusterName := ""
+	cluster := genericapirequest.ClusterFrom(req.Context())
+	if cluster != nil {
+		clusterName = cluster.Name
+	}
+
+	discovery, ok := r.getDiscovery(clusterName, pathParts[1])
 	if !ok {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -95,26 +124,40 @@ func (r *groupDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 	discovery.ServeHTTP(w, req)
 }
 
-func (r *groupDiscoveryHandler) getDiscovery(group string) (*discovery.APIGroupHandler, bool) {
+func (r *groupDiscoveryHandler) getDiscovery(clusterName, group string) (*discovery.APIGroupHandler, bool) {
 	r.discoveryLock.RLock()
 	defer r.discoveryLock.RUnlock()
 
-	ret, ok := r.discovery[group]
+	clusterDiscovery, clusterExists := r.discovery[clusterName]
+	if !clusterExists {
+		return nil, false
+	}
+	ret, ok := clusterDiscovery[group]
 	return ret, ok
 }
 
-func (r *groupDiscoveryHandler) setDiscovery(group string, discovery *discovery.APIGroupHandler) {
+func (r *groupDiscoveryHandler) setDiscovery(clusterName, group string, discoveryHandler *discovery.APIGroupHandler) {
 	r.discoveryLock.Lock()
 	defer r.discoveryLock.Unlock()
 
-	r.discovery[group] = discovery
+	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
+		r.discovery[clusterName] = map[string]*discovery.APIGroupHandler{}
+	}
+	r.discovery[clusterName][group] = discoveryHandler
 }
 
-func (r *groupDiscoveryHandler) unsetDiscovery(group string) {
+func (r *groupDiscoveryHandler) unsetDiscovery(clusterName, group string) {
 	r.discoveryLock.Lock()
 	defer r.discoveryLock.Unlock()
 
-	delete(r.discovery, group)
+	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
+		return
+	}
+
+	delete(r.discovery[clusterName], group)
+	if len(r.discovery[clusterName]) == 0 {
+		delete(r.discovery, clusterName)
+	}
 }
 
 // splitPath returns the segments for a URL path.

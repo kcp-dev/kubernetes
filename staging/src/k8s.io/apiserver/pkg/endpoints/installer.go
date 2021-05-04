@@ -392,7 +392,7 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 		if err != nil {
 			return nil, err
 		}
-		apiResource.StorageVersionHash = discovery.StorageVersionHash(gvk.Group, gvk.Version, gvk.Kind)
+		apiResource.StorageVersionHash = discovery.StorageVersionHash("", gvk.Group, gvk.Version, gvk.Kind)
 	}
 
 	// Get the list of actions for the given scope.

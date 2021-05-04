@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apiserver/pkg/endpoints/discovery"
 	"k8s.io/klog"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -27,10 +28,10 @@ import (
 	crdlisters "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 )
@@ -41,7 +42,7 @@ type AutoAPIServiceRegistration interface {
 	// AddAPIServiceToSync adds an API service to auto-register.
 	AddAPIServiceToSync(in *v1.APIService)
 	// RemoveAPIServiceToSync removes an API service to auto-register.
-	RemoveAPIServiceToSync(name string)
+	RemoveAPIServiceToSync(clusterAndName string)
 }
 
 type crdRegistrationController struct {
@@ -50,7 +51,7 @@ type crdRegistrationController struct {
 
 	apiServiceRegistration AutoAPIServiceRegistration
 
-	syncHandler func(groupVersion schema.GroupVersion) error
+	syncHandler func(clusterGroupVersion discovery.ClusterGroupVersion) error
 
 	syncedInitialSet chan struct{}
 
@@ -122,7 +123,11 @@ func (c *crdRegistrationController) Run(threadiness int, stopCh <-chan struct{})
 	} else {
 		for _, crd := range crds {
 			for _, version := range crd.Spec.Versions {
-				if err := c.syncHandler(schema.GroupVersion{Group: crd.Spec.Group, Version: version.Name}); err != nil {
+				if err := c.syncHandler(discovery.ClusterGroupVersion{
+					ClusterName: crd.GetClusterName(),
+					Group:       crd.Spec.Group,
+					Version:     version.Name,
+				}); err != nil {
 					utilruntime.HandleError(err)
 				}
 			}
@@ -164,7 +169,7 @@ func (c *crdRegistrationController) processNextWorkItem() bool {
 	defer c.queue.Done(key)
 
 	// do your work on the key.  This method will contains your "do stuff" logic
-	err := c.syncHandler(key.(schema.GroupVersion))
+	err := c.syncHandler(key.(discovery.ClusterGroupVersion))
 	if err == nil {
 		// if you had no error, tell the queue to stop tracking history for your key.  This will
 		// reset things like failure counts for per-item rate limiting
@@ -186,12 +191,16 @@ func (c *crdRegistrationController) processNextWorkItem() bool {
 
 func (c *crdRegistrationController) enqueueCRD(crd *apiextensionsv1.CustomResourceDefinition) {
 	for _, version := range crd.Spec.Versions {
-		c.queue.Add(schema.GroupVersion{Group: crd.Spec.Group, Version: version.Name})
+		c.queue.Add(discovery.ClusterGroupVersion{
+			ClusterName: crd.GetClusterName(),
+			Group:       crd.Spec.Group,
+			Version:     version.Name,
+		})
 	}
 }
 
-func (c *crdRegistrationController) handleVersionUpdate(groupVersion schema.GroupVersion) error {
-	apiServiceName := groupVersion.Version + "." + groupVersion.Group
+func (c *crdRegistrationController) handleVersionUpdate(clusterGroupVersion discovery.ClusterGroupVersion) error {
+	apiServiceName := clusterGroupVersion.Version + "." + clusterGroupVersion.Group
 
 	// check all CRDs.  There shouldn't that many, but if we have problems later we can index them
 	crds, err := c.crdLister.List(labels.Everything())
@@ -199,19 +208,25 @@ func (c *crdRegistrationController) handleVersionUpdate(groupVersion schema.Grou
 		return err
 	}
 	for _, crd := range crds {
-		if crd.Spec.Group != groupVersion.Group {
+		if crd.GetClusterName() != clusterGroupVersion.ClusterName {
+			continue
+		}
+		if crd.Spec.Group != clusterGroupVersion.Group {
 			continue
 		}
 		for _, version := range crd.Spec.Versions {
-			if version.Name != groupVersion.Version || !version.Served {
+			if version.Name != clusterGroupVersion.Version || !version.Served {
 				continue
 			}
 
 			c.apiServiceRegistration.AddAPIServiceToSync(&v1.APIService{
-				ObjectMeta: metav1.ObjectMeta{Name: apiServiceName},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        apiServiceName,
+					ClusterName: clusterGroupVersion.ClusterName,
+				},
 				Spec: v1.APIServiceSpec{
-					Group:                groupVersion.Group,
-					Version:              groupVersion.Version,
+					Group:                clusterGroupVersion.Group,
+					Version:              clusterGroupVersion.Version,
 					GroupPriorityMinimum: 1000, // CRDs should have relatively low priority
 					VersionPriority:      100,  // CRDs will be sorted by kube-like versions like any other APIService with the same VersionPriority
 				},
@@ -220,6 +235,6 @@ func (c *crdRegistrationController) handleVersionUpdate(groupVersion schema.Grou
 		}
 	}
 
-	c.apiServiceRegistration.RemoveAPIServiceToSync(apiServiceName)
+	c.apiServiceRegistration.RemoveAPIServiceToSync(clusters.ToClusterAwareKey(clusterGroupVersion.ClusterName, apiServiceName))
 	return nil
 }

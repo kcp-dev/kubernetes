@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/pkg/version"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 
+	"k8s.io/client-go/tools/clusters"
 	v1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	v1helper "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1/helper"
 	"k8s.io/kube-aggregator/pkg/apis/apiregistration/v1beta1"
@@ -119,6 +120,9 @@ type APIAggregator struct {
 	// handledGroups are the groups that already have routes
 	handledGroups sets.String
 
+	// pathToClusters is a map that provids a list of clusters for which a given path is to be visible
+	pathToClusters map[string][]string
+
 	// lister is used to add group handling for /apis/<group> aggregator lookups based on
 	// controller state
 	lister listers.APIServiceLister
@@ -184,12 +188,28 @@ func (c completedConfig) NewWithDelegate(delegationTarget genericapiserver.Deleg
 		proxyClientKey:           c.ExtraConfig.ProxyClientKey,
 		proxyTransport:           c.ExtraConfig.ProxyTransport,
 		proxyHandlers:            map[string]*proxyHandler{},
+		pathToClusters:           map[string][]string{},
 		handledGroups:            sets.String{},
 		lister:                   informerFactory.Apiregistration().V1().APIServices().Lister(),
 		APIRegistrationInformers: informerFactory,
 		serviceResolver:          c.ExtraConfig.ServiceResolver,
 		openAPIConfig:            openAPIConfig,
 		egressSelector:           c.GenericConfig.EgressSelector,
+	}
+
+	s.GenericAPIServer.Handler.PathValidForCluster = func(path, clusterName string) bool {
+		clusters, found := s.pathToClusters[path]
+		if !found {
+			return true
+		}
+
+		for _, cluster := range clusters {
+			if cluster == clusterName {
+				return true
+			}
+		}
+
+		return false
 	}
 
 	apiGroupInfo := apiservicerest.NewRESTStorage(c.GenericConfig.MergedResourceConfig, c.GenericConfig.RESTOptionsGetter)
@@ -315,6 +335,12 @@ func (s *APIAggregator) AddAPIService(apiService *v1.APIService) error {
 		s.openAPIAggregationController.AddAPIService(proxyHandler, apiService)
 	}
 	s.proxyHandlers[apiService.Name] = proxyHandler
+
+	if !IsVersionForAllClusters(apiService.Spec) {
+		s.pathToClusters[proxyPath] = append(s.pathToClusters[proxyPath], apiService.GetClusterName())
+		s.pathToClusters[proxyPath+"/"] = append(s.pathToClusters[proxyPath+"/"], apiService.GetClusterName())
+	}
+
 	s.GenericAPIServer.Handler.NonGoRestfulMux.Handle(proxyPath, proxyHandler)
 	s.GenericAPIServer.Handler.NonGoRestfulMux.UnlistedHandlePrefix(proxyPath+"/", proxyHandler)
 
@@ -337,6 +363,11 @@ func (s *APIAggregator) AddAPIService(apiService *v1.APIService) error {
 		delegate:  s.delegateHandler,
 	}
 	// aggregation is protected
+
+	if !IsGroupForAllClusters(apiService.Spec.Group) {
+		s.pathToClusters[groupPath] = append(s.pathToClusters[groupPath], apiService.GetClusterName())
+		s.pathToClusters[groupPath+"/"] = s.pathToClusters[groupPath]
+	}
 	s.GenericAPIServer.Handler.NonGoRestfulMux.Handle(groupPath, groupDiscoveryHandler)
 	s.GenericAPIServer.Handler.NonGoRestfulMux.UnlistedHandle(groupPath+"/", groupDiscoveryHandler)
 	s.handledGroups.Insert(apiService.Spec.Group)
@@ -345,7 +376,8 @@ func (s *APIAggregator) AddAPIService(apiService *v1.APIService) error {
 
 // RemoveAPIService removes the APIService from being handled.  It is not thread-safe, so only call it on one thread at a time please.
 // It's a slow moving API, so it's ok to run the controller on a single thread.
-func (s *APIAggregator) RemoveAPIService(apiServiceName string) {
+func (s *APIAggregator) RemoveAPIService(clusterAndApiServiceName string) {
+	clusterName, apiServiceName := clusters.SplitClusterAwareKey(clusterAndApiServiceName)
 	version := v1helper.APIServiceNameToGroupVersion(apiServiceName)
 
 	proxyPath := "/apis/" + version.Group + "/" + version.Version
@@ -353,15 +385,29 @@ func (s *APIAggregator) RemoveAPIService(apiServiceName string) {
 	if apiServiceName == legacyAPIServiceName {
 		proxyPath = "/api"
 	}
-	s.GenericAPIServer.Handler.NonGoRestfulMux.Unregister(proxyPath)
-	s.GenericAPIServer.Handler.NonGoRestfulMux.Unregister(proxyPath + "/")
-	if s.openAPIAggregationController != nil {
-		s.openAPIAggregationController.RemoveAPIService(apiServiceName)
-	}
-	delete(s.proxyHandlers, apiServiceName)
 
-	// TODO unregister group level discovery when there are no more versions for the group
-	// We don't need this right away because the handler properly delegates when no versions are present
+	if clusterName != "" {
+		newPathToClusters := sets.NewString(s.pathToClusters[proxyPath]...).Delete(clusterName).List()
+
+		if len(newPathToClusters) > 0 {
+			s.pathToClusters[proxyPath] = newPathToClusters
+			s.pathToClusters[proxyPath+"/"] = s.pathToClusters[proxyPath]
+		} else {
+			s.GenericAPIServer.Handler.NonGoRestfulMux.Unregister(proxyPath)
+			s.GenericAPIServer.Handler.NonGoRestfulMux.Unregister(proxyPath + "/")
+			if s.openAPIAggregationController != nil {
+				s.openAPIAggregationController.RemoveAPIService(apiServiceName)
+			}
+			delete(s.proxyHandlers, apiServiceName)
+
+			// TODO unregister group level discovery when there are no more versions for the group
+			// We don't need this right away because the handler properly delegates when no versions are present
+
+			delete(s.pathToClusters, proxyPath)
+			delete(s.pathToClusters, proxyPath+"/")
+		}
+
+	}
 }
 
 // DefaultAPIResourceConfigSource returns default configuration for an APIResource.
