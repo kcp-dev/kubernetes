@@ -767,6 +767,23 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name, clusterName 
 			klog.V(2).Infof("The CRD for %v has an invalid printer specification, falling back to default printing: %v", kind, err)
 		}
 
+		// HACK: Currently CRDs only allow defining custom table column based on a single basic JsonPath expression.
+		// This is not sufficient to reproduce the various colum definitions of legacy scheme objects like
+		// deployments, etc ..., since those definitions are implemented in Go code.
+		// So for example in KCP, when deployments are brought back under the form of a CRD, the table columns
+		// shown from a `kubectl get deployments` command are not the ones typically expected.
+		//
+		// The call to `replaceTableConverterForLegacySchemaResources` is a temporary hack to replace the table converter of CRDs that are
+		// related to legacy-schema resources, with the default table converter of the related legacy scheme resource.
+		//
+		// In the future this should probably be replaced by some new mechanism that would allow customizing some
+		// behaviors of resources defined by CRDs.
+		if legacyscheme.Scheme.IsVersionRegistered(kind.GroupVersion()) {
+			if lecacySchemeTableConvertor := replaceTableConverterForLegacySchemaResources(kind, crd); lecacySchemeTableConvertor != nil {
+				table = lecacySchemeTableConvertor
+			}
+		}
+
 		storages[v.Name] = customresource.NewStorage(
 			resource.GroupResource(),
 			kind,
