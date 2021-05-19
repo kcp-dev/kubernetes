@@ -17,11 +17,9 @@ limitations under the License.
 package apiserver
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"path"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,7 +47,6 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/printers"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -90,8 +87,6 @@ import (
 	"k8s.io/client-go/tools/clusters"
 	"k8s.io/klog"
 	"k8s.io/kube-openapi/pkg/util/proto"
-	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
-	printerstorage "k8s.io/kubernetes/pkg/printers/storage"
 )
 
 // crdHandler serves the `/apis` endpoint.
@@ -600,12 +595,6 @@ func (r *crdHandler) GetCustomResourceListerCollectionDeleter(crd *apiextensions
 	return info.storages[info.storageVersion].CustomResource, nil
 }
 
-type TableConverterFunc func(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error)
-
-func (tcf TableConverterFunc) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
-	return tcf(ctx, object, tableOptions)
-}
-
 // getOrCreateServingInfoFor gets the CRD serving info for the given CRD UID if the key exists in the storage map.
 // Otherwise the function fetches the up-to-date CRD using the given CRD name and creates CRD serving info.
 func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name, clusterName string) (*crdInfo, error) {
@@ -778,32 +767,20 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name, clusterName 
 			klog.V(2).Infof("The CRD for %v has an invalid printer specification, falling back to default printing: %v", kind, err)
 		}
 
-		legacySchemeTableConvertor := printerstorage.TableConvertor{TableGenerator: printers.NewTableGenerator().With(printersinternal.AddHandlers)}
+		// HACK: Currently CRDs only allow defining custom table column based on a single basic JsonPath expression.
+		// This is not sufficient to reproduce the various colum definitions of legacy scheme objects like
+		// deployments, etc ..., since those definitions are implemented in Go code.
+		// So for example in KCP, when deployments are brought back under the form of a CRD, the table columns
+		// shown from a `kubectl get deployments` command are not the ones typically expected.
+		//
+		// The call to `replaceTableConverterForLegacySchemaResources` is a temporary hack to replace the table converter of CRDs that are
+		// related to legacy-schema resources, with the default table converter of the related legacy scheme resource.
+		//
+		// In the future this should probably be replaced by some new mechanism that would allow customizing some
+		// behaviors of resources defined by CRDs.
 		if legacyscheme.Scheme.IsVersionRegistered(kind.GroupVersion()) {
-			objectType, objectTypeExists := legacyscheme.Scheme.AllKnownTypes()[schema.GroupVersionKind{
-				Group:   kind.Group,
-				Kind:    crd.Spec.Names.Kind,
-				Version: runtime.APIVersionInternal,
-			}];
-			listType, listTypeExists := legacyscheme.Scheme.AllKnownTypes()[schema.GroupVersionKind{
-				Group:   kind.Group,
-				Kind:    crd.Spec.Names.ListKind,
-				Version: runtime.APIVersionInternal,
-			}];
-			if objectTypeExists && listTypeExists {
-				table = TableConverterFunc(func(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
-					k := object.GetObjectKind().GroupVersionKind() 
-					var theType reflect.Type
-					switch k.Kind {
-					case crd.Spec.Names.Kind:
-						theType = objectType						
-					default:
-						theType = listType
-					}
-					out := reflect.New(theType).Interface().(runtime.Object)
-					legacyscheme.Scheme.Convert(object, out, nil)
-					return legacySchemeTableConvertor.ConvertToTable(ctx, out, tableOptions)
-				})
+			if lecacySchemeTableConvertor := replaceTableConverterForLegacySchemaResources(kind, crd); lecacySchemeTableConvertor != nil {
+				table = lecacySchemeTableConvertor
 			}
 		}
 
