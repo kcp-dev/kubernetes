@@ -79,7 +79,10 @@ func withContributedResources(groupVersion schema.GroupVersion, apiResourceListe
 			result := []metav1.APIResource{}
 			result = append(result, apiResourceLister.ListAPIResources()...)
 			if cluster != nil {
-				if additionalResources := ContributedResources[ClusterGroupVersion{cluster.Name, groupVersion.Group, groupVersion.Version}]; additionalResources != nil {
+				if additionalResources := ContributedResources[ClusterGroupVersion{
+					ClusterName: cluster.Name,
+					Group:       groupVersion.Group,
+					Version:     groupVersion.Version}]; additionalResources != nil {
 					result = append(result, additionalResources.ListAPIResources()...)
 				}
 				sort.Slice(result, func(i, j int) bool {

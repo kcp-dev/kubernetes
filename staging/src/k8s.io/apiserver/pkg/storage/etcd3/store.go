@@ -115,13 +115,9 @@ func (s *store) Versioner() storage.Versioner {
 
 // Get implements storage.Interface.Get.
 func (s *store) Get(ctx context.Context, key string, resourceVersion string, out runtime.Object, ignoreNotFound bool) error {
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(ctx)
-	if cluster != nil {
-		if cluster.Wildcard {
-			return storage.NewInternalError("Cluster wildcards cannot be used for Get actions: key = " + key)
-		}
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in Get action for key %s : %s", key, err.Error())
 	}
 
 	key = path.Join(s.pathPrefix, key)
@@ -153,13 +149,9 @@ func (s *store) Get(ctx context.Context, key string, resourceVersion string, out
 
 // Create implements storage.Interface.Create.
 func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object, ttl uint64) error {
-	var clusterName string
-	cluster := genericapirequest.ClusterFrom(ctx)
-	if cluster != nil {
-		if cluster.Wildcard {
-			return storage.NewInternalError("Cluster wildcards cannot be used for Create actions: key = " + key)
-		}
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in Create action for key %s : %s", key, err.Error())
 	}
 
 	if version, err := s.versioner.ObjectResourceVersion(obj); err == nil && version != 0 {
@@ -216,13 +208,9 @@ func (s *store) Delete(ctx context.Context, key string, out runtime.Object, prec
 }
 
 func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc) error {
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(ctx)
-	if cluster != nil {
-		if cluster.Wildcard {
-			return storage.NewInternalError("Cluster wildcards cannot be used for conditionalDelete actions: key = " + key)
-		}
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in conditionalDelete action for key %s : %s", key, err.Error())
 	}
 
 	startTime := time.Now()
@@ -272,13 +260,9 @@ func (s *store) GuaranteedUpdate(
 	trace := utiltrace.New("GuaranteedUpdate etcd3", utiltrace.Field{"type", getTypeName(out)})
 	defer trace.LogIfLong(500 * time.Millisecond)
 
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(ctx)
-	if cluster != nil {
-		if cluster.Wildcard {
-			return storage.NewInternalError("Cluster wildcards cannot be used for GuaranteedUpdate actions: key = " + key)
-		}
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in GuaranteedUpdate action for key %s : %s", key, err.Error())
 	}
 
 	v, err := conversion.EnforcePtr(out)
@@ -424,6 +408,12 @@ func (s *store) GetToList(ctx context.Context, key string, resourceVersion strin
 		utiltrace.Field{"limit", pred.Limit},
 		utiltrace.Field{"continue", pred.Continue})
 	defer trace.LogIfLong(500 * time.Millisecond)
+
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in GetToList action for key %s : %s", key, err.Error())
+	}
+
 	listPtr, err := meta.GetItemsPtr(listObj)
 	if err != nil {
 		return err
@@ -451,7 +441,7 @@ func (s *store) GetToList(ctx context.Context, key string, resourceVersion strin
 		if err != nil {
 			return storage.NewInternalError(err.Error())
 		}
-		if err := appendListItem(v, data, uint64(getResp.Kvs[0].ModRevision), pred, s.codec, s.versioner, newItemFunc, ""); err != nil {
+		if err := appendListItem(v, data, uint64(getResp.Kvs[0].ModRevision), pred, s.codec, s.versioner, newItemFunc, clusterName); err != nil {
 			return err
 		}
 	}
@@ -669,15 +659,18 @@ func (s *store) List(ctx context.Context, key, resourceVersion string, pred stor
 				return storage.NewInternalErrorf("unable to transform key %q: %v", kv.Key, err)
 			}
 
-			cluster := genericapirequest.ClusterFrom(ctx)
-			clusterName := ""
-			if cluster != nil {
-				clusterName = cluster.Name
-				if cluster.Wildcard {
-					sub := strings.TrimPrefix(string(kv.Key), keyPrefix)
-					if i := strings.Index(sub, "/"); i != -1 {
-						clusterName = sub[:i]
-					}
+			cluster, err := genericapirequest.ValidClusterFrom(ctx)
+			if err != nil {
+				return storage.NewInternalErrorf("unable to get cluster for key %q: %v", kv.Key, err)
+			}
+			clusterName := cluster.Name
+			if cluster.Wildcard {
+				sub := strings.TrimPrefix(string(kv.Key), keyPrefix)
+				if i := strings.Index(sub, "/"); i != -1 {
+					clusterName = sub[:i]
+				}
+				if clusterName == "" {
+					klog.Errorf("the cluster name of extracted object should not be empty for key %q", kv.Key)
 				}
 			}
 			if err := appendListItem(v, data, uint64(kv.ModRevision), pred, s.codec, s.versioner, newItemFunc, clusterName); err != nil {
@@ -773,16 +766,17 @@ func (s *store) watch(ctx context.Context, key string, rv string, pred storage.S
 		return nil, err
 	}
 	key = path.Join(s.pathPrefix, key)
+
 	// HACK: would need to be an argument to storage (or a change to how decoding works for key structure)
-	cluster := genericapirequest.ClusterFrom(ctx)
+	cluster, err := genericapirequest.ValidClusterFrom(ctx)
+	if err != nil {
+		return nil, storage.NewInternalError(fmt.Sprintf("Invalid cluster for key %s : %v", key, err))
+	}
 	extractClusterSegmentFromKey := false
-	clusterName := ""
-	if cluster != nil {
-		clusterName = cluster.Name
-		if cluster.Wildcard {
-			clusterName = "*"
-			extractClusterSegmentFromKey = true
-		}
+	clusterName := cluster.Name
+	if cluster.Wildcard {
+		clusterName = "*"
+		extractClusterSegmentFromKey = true
 	}
 
 	klog.Infof("DEBUG: key=%s willExtractCluster=%t", key, extractClusterSegmentFromKey)
@@ -930,6 +924,8 @@ func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objP
 		} else {
 			klog.Infof("Could not set ClusterName %s in appendListItem on object: %T", clusterName, objPtr)
 		}
+	} else {
+		klog.Errorf("Cluster should not be unknown")
 	}
 
 	return nil
@@ -964,6 +960,8 @@ func appendListItem(v reflect.Value, data []byte, rev uint64, pred storage.Selec
 		} else {
 			klog.Infof("Could not set ClusterName %s in appendListItem on object: %T", clusterName, obj)
 		}
+	} else {
+		klog.Errorf("Cluster should not be unknown")
 	}
 
 	if matched, err := pred.Matches(obj); err == nil && matched {

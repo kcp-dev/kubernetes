@@ -267,10 +267,12 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	crdKey := crdName
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(ctx)
-	if cluster != nil {
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		responsewriters.ErrorNegotiated(
+			apierrors.NewInternalError(fmt.Errorf("error resolving resource: %v", err)),
+			Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
+		)
 	}
 	crdKey = clusters.ToClusterAwareKey(clusterName, crdKey)
 	crd, err := r.crdLister.Get(crdKey)

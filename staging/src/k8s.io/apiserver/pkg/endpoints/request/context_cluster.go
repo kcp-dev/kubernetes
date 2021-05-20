@@ -18,6 +18,8 @@ package request
 
 import (
 	"context"
+	"errors"
+	"fmt"
 )
 
 type clusterKey int
@@ -51,4 +53,39 @@ func ClusterFrom(ctx context.Context) *Cluster {
 		return nil
 	}
 	return &cluster
+}
+
+func buildClusterError(message string, ctx context.Context) error {
+	if ri, ok := RequestInfoFrom(ctx); ok {
+		message = message + fmt.Sprintf(" - RequestInfo: %#v", ri)
+	}
+	return errors.New(message)
+}
+
+// ValidClusterFrom returns the value of the cluster key on the ctx.
+// If there's no cluster key, or if the cluster name is empty
+// and it's not a wildcard context, then return an error.
+func ValidClusterFrom(ctx context.Context) (*Cluster, error) {
+	cluster := ClusterFrom(ctx)
+	if cluster == nil {
+		return nil, buildClusterError("no cluster in the request context", ctx)
+	}
+	if cluster.Name == "" && !cluster.Wildcard {
+		return nil, buildClusterError("cluster name is empty in the request context", ctx)
+	}
+	return cluster, nil
+}
+
+// ClusterNameFrom returns the cluster name from the value of the cluster
+// key on the ctx.
+// If the cluster name is empty, then return an error.
+func ClusterNameFrom(ctx context.Context) (string, error) {
+	cluster, err := ValidClusterFrom(ctx)
+	if err != nil {
+		return "", err
+	}
+	if cluster.Name == "" {
+		return "", buildClusterError("cluster name is empty in the request context", ctx)
+	}
+	return cluster.Name, nil
 }

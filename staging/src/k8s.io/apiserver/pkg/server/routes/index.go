@@ -66,10 +66,10 @@ type IndexLister struct {
 
 // ServeHTTP serves the available paths.
 func (i IndexLister) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	cluster := genericapirequest.ClusterFrom(r.Context())
-	clusterName := ""
-	if cluster != nil {
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	responsewriters.WriteRawJSON(i.StatusCode, metav1.RootPaths{Paths: i.PathProvider.ListedPaths(clusterName)}, w)
 }

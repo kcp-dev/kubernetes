@@ -42,10 +42,10 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(req.Context())
-	if cluster != nil {
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	discovery, ok := r.getDiscovery(clusterName, schema.GroupVersion{Group: pathParts[1], Version: pathParts[2]})
@@ -109,10 +109,10 @@ func (r *groupDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(req.Context())
-	if cluster != nil {
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	discovery, ok := r.getDiscovery(clusterName, pathParts[1])
