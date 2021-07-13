@@ -77,10 +77,10 @@ func (r *apisHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		Groups: []metav1.APIGroup{r.discoveryGroup},
 	}
 
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(req.Context())
-	if cluster != nil {
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	apiServices, err := r.lister.List(labels.Everything())
@@ -161,10 +161,10 @@ type apiGroupHandler struct {
 }
 
 func (r *apiGroupHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	clusterName := ""
-	cluster := genericapirequest.ClusterFrom(req.Context())
-	if cluster != nil {
-		clusterName = cluster.Name
+	clusterName, err := genericapirequest.ClusterNameFrom(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	apiServices, err := r.lister.List(labels.Everything())

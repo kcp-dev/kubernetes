@@ -207,10 +207,15 @@ const (
 // to resource directories enforcing namespace rules.
 func NoNamespaceKeyRootFunc(ctx context.Context, prefix string) string {
 	key := prefix
-	if cluster := genericapirequest.ClusterFrom(ctx); cluster != nil && !cluster.Wildcard {
-		key = key + "/" + cluster.Name
+	cluster, err := genericapirequest.ValidClusterFrom(ctx)
+	if err != nil {
+		klog.Errorf("invalid context cluster value: %v", err)
+		return key
 	}
-	return key
+	if cluster.Wildcard {
+		return key
+	}
+	return key + "/" + cluster.Name
 }
 
 // NamespaceKeyRootFunc is the default function for constructing storage paths
@@ -1376,7 +1381,7 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 
 // startObservingCount starts monitoring given prefix and periodically updating metrics. It returns a function to stop collection.
 func (e *Store) startObservingCount(period time.Duration) func() {
-	prefix := e.KeyRootFunc(genericapirequest.NewContext())
+	prefix := e.KeyRootFunc(genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{Wildcard: true}))
 	resourceName := e.DefaultQualifiedResource.String()
 	klog.V(2).Infof("Monitoring %v count at <storage-prefix>/%v", resourceName, prefix)
 	stopCh := make(chan struct{})

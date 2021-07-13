@@ -22,6 +22,7 @@ package clientutils
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -147,9 +148,10 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 				}
 			}
 		}
-		if headerCluster != "" {
-			req.Header.Add("X-Kubernetes-Cluster", headerCluster)
+		if headerCluster == "" {
+			return nil, fmt.Errorf("Cluster should not be empty for request '%s' on resource '%s' (%s)", requestInfo.Verb, requestInfo.Resource, requestInfo.Path)
 		}
+		req.Header.Add("X-Kubernetes-Cluster", headerCluster)
 	}
 	return mcrt.rt.RoundTrip(req)
 }
