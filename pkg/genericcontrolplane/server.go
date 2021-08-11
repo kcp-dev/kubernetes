@@ -29,6 +29,7 @@ import (
 
 	"github.com/emicklei/go-restful"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
+	"k8s.io/apiextensions-apiserver/pkg/controller/openapi/builder"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
@@ -49,9 +50,12 @@ import (
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
+	"k8s.io/kube-aggregator/pkg/controllers/openapi/aggregator"
+	"k8s.io/kube-openapi/pkg/handler"
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/apis"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/clientutils"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
 	"k8s.io/kubernetes/pkg/kubeapiserver"
 	"k8s.io/kubernetes/pkg/serviceaccount"
@@ -63,6 +67,7 @@ const Include = "kube-control-plane"
 const (
 	etcdRetryLimit    = 60
 	etcdRetryInterval = 1 * time.Second
+	RootClusterName   = "admin"
 )
 
 // Run runs the specified APIServer.  This should never exit.
@@ -75,15 +80,12 @@ func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) erro
 		return err
 	}
 
-	prepared, err := server.PrepareRun()
-	if err != nil {
-		return err
-	}
+	prepared := server.PrepareRun()
 	return prepared.Run(stopCh)
 }
 
 // CreateServerChain creates the apiservers connected via delegation.
-func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan struct{}) (*aggregatorapiserver.APIAggregator, error) {
+func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan struct{}) (*genericapiserver.GenericAPIServer, error) {
 	kubeAPIServerConfig, serviceResolver, pluginInitializer, err := CreateKubeAPIServerConfig(completedOptions)
 	if err != nil {
 		return nil, err
@@ -128,7 +130,71 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 		}
 	})
 
-	return aggregatorServer, nil
+	// HACK: we don't use the OpenAPI Aggregator of the aggretorServer anymore (only the agregator generic server is prepared)
+	// because the openAPI Agregator isn't compatible with CRD tenancy.
+	// So instead, at the same path, we register our own handler that mainly returns the right merged openAPI schema
+	// based on the logical cluster based on the incoming request.
+	downloader := aggregator.NewDownloader()
+	aggregatorServer.GenericAPIServer.Handler.NonGoRestfulMux.HandleFunc("/openapi/v2", func(res http.ResponseWriter, req *http.Request) {
+		req = req.Clone(req.Context())
+		req.URL.Path = "/openapi/v2"
+		req.URL.RawPath = req.URL.Path
+
+		cluster := genericapirequest.ClusterFrom(req.Context())
+
+		withCluster := func(handler http.Handler) http.HandlerFunc {
+			return func(res http.ResponseWriter, req *http.Request) {
+				if cluster != nil {
+					req = req.Clone(genericapirequest.WithCluster(req.Context(), *cluster))
+				}
+				handler.ServeHTTP(res, req)
+			}
+		}
+
+		// DAVID TODO: try to understand why adding the cluster returns nil here. The default openAPIService should work
+		controlPlaneSpec, etag, httpStatus, err := downloader.Download(kubeAPIServer.GenericAPIServer.Handler.Director, "")
+		klog.Infof(etag, httpStatus)
+
+		crdSpecs, etag, httpStatus, err := downloader.Download(withCluster(apiExtensionsServer.GenericAPIServer.Handler.Director), "")
+		klog.Infof(etag, httpStatus)
+
+		mergedSpecs, err := builder.MergeSpecs(controlPlaneSpec, crdSpecs)
+
+		openAPIVersionedService, err := handler.NewOpenAPIService(mergedSpecs)
+		if err != nil {
+			klog.Errorf("Error while building OpenAPI schema: %v", err)
+		}
+
+		handler := &singlePathHandler{}
+
+		// In order to reuse the kube-openapi API as much as possible, we
+		// register the OpenAPI service in the singlePathHandler
+		err = openAPIVersionedService.RegisterOpenAPIVersionedService("/openapi/v2", handler)
+		if err != nil {
+			klog.Errorf("Error while building OpenAPI schema: %v", err)
+		}
+
+		handler.ServeHTTP(res, req)
+	})
+
+	return aggregatorServer.GenericAPIServer, nil
+}
+
+// singlePathHandler is a dummy PathHandler that mainly allows grabbing a http.Handler
+// from a PathHandler consumer and then being able to use the http.Handler
+// to serve a request.
+type singlePathHandler struct {
+	handler [1]http.Handler
+}
+
+func (sph *singlePathHandler) Handle(path string, handler http.Handler) {
+	sph.handler[0] = handler
+}
+func (sph *singlePathHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	if sph.handler[0] == nil {
+		res.WriteHeader(404)
+	}
+	sph.handler[0].ServeHTTP(res, req)
 }
 
 // CreateKubeAPIServer creates and wires a workable kube-apiserver
@@ -295,6 +361,9 @@ func BuildGenericConfig(
 	genericConfig.LoopbackClientConfig.DisableCompression = true
 
 	kubeClientConfig := genericConfig.LoopbackClientConfig
+
+	clientutils.EnableMultiCluster(genericConfig.LoopbackClientConfig, genericConfig, "apiservices", "customresourcedefinitions")
+
 	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to create real external clientset: %v", err)
@@ -351,7 +420,7 @@ func BuildGenericConfig(
 				cluster.Wildcard = true
 				fallthrough
 			case "":
-				cluster.Name = "admin"
+				cluster.Name = RootClusterName
 			default:
 				if !reClusterName.MatchString(clusterName) {
 					http.Error(w, "Unknown cluster", http.StatusNotFound)

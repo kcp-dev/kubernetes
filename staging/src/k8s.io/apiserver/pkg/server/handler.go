@@ -64,6 +64,8 @@ type APIServerHandler struct {
 	// we should consider completely removing gorestful.
 	// Other servers should only use this opaquely to delegate to an API server.
 	Director http.Handler
+
+	PathValidForCluster func(path, clusterName string) bool
 }
 
 // HandlerChainBuilderFn is used to wrap the GoRestfulContainer handler using the provided handler chain.
@@ -101,13 +103,18 @@ func NewAPIServerHandler(name string, s runtime.NegotiatedSerializer, handlerCha
 }
 
 // ListedPaths returns the paths that should be shown under /
-func (a *APIServerHandler) ListedPaths() []string {
+func (a *APIServerHandler) ListedPaths(clusterName string) []string {
 	var handledPaths []string
 	// Extract the paths handled using restful.WebService
 	for _, ws := range a.GoRestfulContainer.RegisteredWebServices() {
 		handledPaths = append(handledPaths, ws.RootPath())
 	}
-	handledPaths = append(handledPaths, a.NonGoRestfulMux.ListedPaths()...)
+
+	for _, path := range a.NonGoRestfulMux.ListedPaths("") {
+		if a.PathValidForCluster == nil || a.PathValidForCluster(path, clusterName) {
+			handledPaths = append(handledPaths, path)
+		}
+	}
 	sort.Strings(handledPaths)
 
 	return handledPaths

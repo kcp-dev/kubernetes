@@ -67,7 +67,7 @@ var _ = SIGDescribe("Discovery", func() {
 		// is an implementation detail, which shouldn't be relied on by
 		// the clients. The following calculation is for test purpose
 		// only.
-		expected := discovery.StorageVersionHash(spec.Group, storageVersion, spec.Names.Kind)
+		expected := discovery.StorageVersionHash(testcrd.Crd.GetClusterName(), spec.Group, storageVersion, spec.Names.Kind)
 
 		for _, r := range resources.APIResources {
 			if r.Name == spec.Names.Plural {

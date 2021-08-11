@@ -72,6 +72,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
@@ -85,6 +86,7 @@ import (
 	"k8s.io/client-go/scale"
 	"k8s.io/client-go/scale/scheme/autoscalingv1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	"k8s.io/klog/v2"
 	"k8s.io/kube-openapi/pkg/util/proto"
 	"k8s.io/kube-openapi/pkg/validation/spec"
@@ -264,7 +266,17 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if requestInfo.APIGroup == "" {
 		crdName = crdName + "core"
 	}
-	crd, err := r.crdLister.Get(crdName)
+
+	crdKey := crdName
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		responsewriters.ErrorNegotiated(
+			apierrors.NewInternalError(fmt.Errorf("error resolving resource: %v", err)),
+			Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
+		)
+	}
+	crdKey = clusters.ToClusterAwareKey(clusterName, crdKey)
+	crd, err := r.crdLister.Get(crdKey)
 	if apierrors.IsNotFound(err) {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -307,7 +319,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	terminating := apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Terminating)
 
-	crdInfo, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name)
+	crdInfo, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name, clusterName)
 	if apierrors.IsNotFound(err) {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -498,9 +510,9 @@ func (r *crdHandler) updateCustomResourceDefinition(oldObj, newObj interface{}) 
 	if !apiextensionshelpers.IsCRDConditionTrue(newCRD, apiextensionsv1.Established) &&
 		apiextensionshelpers.IsCRDConditionTrue(newCRD, apiextensionsv1.NamesAccepted) {
 		if r.masterCount > 1 {
-			r.establishingController.QueueCRD(newCRD.Name, 5*time.Second)
+			r.establishingController.QueueCRD(newCRD.Name, newCRD.GetClusterName(), 5*time.Second)
 		} else {
-			r.establishingController.QueueCRD(newCRD.Name, 0)
+			r.establishingController.QueueCRD(newCRD.Name, newCRD.GetClusterName(), 0)
 		}
 	}
 
@@ -596,7 +608,7 @@ func (r *crdHandler) tearDown(oldInfo *crdInfo) {
 // GetCustomResourceListerCollectionDeleter returns the ListerCollectionDeleter of
 // the given crd.
 func (r *crdHandler) GetCustomResourceListerCollectionDeleter(crd *apiextensionsv1.CustomResourceDefinition) (finalizer.ListerCollectionDeleter, error) {
-	info, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name)
+	info, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name, crd.GetClusterName())
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +617,7 @@ func (r *crdHandler) GetCustomResourceListerCollectionDeleter(crd *apiextensions
 
 // getOrCreateServingInfoFor gets the CRD serving info for the given CRD UID if the key exists in the storage map.
 // Otherwise the function fetches the up-to-date CRD using the given CRD name and creates CRD serving info.
-func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crdInfo, error) {
+func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name, clusterName string) (*crdInfo, error) {
 	storageMap := r.customStorage.Load().(crdStorageMap)
 	if ret, ok := storageMap[uid]; ok {
 		return ret, nil
@@ -618,7 +630,11 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 	// If updateCustomResourceDefinition sees an update and happens later, the storage will be deleted and
 	// we will re-create the updated storage on demand. If updateCustomResourceDefinition happens before,
 	// we make sure that we observe the same up-to-date CRD.
-	crd, err := r.crdLister.Get(name)
+	crdKey := name
+	if clusterName != "" {
+		crdKey = clusters.ToClusterAwareKey(clusterName, crdKey)
+	}
+	crd, err := r.crdLister.Get(crdKey)
 	if err != nil {
 		return nil, err
 	}

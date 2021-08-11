@@ -38,7 +38,7 @@ import (
 // APIHandlerManager defines the behaviour that an API handler should have.
 type APIHandlerManager interface {
 	AddAPIService(apiService *v1.APIService) error
-	RemoveAPIService(apiServiceName string)
+	RemoveAPIService(clusterAndApiServiceName string)
 }
 
 // APIServiceRegistrationController is responsible for registering and removing API services.

@@ -22,12 +22,11 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
 
 	autoscaling "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/version"
@@ -49,7 +48,7 @@ type DiscoveryController struct {
 	crdsSynced cache.InformerSynced
 
 	// To allow injection for testing.
-	syncFn func(version schema.GroupVersion) error
+	syncFn func(clusterGroupVersion discovery.ClusterGroupVersion) error
 
 	queue workqueue.RateLimitingInterface
 }
@@ -75,7 +74,7 @@ func NewDiscoveryController(crdInformer informers.CustomResourceDefinitionInform
 	return c
 }
 
-func (c *DiscoveryController) sync(version schema.GroupVersion) error {
+func (c *DiscoveryController) sync(clusterGroupVersion discovery.ClusterGroupVersion) error {
 
 	apiVersionsForDiscovery := []metav1.GroupVersionForDiscovery{}
 	apiResourcesForDiscovery := []metav1.APIResource{}
@@ -92,7 +91,11 @@ func (c *DiscoveryController) sync(version schema.GroupVersion) error {
 			continue
 		}
 
-		if crd.Spec.Group != version.Group {
+		if crd.Spec.Group != clusterGroupVersion.Group {
+			continue
+		}
+
+		if crd.GetClusterName() != clusterGroupVersion.ClusterName {
 			continue
 		}
 
@@ -120,11 +123,11 @@ func (c *DiscoveryController) sync(version schema.GroupVersion) error {
 					Version:      v.Name,
 				})
 			}
-			if v.Name == version.Version {
+			if v.Name == clusterGroupVersion.Version {
 				foundThisVersion = true
 			}
 			if v.Storage {
-				storageVersionHash = discovery.StorageVersionHash(gv.Group, gv.Version, crd.Spec.Names.Kind)
+				storageVersionHash = discovery.StorageVersionHash(clusterGroupVersion.ClusterName, gv.Group, gv.Version, crd.Spec.Names.Kind)
 			}
 		}
 
@@ -150,7 +153,7 @@ func (c *DiscoveryController) sync(version schema.GroupVersion) error {
 			StorageVersionHash: storageVersionHash,
 		})
 
-		subresources, err := apiextensionshelpers.GetSubresourcesForVersion(crd, version.Version)
+		subresources, err := apiextensionshelpers.GetSubresourcesForVersion(crd, clusterGroupVersion.Version)
 		if err != nil {
 			return err
 		}
@@ -184,36 +187,37 @@ func (c *DiscoveryController) sync(version schema.GroupVersion) error {
 	// HACK: if we are adding resources in legacy scheme group through CRDs (KCP scenario)
 	// then do not expose the CRD `APIResource`s in their own CRD-related group`,
 	// But instead add them in the existing legacy schema group
-	if legacyscheme.Scheme.IsGroupRegistered(version.Group) {
+	if genericcontrolplanescheme.Scheme.IsGroupRegistered(clusterGroupVersion.Group) {
 		if !foundGroup || !foundVersion {
-			delete(discovery.ContributedResources, version)
+			delete(discovery.ContributedResources, clusterGroupVersion)
 		}
 
-		discovery.ContributedResources[version] = resourceListerFunc
-	}
-
-	if !foundGroup {
-		c.groupHandler.unsetDiscovery(version.Group)
-		c.versionHandler.unsetDiscovery(version)
+		discovery.ContributedResources[clusterGroupVersion] = resourceListerFunc
 		return nil
 	}
 
-	if version.Group != "" {
+	if !foundGroup {
+		c.groupHandler.unsetDiscovery(clusterGroupVersion.ClusterName, clusterGroupVersion.Group)
+		c.versionHandler.unsetDiscovery(clusterGroupVersion.ClusterName, clusterGroupVersion.GroupVersion())
+		return nil
+	}
+
+	if clusterGroupVersion.Group != "" {
 		// If we don't add resources in the core API group
 		apiGroup := metav1.APIGroup{
-			Name:     version.Group,
+			Name:     clusterGroupVersion.Group,
 			Versions: apiVersionsForDiscovery,
 			// the preferred versions for a group is the first item in
 			// apiVersionsForDiscovery after it put in the right ordered
 			PreferredVersion: apiVersionsForDiscovery[0],
 		}
-		c.groupHandler.setDiscovery(version.Group, discovery.NewAPIGroupHandler(Codecs, apiGroup))
+		c.groupHandler.setDiscovery(clusterGroupVersion.ClusterName, clusterGroupVersion.Group, discovery.NewAPIGroupHandler(Codecs, apiGroup))
 
 		if !foundVersion {
-			c.versionHandler.unsetDiscovery(version)
+			c.versionHandler.unsetDiscovery(clusterGroupVersion.ClusterName, clusterGroupVersion.GroupVersion())
 			return nil
 		}
-		c.versionHandler.setDiscovery(version, discovery.NewAPIVersionHandler(Codecs, version, resourceListerFunc))
+		c.versionHandler.setDiscovery(clusterGroupVersion.ClusterName, clusterGroupVersion.GroupVersion(), discovery.NewAPIVersionHandler(Codecs, clusterGroupVersion.GroupVersion(), resourceListerFunc))
 	}
 
 	return nil
@@ -246,7 +250,11 @@ func (c *DiscoveryController) Run(stopCh <-chan struct{}, synchedCh chan<- struc
 		}
 		for _, crd := range crds {
 			for _, v := range crd.Spec.Versions {
-				gv := schema.GroupVersion{crd.Spec.Group, v.Name}
+				gv := discovery.ClusterGroupVersion{
+					Group: crd.Spec.Group,
+					Version: v.Name,
+					ClusterName: crd.GetClusterName(),
+				}
 				if err := c.sync(gv); err != nil {
 					utilruntime.HandleError(fmt.Errorf("failed to initially sync CRD version %v: %v", gv, err))
 					return false, nil
@@ -281,7 +289,7 @@ func (c *DiscoveryController) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(key)
 
-	err := c.syncFn(key.(schema.GroupVersion))
+	err := c.syncFn(key.(discovery.ClusterGroupVersion))
 	if err == nil {
 		c.queue.Forget(key)
 		return true
@@ -295,7 +303,10 @@ func (c *DiscoveryController) processNextWorkItem() bool {
 
 func (c *DiscoveryController) enqueue(obj *apiextensionsv1.CustomResourceDefinition) {
 	for _, v := range obj.Spec.Versions {
-		c.queue.Add(schema.GroupVersion{Group: obj.Spec.Group, Version: v.Name})
+		c.queue.Add(discovery.ClusterGroupVersion{
+			ClusterName: obj.GetClusterName(),
+			Group:       obj.Spec.Group,
+			Version:     v.Name})
 	}
 }
 

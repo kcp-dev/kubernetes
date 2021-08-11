@@ -190,7 +190,10 @@ func (c *CRDFinalizer) deleteInstances(crd *apiextensionsv1.CustomResourceDefini
 		}, err
 	}
 
-	ctx := genericapirequest.NewContext()
+	ctx := genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{
+		Name: crd.GetClusterName(),
+	})
+
 	allResources, err := crClient.List(ctx, nil)
 	if err != nil {
 		return apiextensionsv1.CustomResourceDefinitionCondition{

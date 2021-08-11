@@ -41,6 +41,7 @@ import (
 	client "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
 	informers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/apiextensions/v1"
 	listers "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // This controller is reserving names. To avoid conflicts, be sure to run only one instance of the worker at a time.
@@ -86,7 +87,7 @@ func NewNamingConditionController(
 	return c
 }
 
-func (c *NamingConditionController) getAcceptedNamesForGroup(group string) (allResources sets.String, allKinds sets.String) {
+func (c *NamingConditionController) getAcceptedNamesForGroup(clusterName, group string) (allResources sets.String, allKinds sets.String) {
 	allResources = sets.String{}
 	allKinds = sets.String{}
 
@@ -100,11 +101,15 @@ func (c *NamingConditionController) getAcceptedNamesForGroup(group string) (allR
 			continue
 		}
 
+		if curr.GetClusterName() != clusterName {
+			continue
+		}
+
 		// for each item here, see if we have a mutation cache entry that is more recent
 		// this makes sure that if we tight loop on update and run, our mutation cache will show
 		// us the version of the objects we just updated to.
 		item := curr
-		obj, exists, err := c.crdMutationCache.GetByKey(curr.Name)
+		obj, exists, err := c.crdMutationCache.GetByKey(clusters.ToClusterAwareKey(curr.GetClusterName(), curr.Name))
 		if exists && err == nil {
 			item = obj.(*apiextensionsv1.CustomResourceDefinition)
 		}
@@ -122,7 +127,7 @@ func (c *NamingConditionController) getAcceptedNamesForGroup(group string) (allR
 
 func (c *NamingConditionController) calculateNamesAndConditions(in *apiextensionsv1.CustomResourceDefinition) (apiextensionsv1.CustomResourceDefinitionNames, apiextensionsv1.CustomResourceDefinitionCondition, apiextensionsv1.CustomResourceDefinitionCondition) {
 	// Get the names that have already been claimed
-	allResources, allKinds := c.getAcceptedNamesForGroup(in.Spec.Group)
+	allResources, allKinds := c.getAcceptedNamesForGroup(in.GetClusterName(), in.Spec.Group)
 
 	namesAcceptedCondition := apiextensionsv1.CustomResourceDefinitionCondition{
 		Type:   apiextensionsv1.NamesAccepted,

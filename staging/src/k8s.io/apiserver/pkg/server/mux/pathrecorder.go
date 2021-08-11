@@ -95,7 +95,7 @@ func NewPathRecorderMux(name string) *PathRecorderMux {
 }
 
 // ListedPaths returns the registered handler exposedPaths.
-func (m *PathRecorderMux) ListedPaths() []string {
+func (m *PathRecorderMux) ListedPaths(clusterName string) []string {
 	handledPaths := append([]string{}, m.exposedPaths...)
 	sort.Strings(handledPaths)
 
