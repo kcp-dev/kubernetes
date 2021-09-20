@@ -17,7 +17,9 @@ limitations under the License.
 package apiserver
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"sort"
@@ -83,6 +85,7 @@ import (
 	utilopenapi "k8s.io/apiserver/pkg/util/openapi"
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/apiserver/pkg/warning"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/scale"
 	"k8s.io/client-go/scale/scheme/autoscalingv1"
 	"k8s.io/client-go/tools/cache"
@@ -350,9 +353,29 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		string(types.JSONPatchType),
 		string(types.MergePatchType),
 	}
-	if legacyscheme.Scheme.IsGroupRegistered(requestInfo.APIGroup) {
+
+	// HACK: Support resources of the client-go scheme the way existing clients expect it:
+	//   - Support Strategic Merge Patch (used by default on these resources by kubectl)
+	//   - Support the Protobuf content type on Create / Update resources
+	//     (by simply converting the request to the json content type),
+	//     since protobuf content type is expected to be supported in a number of client
+	//     contexts (like controller-runtime for example)
+	if clientgoscheme.Scheme.IsGroupRegistered(requestInfo.APIGroup) {
 		supportedTypes = append(supportedTypes, string(types.StrategicMergePatchType))
+		req, err := convertProtobufRequestsToJson(verb, req, schema.GroupVersionKind{
+			Group:   requestInfo.APIGroup,
+			Version: requestInfo.APIVersion,
+			Kind:    crd.Spec.Names.Kind,
+		})
+		if err != nil {
+			responsewriters.ErrorNegotiated(
+				apierrors.NewInternalError(err),
+				Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
+			)
+			return
+		}
 	}
+
 	if utilfeature.DefaultFeatureGate.Enabled(features.ServerSideApply) {
 		supportedTypes = append(supportedTypes, string(types.ApplyPatchType))
 	}
@@ -387,6 +410,51 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		handler.ServeHTTP(w, req)
 		return
 	}
+}
+
+// HACK: In some contexts, like the controller-runtime library used by the Operator SDK, all the resources of the
+// client-go scheme are created / updated using the protobuf content type.
+// However when these resources are in fact added as CRDs, in the KCP minimal API server scenario, these resources cannot
+// be created / updated since the protobuf (de)serialization is not supported for CRDs.
+// So in this case we just convert the protobuf request to a Json one (using the `client-go` scheme decoder/encoder),
+// before letting the CRD handler serve it.
+//
+// A real, long-term and non-hacky, fix for this problem would be as follows:
+// When a request for an unsupported serialization is returned, the server should reject it with a 406
+// and provide a list of supported content types.
+// client-go should then examine whether it can satisfy such a request by encoding the object with a different scheme.
+// This would require a KEP but is in keeping with content negotiation on GET / WATCH in Kube
+func convertProtobufRequestsToJson(verb string, req *http.Request, gvk schema.GroupVersionKind) (*http.Request, error) {
+	if (verb == "CREATE" || verb == "UPDATE") &&
+		req.Header.Get("Content-Type") == runtime.ContentTypeProtobuf {
+		resource, err := clientgoscheme.Scheme.New(gvk)
+		if err != nil {
+			utilruntime.HandleError(err)
+			return nil, fmt.Errorf("Error when converting a protobuf request to a json request on a client-go resource added as a CRD")
+		}
+		reader, err := req.Body, nil
+		if err != nil {
+			utilruntime.HandleError(err)
+			return nil, fmt.Errorf("Error when converting a protobuf request to a json request on a client-go resource added as a CRD")
+		}
+		defer reader.Close()
+		buf := new(bytes.Buffer)
+		_, err = buf.ReadFrom(reader)
+		if err != nil {
+			utilruntime.HandleError(err)
+			return nil, fmt.Errorf("Error when converting a protobuf request to a json request on a client-go resource added as a CRD")
+		}
+
+		// get bytes through IO operations
+		protobuf.NewSerializer(clientgoscheme.Scheme, clientgoscheme.Scheme).Decode(buf.Bytes(), &gvk, resource)
+		buf = new(bytes.Buffer)
+		json.NewSerializerWithOptions(json.DefaultMetaFactory, clientgoscheme.Scheme, clientgoscheme.Scheme, json.SerializerOptions{Yaml: false, Pretty: false, Strict: true}).
+			Encode(resource, buf)
+		req.Body = ioutil.NopCloser(buf)
+		req.ContentLength = int64(buf.Len())
+		req.Header.Set("Content-Type", runtime.ContentTypeJSON)
+	}
+	return req, nil
 }
 
 func (r *crdHandler) serveResource(w http.ResponseWriter, req *http.Request, requestInfo *apirequest.RequestInfo, crdInfo *crdInfo, crd *apiextensionsv1.CustomResourceDefinition, terminating bool, supportedTypes []string) http.HandlerFunc {
