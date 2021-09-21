@@ -28,16 +28,18 @@ import (
 	"time"
 
 	"github.com/emicklei/go-restful"
+	v1 "k8s.io/api/core/v1"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	"k8s.io/apiextensions-apiserver/pkg/controller/openapi/builder"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/authorization/union"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
-	genericfeatures "k8s.io/apiserver/pkg/features"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
+	genericfeatures "k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/filters"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
@@ -45,7 +47,9 @@ import (
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/apiserver/pkg/util/webhook"
 	clientgoinformers "k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	clientgoclientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
@@ -53,6 +57,7 @@ import (
 	"k8s.io/kube-aggregator/pkg/controllers/openapi/aggregator"
 	"k8s.io/kube-openapi/pkg/handler"
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
+	"k8s.io/kubernetes/pkg/controller/namespace"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/apis"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/clientutils"
@@ -106,6 +111,27 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 	if err != nil {
 		return nil, err
 	}
+
+	// HACK: Adding back namespace controller
+	kubeAPIServer.GenericAPIServer.AddPostStartHook("start-namespace-controller", func(hookContext genericapiserver.PostStartHookContext) error {
+		kubeClient, err := kubernetes.NewForConfig(hookContext.LoopbackClientConfig)
+		if err != nil {
+			return err
+		}
+		metadata, err := metadata.NewForConfig(hookContext.LoopbackClientConfig)
+		if err != nil {
+			return err
+		}
+		go namespace.NewNamespaceController(
+			kubeClient,
+			metadata,
+			kubeClient.Discovery().ServerPreferredNamespacedResources,
+			kubeAPIServerConfig.ExtraConfig.VersionedInformers.Core().V1().Namespaces(),
+			time.Duration(30)*time.Second,
+			v1.FinalizerKubernetes,
+		).Run(2, wait.NeverStop)
+		return nil
+	})
 
 	// aggregator comes last in the chain
 	aggregatorConfig, err := createAggregatorConfig(*kubeAPIServerConfig.GenericConfig, completedOptions.ServerRunOptions, kubeAPIServerConfig.ExtraConfig.VersionedInformers, serviceResolver, nil, pluginInitializer)
@@ -176,7 +202,6 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 
 		handler.ServeHTTP(res, req)
 	})
-
 	return aggregatorServer.GenericAPIServer, nil
 }
 
@@ -378,8 +403,8 @@ func BuildGenericConfig(
 
 	genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, err = BuildAuthorizer(s, versionedInformers)
 	if err != nil {
-	    lastErr = fmt.Errorf("invalid authorization config: %v", err)
-	    return
+		lastErr = fmt.Errorf("invalid authorization config: %v", err)
+		return
 	}
 
 	// if !sets.NewString(s.Authorization.Modes...).Has(modes.ModeRBAC) {
