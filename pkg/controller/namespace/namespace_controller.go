@@ -66,7 +66,7 @@ type NamespaceController struct {
 func NewNamespaceController(
 	kubeClient clientset.Interface,
 	metadataClient metadata.Interface,
-	discoverResourcesFn func() ([]*metav1.APIResourceList, error),
+	discoverResourcesFn func(clusterName string) ([]*metav1.APIResourceList, error),
 	namespaceInformer coreinformers.NamespaceInformer,
 	resyncPeriod time.Duration,
 	finalizerToken v1.FinalizerName) *NamespaceController {
@@ -189,7 +189,7 @@ func (nm *NamespaceController) syncNamespaceFromKey(key string) (err error) {
 		utilruntime.HandleError(fmt.Errorf("Unable to retrieve namespace %v from store: %v", key, err))
 		return err
 	}
-	return nm.namespacedResourcesDeleter.Delete(namespace.Name)
+	return nm.namespacedResourcesDeleter.Delete(namespace.ClusterName, namespace.Name)
 }
 
 // Run starts observing the system with the specified number of workers.

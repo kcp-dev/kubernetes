@@ -90,9 +90,9 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 	if err != nil {
 		return nil, err
 	}
+	contextCluster := genericapirequest.ClusterFrom(req.Context())
 	if requestInfo != nil &&
 		mcrt.enabledOn.Has(requestInfo.Resource) {
-		contextCluster := genericapirequest.ClusterFrom(req.Context())
 		resourceClusterName := ""
 		headerCluster := ""
 		switch requestInfo.Verb {
@@ -152,6 +152,10 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 			return nil, fmt.Errorf("Cluster should not be empty for request '%s' on resource '%s' (%s)", requestInfo.Verb, requestInfo.Resource, requestInfo.Path)
 		}
 		req.Header.Add("X-Kubernetes-Cluster", headerCluster)
+	} else {
+		if contextCluster != nil && contextCluster.Name != "" {
+			req.Header.Add("X-Kubernetes-Cluster", contextCluster.Name)
+		}
 	}
 	return mcrt.rt.RoundTrip(req)
 }
