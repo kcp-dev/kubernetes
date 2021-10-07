@@ -49,7 +49,9 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -270,16 +272,55 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		crdName = crdName + "core"
 	}
 
-	crdKey := crdName
-	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	var crdClusterName string
+	var crd *apiextensionsv1.CustomResourceDefinition
+	var err error
+
+	cluster, err := genericapirequest.ValidClusterFrom(ctx)
 	if err != nil {
 		responsewriters.ErrorNegotiated(
 			apierrors.NewInternalError(fmt.Errorf("error resolving resource: %v", err)),
 			Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
 		)
+		return
 	}
-	crdKey = clusters.ToClusterAwareKey(clusterName, crdKey)
-	crd, err := r.crdLister.Get(crdKey)
+
+	if cluster.Wildcard {
+		// HACK: Search for the right logical cluster hosting the given CRD when watching or listing with wildcards.
+		// This is a temporary fix for issue https://github.com/kcp-dev/kcp/issues/183: One cannot watch with wildcards
+		// (across logical clusters) if the CRD of the related API Resource hasn't been added in the admin logical cluster first.
+		// The fix in this HACK is limited since the request will fail if 2 logical clusters contain CRDs for the same GVK
+		// with non-equal specs (especially non-equal schemas).
+		var crds []*apiextensionsv1.CustomResourceDefinition
+		crds, err = r.crdLister.List(labels.Everything())
+		if err == nil {
+			if len(crds) == 0 {
+				err = errors.NewNotFound(schema.GroupResource{Group: apiextensionsv1.SchemeGroupVersion.Group, Resource: "customresourcedefinitions"}, "")
+			} else {
+				for _, aCRD := range crds {
+					if aCRD.Name != crdName {
+						continue
+					}
+					if crd == nil {
+						crd = aCRD
+						crdClusterName = aCRD.GetClusterName()
+					} else {
+						if !equality.Semantic.DeepEqual(crd.Spec, aCRD.Spec) {
+							responsewriters.ErrorNegotiated(
+								apierrors.NewInternalError(fmt.Errorf("error resolving resource: cannot watch across logical clusters for a resource type with several distinct schemas")),
+								Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
+							)
+							return
+						}
+					}
+				}
+			}
+		}
+	} else {
+		crdClusterName = cluster.Name
+		crdKey := clusters.ToClusterAwareKey(crdClusterName, crdName)
+		crd, err = r.crdLister.Get(crdKey)
+	}
 	if apierrors.IsNotFound(err) {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -322,7 +363,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	terminating := apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Terminating)
 
-	crdInfo, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name, clusterName)
+	crdInfo, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name, crdClusterName)
 	if apierrors.IsNotFound(err) {
 		r.delegate.ServeHTTP(w, req)
 		return
