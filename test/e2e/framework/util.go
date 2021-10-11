@@ -496,7 +496,14 @@ func LoadConfig() (config *restclient.Config, err error) {
 		}
 	}
 
-	return clientcmd.NewDefaultClientConfig(*c, &clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: TestContext.Host}}).ClientConfig()
+	cfg, err := clientcmd.NewDefaultClientConfig(*c, &clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: TestContext.Host}}).ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+	cfg.TLSClientConfig.ServerName = "apiserver-loopback-client"
+	cfg.ContentConfig.AcceptContentTypes = "application/json"
+	cfg.ContentConfig.ContentType = "application/json"
+	return cfg, nil
 }
 
 // LoadClientset returns clientset for connecting to kubernetes clusters.

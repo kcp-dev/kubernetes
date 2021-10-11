@@ -431,53 +431,53 @@ func (f *Framework) AfterEach() {
 		afterEachFn(f, ginkgo.CurrentGinkgoTestDescription().Failed)
 	}
 
-	if TestContext.GatherKubeSystemResourceUsageData != "false" && TestContext.GatherKubeSystemResourceUsageData != "none" && f.gatherer != nil {
-		ginkgo.By("Collecting resource usage data")
-		summary, resourceViolationError := f.gatherer.StopAndSummarize([]int{90, 99, 100}, f.AddonResourceConstraints)
-		defer ExpectNoError(resourceViolationError)
-		f.TestSummaries = append(f.TestSummaries, summary)
-	}
-
-	if TestContext.GatherLogsSizes {
-		ginkgo.By("Gathering log sizes data")
-		close(f.logsSizeCloseChannel)
-		f.logsSizeWaitGroup.Wait()
-		f.TestSummaries = append(f.TestSummaries, f.logsSizeVerifier.GetSummary())
-	}
-
-	if TestContext.GatherMetricsAfterTest != "false" {
-		ginkgo.By("Gathering metrics")
-		// Grab apiserver, scheduler, controller-manager metrics and (optionally) nodes' kubelet metrics.
-		grabMetricsFromKubelets := TestContext.GatherMetricsAfterTest != "master" && !ProviderIs("kubemark")
-		grabber, err := e2emetrics.NewMetricsGrabber(f.ClientSet, f.KubemarkExternalClusterClientSet, f.ClientConfig(), grabMetricsFromKubelets, true, true, true, TestContext.IncludeClusterAutoscalerMetrics, false)
-		if err != nil {
-			Logf("Failed to create MetricsGrabber (skipping metrics gathering): %v", err)
-		} else {
-			received, err := grabber.Grab()
-			if err != nil {
-				Logf("MetricsGrabber failed to grab some of the metrics: %v", err)
-			}
-			(*e2emetrics.ComponentCollection)(&received).ComputeClusterAutoscalerMetricsDelta(f.clusterAutoscalerMetricsBeforeTest)
-			f.TestSummaries = append(f.TestSummaries, (*e2emetrics.ComponentCollection)(&received))
-		}
-	}
-
-	TestContext.CloudConfig.Provider.FrameworkAfterEach(f)
-
-	// Report any flakes that were observed in the e2e test and reset.
-	if f.flakeReport != nil && f.flakeReport.GetFlakeCount() > 0 {
-		f.TestSummaries = append(f.TestSummaries, f.flakeReport)
-		f.flakeReport = nil
-	}
+	//if TestContext.GatherKubeSystemResourceUsageData != "false" && TestContext.GatherKubeSystemResourceUsageData != "none" && f.gatherer != nil {
+	//	ginkgo.By("Collecting resource usage data")
+	//	summary, resourceViolationError := f.gatherer.StopAndSummarize([]int{90, 99, 100}, f.AddonResourceConstraints)
+	//	defer ExpectNoError(resourceViolationError)
+	//	f.TestSummaries = append(f.TestSummaries, summary)
+	//}
+	//
+	//if TestContext.GatherLogsSizes {
+	//	ginkgo.By("Gathering log sizes data")
+	//	close(f.logsSizeCloseChannel)
+	//	f.logsSizeWaitGroup.Wait()
+	//	f.TestSummaries = append(f.TestSummaries, f.logsSizeVerifier.GetSummary())
+	//}
+	//
+	//if TestContext.GatherMetricsAfterTest != "false" {
+	//	ginkgo.By("Gathering metrics")
+	//	// Grab apiserver, scheduler, controller-manager metrics and (optionally) nodes' kubelet metrics.
+	//	grabMetricsFromKubelets := TestContext.GatherMetricsAfterTest != "master" && !ProviderIs("kubemark")
+	//	grabber, err := e2emetrics.NewMetricsGrabber(f.ClientSet, f.KubemarkExternalClusterClientSet, f.ClientConfig(), grabMetricsFromKubelets, true, true, true, TestContext.IncludeClusterAutoscalerMetrics, false)
+	//	if err != nil {
+	//		Logf("Failed to create MetricsGrabber (skipping metrics gathering): %v", err)
+	//	} else {
+	//		received, err := grabber.Grab()
+	//		if err != nil {
+	//			Logf("MetricsGrabber failed to grab some of the metrics: %v", err)
+	//		}
+	//		(*e2emetrics.ComponentCollection)(&received).ComputeClusterAutoscalerMetricsDelta(f.clusterAutoscalerMetricsBeforeTest)
+	//		f.TestSummaries = append(f.TestSummaries, (*e2emetrics.ComponentCollection)(&received))
+	//	}
+	//}
+	//
+	//TestContext.CloudConfig.Provider.FrameworkAfterEach(f)
+	//
+	//// Report any flakes that were observed in the e2e test and reset.
+	//if f.flakeReport != nil && f.flakeReport.GetFlakeCount() > 0 {
+	//	f.TestSummaries = append(f.TestSummaries, f.flakeReport)
+	//	f.flakeReport = nil
+	//}
 
 	printSummaries(f.TestSummaries, f.BaseName)
 
-	// Check whether all nodes are ready after the test.
-	// This is explicitly done at the very end of the test, to avoid
-	// e.g. not removing namespace in case of this failure.
-	if err := AllNodesReady(f.ClientSet, 3*time.Minute); err != nil {
-		Failf("All nodes should be ready after test, %v", err)
-	}
+	//// Check whether all nodes are ready after the test.
+	//// This is explicitly done at the very end of the test, to avoid
+	//// e.g. not removing namespace in case of this failure.
+	//if err := AllNodesReady(f.ClientSet, 3*time.Minute); err != nil {
+	//	Failf("All nodes should be ready after test, %v", err)
+	//}
 }
 
 // DeleteNamespace can be used to delete a namespace. Additionally it can be used to

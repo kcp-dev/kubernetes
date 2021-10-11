@@ -34,24 +34,24 @@ import (
 func CleanupSuite() {
 	// Run on all Ginkgo nodes
 	framework.Logf("Running AfterSuite actions on all nodes")
-	framework.RunCleanupActions()
+	//framework.RunCleanupActions()
 }
 
 // AfterSuiteActions are actions that are run on ginkgo's SynchronizedAfterSuite
 func AfterSuiteActions() {
 	// Run only Ginkgo on node 1
-	framework.Logf("Running AfterSuite actions on node 1")
-	if framework.TestContext.ReportDir != "" {
-		framework.CoreDump(framework.TestContext.ReportDir)
-	}
-	if framework.TestContext.GatherSuiteMetricsAfterTest {
-		if err := gatherTestSuiteMetrics(); err != nil {
-			framework.Logf("Error gathering metrics: %v", err)
-		}
-	}
-	if framework.TestContext.NodeKiller.Enabled {
-		close(framework.TestContext.NodeKiller.NodeKillerStopCh)
-	}
+	//framework.Logf("Running AfterSuite actions on node 1")
+	//if framework.TestContext.ReportDir != "" {
+	//	framework.CoreDump(framework.TestContext.ReportDir)
+	//}
+	//if framework.TestContext.GatherSuiteMetricsAfterTest {
+	//	if err := gatherTestSuiteMetrics(); err != nil {
+	//		framework.Logf("Error gathering metrics: %v", err)
+	//	}
+	//}
+	//if framework.TestContext.NodeKiller.Enabled {
+	//	close(framework.TestContext.NodeKiller.NodeKillerStopCh)
+	//}
 }
 
 func gatherTestSuiteMetrics() error {

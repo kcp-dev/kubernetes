@@ -46,9 +46,6 @@ import (
 	commontest "k8s.io/kubernetes/test/e2e/common"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/daemonset"
-	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
-	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2ereporters "k8s.io/kubernetes/test/e2e/reporters"
 	utilnet "k8s.io/utils/net"
 
@@ -83,7 +80,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	return nil
 }, func(data []byte) {
 	// Run on all Ginkgo nodes
-	setupSuitePerGinkgoNode()
+	//setupSuitePerGinkgoNode()
 })
 
 var _ = ginkgo.SynchronizedAfterSuite(func() {
@@ -231,33 +228,33 @@ func setupSuite() {
 	// In large clusters we may get to this point but still have a bunch
 	// of nodes without Routes created. Since this would make a node
 	// unschedulable, we need to wait until all of them are schedulable.
-	framework.ExpectNoError(framework.WaitForAllNodesSchedulable(c, framework.TestContext.NodeSchedulableTimeout))
+	//framework.ExpectNoError(framework.WaitForAllNodesSchedulable(c, framework.TestContext.NodeSchedulableTimeout))
 
 	// If NumNodes is not specified then auto-detect how many are scheduleable and not tainted
-	if framework.TestContext.CloudConfig.NumNodes == framework.DefaultNumNodes {
-		nodes, err := e2enode.GetReadySchedulableNodes(c)
-		framework.ExpectNoError(err)
-		framework.TestContext.CloudConfig.NumNodes = len(nodes.Items)
-	}
+	//if framework.TestContext.CloudConfig.NumNodes == framework.DefaultNumNodes {
+	//	nodes, err := e2enode.GetReadySchedulableNodes(c)
+	//	framework.ExpectNoError(err)
+	//	framework.TestContext.CloudConfig.NumNodes = len(nodes.Items)
+	//}
 
 	// Ensure all pods are running and ready before starting tests (otherwise,
 	// cluster infrastructure pods that are being pulled or started can block
 	// test pods from running, and tests that ensure all pods are running and
 	// ready will fail).
-	podStartupTimeout := framework.TestContext.SystemPodsStartupTimeout
-	// TODO: In large clusters, we often observe a non-starting pods due to
-	// #41007. To avoid those pods preventing the whole test runs (and just
-	// wasting the whole run), we allow for some not-ready pods (with the
-	// number equal to the number of allowed not-ready nodes).
-	if err := e2epod.WaitForPodsRunningReady(c, metav1.NamespaceSystem, int32(framework.TestContext.MinStartupPods), int32(framework.TestContext.AllowedNotReadyNodes), podStartupTimeout, map[string]string{}); err != nil {
-		framework.DumpAllNamespaceInfo(c, metav1.NamespaceSystem)
-		e2ekubectl.LogFailedContainers(c, metav1.NamespaceSystem, framework.Logf)
-		framework.Failf("Error waiting for all pods to be running and ready: %v", err)
-	}
+	//podStartupTimeout := framework.TestContext.SystemPodsStartupTimeout
+	//// TODO: In large clusters, we often observe a non-starting pods due to
+	//// #41007. To avoid those pods preventing the whole test runs (and just
+	//// wasting the whole run), we allow for some not-ready pods (with the
+	//// number equal to the number of allowed not-ready nodes).
+	//if err := e2epod.WaitForPodsRunningReady(c, metav1.NamespaceSystem, int32(framework.TestContext.MinStartupPods), int32(framework.TestContext.AllowedNotReadyNodes), podStartupTimeout, map[string]string{}); err != nil {
+	//	framework.DumpAllNamespaceInfo(c, metav1.NamespaceSystem)
+	//	e2ekubectl.LogFailedContainers(c, metav1.NamespaceSystem, framework.Logf)
+	//	framework.Failf("Error waiting for all pods to be running and ready: %v", err)
+	//}
 
-	if err := waitForDaemonSets(c, metav1.NamespaceSystem, int32(framework.TestContext.AllowedNotReadyNodes), framework.TestContext.SystemDaemonsetStartupTimeout); err != nil {
-		framework.Logf("WARNING: Waiting for all daemonsets to be ready failed: %v", err)
-	}
+	//if err := waitForDaemonSets(c, metav1.NamespaceSystem, int32(framework.TestContext.AllowedNotReadyNodes), framework.TestContext.SystemDaemonsetStartupTimeout); err != nil {
+	//	framework.Logf("WARNING: Waiting for all daemonsets to be ready failed: %v", err)
+	//}
 
 	if framework.TestContext.PrepullImages {
 		framework.Logf("Pre-pulling images so that they are cached for the tests.")
@@ -276,11 +273,11 @@ func setupSuite() {
 	if serverVersion != nil {
 		framework.Logf("kube-apiserver version: %s", serverVersion.GitVersion)
 	}
-
-	if framework.TestContext.NodeKiller.Enabled {
-		nodeKiller := framework.NewNodeKiller(framework.TestContext.NodeKiller, c, framework.TestContext.Provider)
-		go nodeKiller.Run(framework.TestContext.NodeKiller.NodeKillerStopCh)
-	}
+	//
+	//if framework.TestContext.NodeKiller.Enabled {
+	//	nodeKiller := framework.NewNodeKiller(framework.TestContext.NodeKiller, c, framework.TestContext.Provider)
+	//	go nodeKiller.Run(framework.TestContext.NodeKiller.NodeKillerStopCh)
+	//}
 }
 
 // logClusterImageSources writes out cluster image sources.
