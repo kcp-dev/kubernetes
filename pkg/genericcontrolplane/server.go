@@ -70,6 +70,28 @@ const (
 	RootClusterName   = "admin"
 )
 
+func SanitizeClusterId(id string) string {
+	r := regexp.MustCompile(`[^a-zA-Z0-9]`)
+	return r.ReplaceAllString(id, "-")
+}
+
+func SanitizedClusterName(id, name string) string {
+	return fmt.Sprintf("%s---%s", SanitizeClusterId(id), name)
+}
+
+func ParseClusterName(name string) (string, string, error) {
+	parts := strings.Split(name, "---")
+	switch len(parts) {
+	case 1:
+		// nothing provided, no error though
+		return "", "", nil
+	case 2:
+		return parts[0], parts[1], nil
+	default:
+		return "", "", fmt.Errorf("invalid cluster: %v", name)
+	}
+}
+
 // Run runs the specified APIServer.  This should never exit.
 func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) error {
 	// To help debugging, immediately log version
@@ -112,7 +134,7 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 	if err != nil {
 		return nil, err
 	}
-	aggregatorServer, err := createAggregatorServer(aggregatorConfig, kubeAPIServer.GenericAPIServer, apiExtensionsServer.Informers)
+	aggregatorServer, err := createAggregatorServer(aggregatorConfig, kubeAPIServer.GenericAPIServer, apiExtensionsServer.Informers, kubeAPIServer.GenericAPIServer.ExternalAddress)
 	if err != nil {
 		// we don't need special handling for innerStopCh because the aggregator server doesn't create any go routines
 		return nil, err
@@ -410,8 +432,10 @@ func BuildGenericConfig(
 					klog.Infof("DEBUG: %s -> %s", req.URL.RawPath, req.URL.RawPath[slash:])
 					req.URL.RawPath = req.URL.RawPath[slash:]
 				}
+				//klog.Infof("got cluster %q from keypath", clusterName)
 			} else {
 				clusterName = req.Header.Get("X-Kubernetes-Cluster")
+				//klog.Infof("got cluster %q from header", clusterName)
 			}
 			var cluster genericapirequest.Cluster
 			switch clusterName {
@@ -420,7 +444,7 @@ func BuildGenericConfig(
 				cluster.Wildcard = true
 				fallthrough
 			case "":
-				cluster.Name = RootClusterName
+				cluster.Name = SanitizedClusterName(c.ExternalAddress, RootClusterName)
 			default:
 				if !reClusterName.MatchString(clusterName) {
 					http.Error(w, "Unknown cluster", http.StatusNotFound)
@@ -428,7 +452,7 @@ func BuildGenericConfig(
 				}
 				cluster.Name = clusterName
 			}
-			//klog.V(0).Infof("DEBUG: running with cluster %s", cluster)
+			//klog.V(0).Infof("DEBUG: running with cluster %#v", cluster)
 			ctx := genericapirequest.WithCluster(req.Context(), cluster)
 			h.ServeHTTP(w, req.WithContext(ctx))
 		})

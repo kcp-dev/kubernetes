@@ -48,8 +48,8 @@ import (
 	apiregistrationclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 	informers "k8s.io/kube-aggregator/pkg/client/informers/externalversions/apiregistration/v1"
 	"k8s.io/kube-aggregator/pkg/controllers/autoregister"
-	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
 	"k8s.io/kubernetes/pkg/controlplane/controller/crdregistration"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
 )
 
 func createAggregatorConfig(
@@ -123,7 +123,7 @@ func createAggregatorConfig(
 	return aggregatorConfig, nil
 }
 
-func createAggregatorServer(aggregatorConfig *aggregatorapiserver.Config, delegateAPIServer genericapiserver.DelegationTarget, apiExtensionInformers apiextensionsinformers.SharedInformerFactory) (*aggregatorapiserver.APIAggregator, error) {
+func createAggregatorServer(aggregatorConfig *aggregatorapiserver.Config, delegateAPIServer genericapiserver.DelegationTarget, apiExtensionInformers apiextensionsinformers.SharedInformerFactory, id string) (*aggregatorapiserver.APIAggregator, error) {
 	aggregatorServer, err := aggregatorConfig.Complete().NewWithDelegate(delegateAPIServer)
 	if err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func createAggregatorServer(aggregatorConfig *aggregatorapiserver.Config, delega
 		return nil, err
 	}
 	autoRegistrationController := autoregister.NewAutoRegisterController(aggregatorServer.APIRegistrationInformers.Apiregistration().V1().APIServices(), apiRegistrationClient)
-	apiServices := apiServicesToRegister(delegateAPIServer, autoRegistrationController)
+	apiServices := apiServicesToRegister(delegateAPIServer, autoRegistrationController, id)
 	crdRegistrationController := crdregistration.NewCRDRegistrationController(
 		apiExtensionInformers.Apiextensions().V1().CustomResourceDefinitions(),
 		autoRegistrationController)
@@ -171,7 +171,7 @@ func createAggregatorServer(aggregatorConfig *aggregatorapiserver.Config, delega
 	return aggregatorServer, nil
 }
 
-func makeAPIService(gv schema.GroupVersion) *v1.APIService {
+func makeAPIService(gv schema.GroupVersion, id string) *v1.APIService {
 	apiServicePriority, ok := apiVersionPriorities[gv]
 	if !ok {
 		// if we aren't found, then we shouldn't register ourselves because it could result in a CRD group version
@@ -179,10 +179,11 @@ func makeAPIService(gv schema.GroupVersion) *v1.APIService {
 		klog.Infof("Skipping APIService creation for %v", gv)
 		return nil
 	}
+	cluster := SanitizedClusterName(id, RootClusterName)
 	return &v1.APIService{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        gv.Version + "." + gv.Group,
-			ClusterName: RootClusterName,
+			ClusterName: cluster,
 		},
 		Spec: v1.APIServiceSpec{
 			Group:                gv.Group,
@@ -267,12 +268,12 @@ var apiVersionPriorities = map[schema.GroupVersion]priority{
 	{Group: "flowcontrol.apiserver.k8s.io", Version: "v1alpha1"}: {group: 16100, version: 9},
 }
 
-func apiServicesToRegister(delegateAPIServer genericapiserver.DelegationTarget, registration autoregister.AutoAPIServiceRegistration) []*v1.APIService {
+func apiServicesToRegister(delegateAPIServer genericapiserver.DelegationTarget, registration autoregister.AutoAPIServiceRegistration, id string) []*v1.APIService {
 	apiServices := []*v1.APIService{}
 
 	for _, curr := range delegateAPIServer.ListedPaths("") {
 		if curr == "/api/v1" {
-			apiService := makeAPIService(schema.GroupVersion{Group: "", Version: "v1"})
+			apiService := makeAPIService(schema.GroupVersion{Group: "", Version: "v1"}, id)
 			registration.AddAPIServiceToSyncOnStart(apiService)
 			apiServices = append(apiServices, apiService)
 			continue
@@ -287,7 +288,7 @@ func apiServicesToRegister(delegateAPIServer genericapiserver.DelegationTarget, 
 			continue
 		}
 
-		apiService := makeAPIService(schema.GroupVersion{Group: tokens[2], Version: tokens[3]})
+		apiService := makeAPIService(schema.GroupVersion{Group: tokens[2], Version: tokens[3]}, id)
 		if apiService == nil {
 			continue
 		}
