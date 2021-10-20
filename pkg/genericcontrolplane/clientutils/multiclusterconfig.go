@@ -36,7 +36,7 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/client-go/rest"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 type multiClusterClientConfigRoundTripper struct {
