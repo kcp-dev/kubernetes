@@ -372,18 +372,40 @@ func (c *NamingConditionController) deleteCustomResourceDefinition(obj interface
 }
 
 func (c *NamingConditionController) requeueAllOtherGroupCRDs(name string) error {
+	// HACK(kcp): name is a key from the shared informer's cache. With the changes we've
+	// made to cache.MetaNamespaceKeyFunc to encode the cluster name as part of the key,
+	// we have to decode it here (into "cluster name" and "name") so we can make sure to
+	// re-encode the key correctly down below when adding to the work queue.
+	clusterName, name := clusters.SplitClusterAwareKey(name)
+
 	pluralGroup := strings.SplitN(name, ".", 2)
+	var groupForName string
+
 	// In case the group is empty because we're adding core resources as CRDs in KCP
 	if len(pluralGroup) == 1 {
-		pluralGroup = append(pluralGroup, "")
+		groupForName = ""
+	} else {
+		// Given name = widgets.example.com
+		// pluralGroup[0] is the name, such as widgets
+		// pluarlGroup[1] is the API group, such as example.com
+		groupForName = pluralGroup[1]
 	}
+
 	list, err := c.crdLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
+
 	for _, curr := range list {
-		if curr.Spec.Group == pluralGroup[1] && curr.Name != name {
-			c.queue.Add(curr.Name)
+		if curr.ClusterName != clusterName {
+			continue
+		}
+
+		if curr.Spec.Group == groupForName && curr.Name != name {
+			// HACK(kcp): make sure to re-encode the cluster name in the key so
+			// future sync() calls are able to have crdLister.Get() work properly.
+			clusterKey := clusters.ToClusterAwareKey(clusterName, curr.Name)
+			c.queue.Add(clusterKey)
 		}
 	}
 	return nil
