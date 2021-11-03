@@ -39,6 +39,7 @@ import (
 	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
+	"github.com/google/go-cmp/cmp"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -341,26 +342,27 @@ func TestURLTemplate(t *testing.T) {
 	uri, _ := url.Parse("http://localhost/some/base/url/path")
 	uriSingleSlash, _ := url.Parse("http://localhost/")
 	testCases := []struct {
+		Name string
 		Request          *Request
 		ExpectedFullURL  string
 		ExpectedFinalURL string
 	}{
 		{
-			// non dynamic client
+			Name: "non dynamic client",
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("POST").
 				Prefix("api", "v1").Resource("r1").Namespace("ns").Name("nm").Param("p0", "v0"),
 			ExpectedFullURL:  "http://localhost/some/base/url/path/api/v1/namespaces/ns/r1/nm?p0=v0",
 			ExpectedFinalURL: "http://localhost/some/base/url/path/api/v1/namespaces/%7Bnamespace%7D/r1/%7Bname%7D?p0=%7Bvalue%7D",
 		},
 		{
-			// non dynamic client with wrong api group
+			Name: "non dynamic client with wrong api group",
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("POST").
 				Prefix("pre1", "v1").Resource("r1").Namespace("ns").Name("nm").Param("p0", "v0"),
 			ExpectedFullURL:  "http://localhost/some/base/url/path/pre1/v1/namespaces/ns/r1/nm?p0=v0",
 			ExpectedFinalURL: "http://localhost/%7Bprefix%7D",
 		},
 		{
-			// dynamic client with core group + namespace + resourceResource (with name)
+			Name: "dynamic client with core group + namespace + resourceResource (with name)",
 			// /api/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/api/v1/namespaces/ns/r1/name1"),
@@ -368,7 +370,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/api/v1/namespaces/%7Bnamespace%7D/r1/%7Bname%7D",
 		},
 		{
-			// dynamic client with named group + namespace + resourceResource (with name)
+			Name: "dynamic client with named group + namespace + resourceResource (with name)",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/g1/v1/namespaces/ns/r1/name1"),
@@ -376,7 +378,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/g1/v1/namespaces/%7Bnamespace%7D/r1/%7Bname%7D",
 		},
 		{
-			// dynamic client with core group + namespace + resourceResource (with NO name)
+			Name: "dynamic client with core group + namespace + resourceResource (with NO name)",
 			// /api/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/api/v1/namespaces/ns/r1"),
@@ -384,7 +386,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/api/v1/namespaces/%7Bnamespace%7D/r1",
 		},
 		{
-			// dynamic client with named group + namespace + resourceResource (with NO name)
+			Name: "dynamic client with named group + namespace + resourceResource (with NO name)",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/g1/v1/namespaces/ns/r1"),
@@ -392,7 +394,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/g1/v1/namespaces/%7Bnamespace%7D/r1",
 		},
 		{
-			// dynamic client with core group + resourceResource (with name)
+			Name: "dynamic client with core group + resourceResource (with name)",
 			// /api/$RESOURCEVERSION/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/api/v1/r1/name1"),
@@ -400,7 +402,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/api/v1/r1/%7Bname%7D",
 		},
 		{
-			// dynamic client with named group + resourceResource (with name)
+			Name: "dynamic client with named group + resourceResource (with name)",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/g1/v1/r1/name1"),
@@ -408,7 +410,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/g1/v1/r1/%7Bname%7D",
 		},
 		{
-			// dynamic client with named group + namespace + resourceResource (with name) + subresource
+			Name: "dynamic client with named group + namespace + resourceResource (with name) + subresource",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME/$SUBRESOURCE
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces/namespaces/namespaces/finalize"),
@@ -416,7 +418,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bnamespace%7D/namespaces/%7Bname%7D/finalize",
 		},
 		{
-			// dynamic client with named group + namespace + resourceResource (with name)
+			Name: "dynamic client with named group + namespace + resourceResource (with name)",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces/namespaces/namespaces"),
@@ -424,7 +426,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bnamespace%7D/namespaces/%7Bname%7D",
 		},
 		{
-			// dynamic client with named group + namespace + resourceResource (with NO name) + subresource
+			Name: "dynamic client with named group + namespace + resourceResource (with NO name) + subresource",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%SUBRESOURCE
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces/namespaces/finalize"),
@@ -432,7 +434,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bnamespace%7D/namespaces/finalize",
 		},
 		{
-			// dynamic client with named group + namespace + resourceResource (with NO name) + subresource
+			Name: "dynamic client with named group + namespace + resourceResource (with NO name) + subresource",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%SUBRESOURCE
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces/namespaces/status"),
@@ -440,7 +442,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bnamespace%7D/namespaces/status",
 		},
 		{
-			// dynamic client with named group + namespace + resourceResource (with no name)
+			Name: "dynamic client with named group + namespace + resourceResource (with no name)",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces/namespaces"),
@@ -448,7 +450,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bnamespace%7D/namespaces",
 		},
 		{
-			// dynamic client with named group + resourceResource (with name) + subresource
+			Name: "dynamic client with named group + resourceResource (with name) + subresource",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces/finalize"),
@@ -456,7 +458,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bname%7D/finalize",
 		},
 		{
-			// dynamic client with named group + resourceResource (with name) + subresource
+			Name: "dynamic client with named group + resourceResource (with name) + subresource",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces/status"),
@@ -464,7 +466,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bname%7D/status",
 		},
 		{
-			// dynamic client with named group + resourceResource (with name)
+			Name: "dynamic client with named group + resourceResource (with name)",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces/namespaces"),
@@ -472,7 +474,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces/%7Bname%7D",
 		},
 		{
-			// dynamic client with named group + resourceResource (with no name)
+			Name: "dynamic client with named group + resourceResource (with no name)",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/apis/namespaces/namespaces/namespaces"),
@@ -480,7 +482,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/apis/namespaces/namespaces/namespaces",
 		},
 		{
-			// dynamic client with wrong api group + namespace + resourceResource (with name) + subresource
+			Name: "dynamic client with wrong api group + namespace + resourceResource (with name) + subresource",
 			// /apis/$NAMEDGROUPNAME/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME/$SUBRESOURCE
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/pre1/namespaces/namespaces/namespaces/namespaces/namespaces/namespaces/finalize"),
@@ -488,7 +490,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/%7Bprefix%7D",
 		},
 		{
-			// dynamic client with core group + namespace + resourceResource (with name) where baseURL is a single /
+			Name: "dynamic client with core group + namespace + resourceResource (with name) where baseURL is a single /",
 			// /api/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uriSingleSlash, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/api/v1/namespaces/ns/r2/name1"),
@@ -496,7 +498,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/api/v1/namespaces/%7Bnamespace%7D/r2/%7Bname%7D",
 		},
 		{
-			// dynamic client with core group + namespace + resourceResource (with name) where baseURL is 'some/base/url/path'
+			Name: "dynamic client with core group + namespace + resourceResource (with name) where baseURL is 'some/base/url/path'",
 			// /api/$RESOURCEVERSION/namespaces/$NAMESPACE/$RESOURCE/%NAME
 			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/api/v1/namespaces/ns/r3/name1"),
@@ -504,7 +506,7 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/some/base/url/path/api/v1/namespaces/%7Bnamespace%7D/r3/%7Bname%7D",
 		},
 		{
-			// dynamic client where baseURL is a single /
+			Name: "dynamic client where baseURL is a single /",
 			// /
 			Request: NewRequestWithClient(uriSingleSlash, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/"),
@@ -512,28 +514,37 @@ func TestURLTemplate(t *testing.T) {
 			ExpectedFinalURL: "http://localhost/",
 		},
 		{
-			// dynamic client where baseURL is a single /
+			Name: "dynamic client where baseURL is a single /",
 			// /version
 			Request: NewRequestWithClient(uriSingleSlash, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Verb("DELETE").
 				Prefix("/version"),
 			ExpectedFullURL:  "http://localhost/version",
 			ExpectedFinalURL: "http://localhost/version",
 		},
+		{
+			Name: "non dynamic client with a cluster prefix",
+			Request: NewRequestWithClient(uri, "", ClientContentConfig{GroupVersion: schema.GroupVersion{Group: "test"}}, nil).Cluster("cluster").Verb("POST").
+				Prefix("api", "v1").Resource("r1").Namespace("ns").Name("nm").Param("p0", "v0"),
+			ExpectedFullURL:  "http://localhost/some/base/url/path/clusters/cluster/api/v1/namespaces/ns/r1/nm?p0=v0",
+			ExpectedFinalURL: "http://localhost/some/base/url/path/clusters/%7Bcluster%7D/api/v1/namespaces/%7Bnamespace%7D/r1/%7Bname%7D?p0=%7Bvalue%7D",
+		},
 	}
-	for i, testCase := range testCases {
-		r := testCase.Request
-		full := r.URL()
-		if full.String() != testCase.ExpectedFullURL {
-			t.Errorf("%d: unexpected initial URL: %s %s", i, full, testCase.ExpectedFullURL)
-		}
-		actualURL := r.finalURLTemplate()
-		actual := actualURL.String()
-		if actual != testCase.ExpectedFinalURL {
-			t.Errorf("%d: unexpected URL template: %s %s", i, actual, testCase.ExpectedFinalURL)
-		}
-		if r.URL().String() != full.String() {
-			t.Errorf("%d, creating URL template changed request: %s -> %s", i, full.String(), r.URL().String())
-		}
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			r := testCase.Request
+			full := r.URL()
+			if d := cmp.Diff(full.String(), testCase.ExpectedFullURL); d != "" {
+				t.Errorf("%s: unexpected initial URL: %s", testCase.Name, d)
+			}
+			actualURL := r.finalURLTemplate()
+			actual := actualURL.String()
+			if d := cmp.Diff(actual, testCase.ExpectedFinalURL); d != "" {
+				t.Errorf("%s: unexpected URL template: %s", testCase.Name, d)
+			}
+			if d := cmp.Diff(r.URL().String(), full.String()); d != "" {
+				t.Errorf("%s, creating URL template changed request: %s", testCase.Name, d)
+			}
+		})
 	}
 }
 

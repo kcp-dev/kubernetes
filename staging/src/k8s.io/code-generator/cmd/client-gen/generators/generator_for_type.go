@@ -422,8 +422,9 @@ var interfaceTemplate4 = `
 var structNamespaced = `
 // $.type|privatePlural$ implements $.type|public$Interface
 type $.type|privatePlural$ struct {
-	client $.RESTClientInterface|raw$
-	ns     string
+	client  $.RESTClientInterface|raw$
+	cluster string
+	ns      string
 }
 `
 
@@ -431,7 +432,8 @@ type $.type|privatePlural$ struct {
 var structNonNamespaced = `
 // $.type|privatePlural$ implements $.type|public$Interface
 type $.type|privatePlural$ struct {
-	client $.RESTClientInterface|raw$
+	client  $.RESTClientInterface|raw$
+	cluster string
 }
 `
 
@@ -439,8 +441,9 @@ var newStructNamespaced = `
 // new$.type|publicPlural$ returns a $.type|publicPlural$
 func new$.type|publicPlural$(c *$.GroupGoName$$.Version$Client, namespace string) *$.type|privatePlural$ {
 	return &$.type|privatePlural${
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }
 `
@@ -449,7 +452,8 @@ var newStructNonNamespaced = `
 // new$.type|publicPlural$ returns a $.type|publicPlural$
 func new$.type|publicPlural$(c *$.GroupGoName$$.Version$Client) *$.type|privatePlural$ {
 	return &$.type|privatePlural${
-		client: c.RESTClient(),
+		client:  c.RESTClient(),
+		cluster: c.cluster,
 	}
 }
 `
@@ -462,6 +466,7 @@ func (c *$.type|privatePlural$) List(ctx context.Context, opts $.ListOptions|raw
 	}
 	result = &$.resultType|raw$List{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		VersionedParams(&opts, $.schemeParameterCodec|raw$).
@@ -481,6 +486,7 @@ func (c *$.type|privatePlural$) List(ctx context.Context, $.type|private$Name st
 	}
 	result = &$.resultType|raw$List{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name($.type|private$Name).
@@ -498,6 +504,7 @@ var getTemplate = `
 func (c *$.type|privatePlural$) Get(ctx context.Context, name string, options $.GetOptions|raw$) (result *$.resultType|raw$, err error) {
 	result = &$.resultType|raw${}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name(name).
@@ -513,6 +520,7 @@ var getSubresourceTemplate = `
 func (c *$.type|privatePlural$) Get(ctx context.Context, $.type|private$Name string, options $.GetOptions|raw$) (result *$.resultType|raw$, err error) {
 	result = &$.resultType|raw${}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name($.type|private$Name).
@@ -528,6 +536,7 @@ var deleteTemplate = `
 // Delete takes name of the $.type|private$ and deletes it. Returns an error if one occurs.
 func (c *$.type|privatePlural$) Delete(ctx context.Context, name string, opts $.DeleteOptions|raw$) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name(name).
@@ -545,6 +554,7 @@ func (c *$.type|privatePlural$) DeleteCollection(ctx context.Context, opts $.Del
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		VersionedParams(&listOpts, $.schemeParameterCodec|raw$).
@@ -560,6 +570,7 @@ var createSubresourceTemplate = `
 func (c *$.type|privatePlural$) Create(ctx context.Context, $.type|private$Name string, $.inputType|private$ *$.inputType|raw$, opts $.CreateOptions|raw$) (result *$.resultType|raw$, err error) {
 	result = &$.resultType|raw${}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name($.type|private$Name).
@@ -577,6 +588,7 @@ var createTemplate = `
 func (c *$.type|privatePlural$) Create(ctx context.Context, $.inputType|private$ *$.inputType|raw$, opts $.CreateOptions|raw$) (result *$.resultType|raw$, err error) {
 	result = &$.resultType|raw${}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		VersionedParams(&opts, $.schemeParameterCodec|raw$).
@@ -592,6 +604,7 @@ var updateSubresourceTemplate = `
 func (c *$.type|privatePlural$) Update(ctx context.Context, $.type|private$Name string, $.inputType|private$ *$.inputType|raw$, opts $.UpdateOptions|raw$) (result *$.resultType|raw$, err error) {
 	result = &$.resultType|raw${}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name($.type|private$Name).
@@ -609,6 +622,7 @@ var updateTemplate = `
 func (c *$.type|privatePlural$) Update(ctx context.Context, $.inputType|private$ *$.inputType|raw$, opts $.UpdateOptions|raw$) (result *$.resultType|raw$, err error) {
 	result = &$.resultType|raw${}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name($.inputType|private$.Name).
@@ -626,6 +640,7 @@ var updateStatusTemplate = `
 func (c *$.type|privatePlural$) UpdateStatus(ctx context.Context, $.type|private$ *$.type|raw$, opts $.UpdateOptions|raw$) (result *$.type|raw$, err error) {
 	result = &$.type|raw${}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name($.type|private$.Name).
@@ -660,6 +675,7 @@ var patchTemplate = `
 func (c *$.type|privatePlural$) Patch(ctx context.Context, name string, pt $.PatchType|raw$, data []byte, opts $.PatchOptions|raw$, subresources ...string) (result *$.resultType|raw$, err error) {
 	result = &$.resultType|raw${}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name(name).
@@ -689,6 +705,7 @@ func (c *$.type|privatePlural$) Apply(ctx context.Context, $.inputType|private$ 
 	}
 	result = &$.resultType|raw${}
 	err = c.client.Patch($.ApplyPatchType|raw$).
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name(*name).
@@ -720,6 +737,7 @@ func (c *$.type|privatePlural$) ApplyStatus(ctx context.Context, $.inputType|pri
 
 	result = &$.resultType|raw${}
 	err = c.client.Patch($.ApplyPatchType|raw$).
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name(*name).
@@ -747,6 +765,7 @@ func (c *$.type|privatePlural$) Apply(ctx context.Context, $.type|private$Name s
 
 	result = &$.resultType|raw${}
 	err = c.client.Patch($.ApplyPatchType|raw$).
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		Name($.type|private$Name).

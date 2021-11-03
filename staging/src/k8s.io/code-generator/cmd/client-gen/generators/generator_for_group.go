@@ -128,6 +128,7 @@ func (g *genGroup) GenerateType(c *generator.Context, t *types.Type, w io.Writer
 	sw.Do(newClientForConfigAndClientTemplate, m)
 	sw.Do(newClientForConfigOrDieTemplate, m)
 	sw.Do(newClientForRESTClientTemplate, m)
+	sw.Do(newClientForRESTClientAndClusterTemplate, m)
 	if g.version == "" {
 		sw.Do(setInternalVersionClientDefaultsTemplate, m)
 	} else {
@@ -150,6 +151,7 @@ var groupClientTemplate = `
 // $.GroupGoName$$.Version$Client is used to interact with features provided by the $.groupName$ group.
 type $.GroupGoName$$.Version$Client struct {
 	restClient $.restRESTClientInterface|raw$
+	cluster    string
 }
 `
 
@@ -194,7 +196,7 @@ func NewForConfigAndClient(c *$.restConfig|raw$, h *http.Client) (*$.GroupGoName
 	if err != nil {
 		return nil, err
 	}
-	return &$.GroupGoName$$.Version$Client{client}, nil
+	return &$.GroupGoName$$.Version$Client{restClient: client}, nil
 }
 `
 
@@ -224,7 +226,14 @@ func (c *$.GroupGoName$$.Version$Client) RESTClient() $.restRESTClientInterface|
 var newClientForRESTClientTemplate = `
 // New creates a new $.GroupGoName$$.Version$Client for the given RESTClient.
 func New(c $.restRESTClientInterface|raw$) *$.GroupGoName$$.Version$Client {
-	return &$.GroupGoName$$.Version$Client{c}
+	return &$.GroupGoName$$.Version$Client{restClient: c}
+}
+`
+
+var newClientForRESTClientAndClusterTemplate = `
+// NewWithCluster creates a new $.GroupGoName$$.Version$Client for the given RESTClient and cluster.
+func NewWithCluster(c $.restRESTClientInterface|raw$, cluster string) *$.GroupGoName$$.Version$Client {
+	return &$.GroupGoName$$.Version$Client{restClient: c, cluster: cluster}
 }
 `
 
