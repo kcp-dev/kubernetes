@@ -55,13 +55,15 @@ type ClusterRoleInterface interface {
 
 // clusterRoles implements ClusterRoleInterface
 type clusterRoles struct {
-	client rest.Interface
+	client  rest.Interface
+	cluster string
 }
 
 // newClusterRoles returns a ClusterRoles
 func newClusterRoles(c *RbacV1Client) *clusterRoles {
 	return &clusterRoles{
-		client: c.RESTClient(),
+		client:  c.RESTClient(),
+		cluster: c.cluster,
 	}
 }
 
@@ -69,6 +71,7 @@ func newClusterRoles(c *RbacV1Client) *clusterRoles {
 func (c *clusterRoles) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.ClusterRole, err error) {
 	result = &v1.ClusterRole{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -85,6 +88,7 @@ func (c *clusterRoles) List(ctx context.Context, opts metav1.ListOptions) (resul
 	}
 	result = &v1.ClusterRoleList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -111,6 +115,7 @@ func (c *clusterRoles) Watch(ctx context.Context, opts metav1.ListOptions) (watc
 func (c *clusterRoles) Create(ctx context.Context, clusterRole *v1.ClusterRole, opts metav1.CreateOptions) (result *v1.ClusterRole, err error) {
 	result = &v1.ClusterRole{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(clusterRole).
@@ -123,6 +128,7 @@ func (c *clusterRoles) Create(ctx context.Context, clusterRole *v1.ClusterRole, 
 func (c *clusterRoles) Update(ctx context.Context, clusterRole *v1.ClusterRole, opts metav1.UpdateOptions) (result *v1.ClusterRole, err error) {
 	result = &v1.ClusterRole{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		Name(clusterRole.Name).
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -135,6 +141,7 @@ func (c *clusterRoles) Update(ctx context.Context, clusterRole *v1.ClusterRole, 
 // Delete takes name of the clusterRole and deletes it. Returns an error if one occurs.
 func (c *clusterRoles) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		Name(name).
 		Body(&opts).
@@ -149,6 +156,7 @@ func (c *clusterRoles) DeleteCollection(ctx context.Context, opts metav1.DeleteO
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -161,6 +169,7 @@ func (c *clusterRoles) DeleteCollection(ctx context.Context, opts metav1.DeleteO
 func (c *clusterRoles) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.ClusterRole, err error) {
 	result = &v1.ClusterRole{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		Name(name).
 		SubResource(subresources...).
@@ -187,6 +196,7 @@ func (c *clusterRoles) Apply(ctx context.Context, clusterRole *rbacv1.ClusterRol
 	}
 	result = &v1.ClusterRole{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Resource("clusterroles").
 		Name(*name).
 		VersionedParams(&patchOpts, scheme.ParameterCodec).

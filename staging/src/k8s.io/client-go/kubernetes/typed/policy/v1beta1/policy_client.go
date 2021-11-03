@@ -36,6 +36,7 @@ type PolicyV1beta1Interface interface {
 // PolicyV1beta1Client is used to interact with features provided by the policy group.
 type PolicyV1beta1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *PolicyV1beta1Client) Evictions(namespace string) EvictionInterface {
@@ -76,7 +77,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*PolicyV1beta1Client
 	if err != nil {
 		return nil, err
 	}
-	return &PolicyV1beta1Client{client}, nil
+	return &PolicyV1beta1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new PolicyV1beta1Client for the given config and
@@ -91,7 +92,12 @@ func NewForConfigOrDie(c *rest.Config) *PolicyV1beta1Client {
 
 // New creates a new PolicyV1beta1Client for the given RESTClient.
 func New(c rest.Interface) *PolicyV1beta1Client {
-	return &PolicyV1beta1Client{c}
+	return &PolicyV1beta1Client{restClient: c}
+}
+
+// NewWithCluster creates a new PolicyV1beta1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *PolicyV1beta1Client {
+	return &PolicyV1beta1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

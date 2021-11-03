@@ -52,15 +52,17 @@ type TestTypeInterface interface {
 
 // testTypes implements TestTypeInterface
 type testTypes struct {
-	client rest.Interface
-	ns     string
+	client  rest.Interface
+	cluster string
+	ns      string
 }
 
 // newTestTypes returns a TestTypes
 func newTestTypes(c *ExampleV1Client, namespace string) *testTypes {
 	return &testTypes{
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }
 
@@ -68,6 +70,7 @@ func newTestTypes(c *ExampleV1Client, namespace string) *testTypes {
 func (c *testTypes) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.TestType, err error) {
 	result = &v1.TestType{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		Name(name).
@@ -85,6 +88,7 @@ func (c *testTypes) List(ctx context.Context, opts metav1.ListOptions) (result *
 	}
 	result = &v1.TestTypeList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -113,6 +117,7 @@ func (c *testTypes) Watch(ctx context.Context, opts metav1.ListOptions) (watch.I
 func (c *testTypes) Create(ctx context.Context, testType *v1.TestType, opts metav1.CreateOptions) (result *v1.TestType, err error) {
 	result = &v1.TestType{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -126,6 +131,7 @@ func (c *testTypes) Create(ctx context.Context, testType *v1.TestType, opts meta
 func (c *testTypes) Update(ctx context.Context, testType *v1.TestType, opts metav1.UpdateOptions) (result *v1.TestType, err error) {
 	result = &v1.TestType{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		Name(testType.Name).
@@ -141,6 +147,7 @@ func (c *testTypes) Update(ctx context.Context, testType *v1.TestType, opts meta
 func (c *testTypes) UpdateStatus(ctx context.Context, testType *v1.TestType, opts metav1.UpdateOptions) (result *v1.TestType, err error) {
 	result = &v1.TestType{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		Name(testType.Name).
@@ -155,6 +162,7 @@ func (c *testTypes) UpdateStatus(ctx context.Context, testType *v1.TestType, opt
 // Delete takes name of the testType and deletes it. Returns an error if one occurs.
 func (c *testTypes) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		Name(name).
@@ -170,6 +178,7 @@ func (c *testTypes) DeleteCollection(ctx context.Context, opts metav1.DeleteOpti
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
@@ -183,6 +192,7 @@ func (c *testTypes) DeleteCollection(ctx context.Context, opts metav1.DeleteOpti
 func (c *testTypes) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.TestType, err error) {
 	result = &v1.TestType{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("testtypes").
 		Name(name).

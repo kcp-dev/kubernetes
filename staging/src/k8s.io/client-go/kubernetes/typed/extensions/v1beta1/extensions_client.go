@@ -39,6 +39,7 @@ type ExtensionsV1beta1Interface interface {
 // ExtensionsV1beta1Client is used to interact with features provided by the extensions group.
 type ExtensionsV1beta1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *ExtensionsV1beta1Client) DaemonSets(namespace string) DaemonSetInterface {
@@ -91,7 +92,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*ExtensionsV1beta1Cl
 	if err != nil {
 		return nil, err
 	}
-	return &ExtensionsV1beta1Client{client}, nil
+	return &ExtensionsV1beta1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new ExtensionsV1beta1Client for the given config and
@@ -106,7 +107,12 @@ func NewForConfigOrDie(c *rest.Config) *ExtensionsV1beta1Client {
 
 // New creates a new ExtensionsV1beta1Client for the given RESTClient.
 func New(c rest.Interface) *ExtensionsV1beta1Client {
-	return &ExtensionsV1beta1Client{c}
+	return &ExtensionsV1beta1Client{restClient: c}
+}
+
+// NewWithCluster creates a new ExtensionsV1beta1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *ExtensionsV1beta1Client {
+	return &ExtensionsV1beta1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

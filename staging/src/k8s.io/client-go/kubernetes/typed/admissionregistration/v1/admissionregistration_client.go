@@ -35,6 +35,7 @@ type AdmissionregistrationV1Interface interface {
 // AdmissionregistrationV1Client is used to interact with features provided by the admissionregistration.k8s.io group.
 type AdmissionregistrationV1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *AdmissionregistrationV1Client) MutatingWebhookConfigurations() MutatingWebhookConfigurationInterface {
@@ -71,7 +72,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*Admissionregistrati
 	if err != nil {
 		return nil, err
 	}
-	return &AdmissionregistrationV1Client{client}, nil
+	return &AdmissionregistrationV1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new AdmissionregistrationV1Client for the given config and
@@ -86,7 +87,12 @@ func NewForConfigOrDie(c *rest.Config) *AdmissionregistrationV1Client {
 
 // New creates a new AdmissionregistrationV1Client for the given RESTClient.
 func New(c rest.Interface) *AdmissionregistrationV1Client {
-	return &AdmissionregistrationV1Client{c}
+	return &AdmissionregistrationV1Client{restClient: c}
+}
+
+// NewWithCluster creates a new AdmissionregistrationV1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *AdmissionregistrationV1Client {
+	return &AdmissionregistrationV1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

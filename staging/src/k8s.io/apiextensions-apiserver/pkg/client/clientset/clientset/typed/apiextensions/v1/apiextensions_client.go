@@ -34,6 +34,7 @@ type ApiextensionsV1Interface interface {
 // ApiextensionsV1Client is used to interact with features provided by the apiextensions.k8s.io group.
 type ApiextensionsV1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *ApiextensionsV1Client) CustomResourceDefinitions() CustomResourceDefinitionInterface {
@@ -66,7 +67,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*ApiextensionsV1Clie
 	if err != nil {
 		return nil, err
 	}
-	return &ApiextensionsV1Client{client}, nil
+	return &ApiextensionsV1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new ApiextensionsV1Client for the given config and
@@ -81,7 +82,12 @@ func NewForConfigOrDie(c *rest.Config) *ApiextensionsV1Client {
 
 // New creates a new ApiextensionsV1Client for the given RESTClient.
 func New(c rest.Interface) *ApiextensionsV1Client {
-	return &ApiextensionsV1Client{c}
+	return &ApiextensionsV1Client{restClient: c}
+}
+
+// NewWithCluster creates a new ApiextensionsV1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *ApiextensionsV1Client {
+	return &ApiextensionsV1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

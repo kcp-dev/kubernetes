@@ -55,15 +55,17 @@ type NetworkPolicyInterface interface {
 
 // networkPolicies implements NetworkPolicyInterface
 type networkPolicies struct {
-	client rest.Interface
-	ns     string
+	client  rest.Interface
+	cluster string
+	ns      string
 }
 
 // newNetworkPolicies returns a NetworkPolicies
 func newNetworkPolicies(c *ExtensionsV1beta1Client, namespace string) *networkPolicies {
 	return &networkPolicies{
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }
 
@@ -71,6 +73,7 @@ func newNetworkPolicies(c *ExtensionsV1beta1Client, namespace string) *networkPo
 func (c *networkPolicies) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.NetworkPolicy, err error) {
 	result = &v1beta1.NetworkPolicy{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		Name(name).
@@ -88,6 +91,7 @@ func (c *networkPolicies) List(ctx context.Context, opts v1.ListOptions) (result
 	}
 	result = &v1beta1.NetworkPolicyList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -116,6 +120,7 @@ func (c *networkPolicies) Watch(ctx context.Context, opts v1.ListOptions) (watch
 func (c *networkPolicies) Create(ctx context.Context, networkPolicy *v1beta1.NetworkPolicy, opts v1.CreateOptions) (result *v1beta1.NetworkPolicy, err error) {
 	result = &v1beta1.NetworkPolicy{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -129,6 +134,7 @@ func (c *networkPolicies) Create(ctx context.Context, networkPolicy *v1beta1.Net
 func (c *networkPolicies) Update(ctx context.Context, networkPolicy *v1beta1.NetworkPolicy, opts v1.UpdateOptions) (result *v1beta1.NetworkPolicy, err error) {
 	result = &v1beta1.NetworkPolicy{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		Name(networkPolicy.Name).
@@ -142,6 +148,7 @@ func (c *networkPolicies) Update(ctx context.Context, networkPolicy *v1beta1.Net
 // Delete takes name of the networkPolicy and deletes it. Returns an error if one occurs.
 func (c *networkPolicies) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		Name(name).
@@ -157,6 +164,7 @@ func (c *networkPolicies) DeleteCollection(ctx context.Context, opts v1.DeleteOp
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
@@ -170,6 +178,7 @@ func (c *networkPolicies) DeleteCollection(ctx context.Context, opts v1.DeleteOp
 func (c *networkPolicies) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.NetworkPolicy, err error) {
 	result = &v1beta1.NetworkPolicy{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		Name(name).
@@ -197,6 +206,7 @@ func (c *networkPolicies) Apply(ctx context.Context, networkPolicy *extensionsv1
 	}
 	result = &v1beta1.NetworkPolicy{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		Name(*name).

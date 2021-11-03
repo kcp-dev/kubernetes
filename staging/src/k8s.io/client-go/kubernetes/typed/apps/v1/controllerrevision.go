@@ -55,15 +55,17 @@ type ControllerRevisionInterface interface {
 
 // controllerRevisions implements ControllerRevisionInterface
 type controllerRevisions struct {
-	client rest.Interface
-	ns     string
+	client  rest.Interface
+	cluster string
+	ns      string
 }
 
 // newControllerRevisions returns a ControllerRevisions
 func newControllerRevisions(c *AppsV1Client, namespace string) *controllerRevisions {
 	return &controllerRevisions{
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }
 
@@ -71,6 +73,7 @@ func newControllerRevisions(c *AppsV1Client, namespace string) *controllerRevisi
 func (c *controllerRevisions) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.ControllerRevision, err error) {
 	result = &v1.ControllerRevision{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		Name(name).
@@ -88,6 +91,7 @@ func (c *controllerRevisions) List(ctx context.Context, opts metav1.ListOptions)
 	}
 	result = &v1.ControllerRevisionList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -116,6 +120,7 @@ func (c *controllerRevisions) Watch(ctx context.Context, opts metav1.ListOptions
 func (c *controllerRevisions) Create(ctx context.Context, controllerRevision *v1.ControllerRevision, opts metav1.CreateOptions) (result *v1.ControllerRevision, err error) {
 	result = &v1.ControllerRevision{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -129,6 +134,7 @@ func (c *controllerRevisions) Create(ctx context.Context, controllerRevision *v1
 func (c *controllerRevisions) Update(ctx context.Context, controllerRevision *v1.ControllerRevision, opts metav1.UpdateOptions) (result *v1.ControllerRevision, err error) {
 	result = &v1.ControllerRevision{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		Name(controllerRevision.Name).
@@ -142,6 +148,7 @@ func (c *controllerRevisions) Update(ctx context.Context, controllerRevision *v1
 // Delete takes name of the controllerRevision and deletes it. Returns an error if one occurs.
 func (c *controllerRevisions) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		Name(name).
@@ -157,6 +164,7 @@ func (c *controllerRevisions) DeleteCollection(ctx context.Context, opts metav1.
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
@@ -170,6 +178,7 @@ func (c *controllerRevisions) DeleteCollection(ctx context.Context, opts metav1.
 func (c *controllerRevisions) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.ControllerRevision, err error) {
 	result = &v1.ControllerRevision{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		Name(name).
@@ -197,6 +206,7 @@ func (c *controllerRevisions) Apply(ctx context.Context, controllerRevision *app
 	}
 	result = &v1.ControllerRevision{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		Name(*name).

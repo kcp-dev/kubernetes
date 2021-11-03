@@ -28,6 +28,33 @@ import (
 	samplecontrollerv1alpha1 "k8s.io/sample-controller/pkg/generated/clientset/versioned/typed/samplecontroller/v1alpha1"
 )
 
+type ClusterInterface interface {
+	Cluster(name string) Interface
+}
+
+type Cluster struct {
+	*scopedClientset
+}
+
+// Cluster sets the cluster for a Clientset.
+func (c *Cluster) Cluster(name string) Interface {
+	return &Clientset{
+		scopedClientset: c.scopedClientset,
+		cluster:         name,
+	}
+}
+
+// NewClusterForConfig creates a new Cluster for the given config.
+// If config's RateLimiter is not set and QPS and Burst are acceptable,
+// NewClusterForConfig will generate a rate-limiter in configShallowCopy.
+func NewClusterForConfig(c *rest.Config) (*Cluster, error) {
+	cs, err := NewForConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	return &Cluster{scopedClientset: cs.scopedClientset}, nil
+}
+
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	SamplecontrollerV1alpha1() samplecontrollerv1alpha1.SamplecontrollerV1alpha1Interface
@@ -36,13 +63,20 @@ type Interface interface {
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
+	*scopedClientset
+	cluster string
+}
+
+// scopedClientset contains the clients for groups. Each group has exactly one
+// version included in a Clientset.
+type scopedClientset struct {
 	*discovery.DiscoveryClient
 	samplecontrollerV1alpha1 *samplecontrollerv1alpha1.SamplecontrollerV1alpha1Client
 }
 
 // SamplecontrollerV1alpha1 retrieves the SamplecontrollerV1alpha1Client
 func (c *Clientset) SamplecontrollerV1alpha1() samplecontrollerv1alpha1.SamplecontrollerV1alpha1Interface {
-	return c.samplecontrollerV1alpha1
+	return samplecontrollerv1alpha1.NewWithCluster(c.samplecontrollerV1alpha1.RESTClient(), c.cluster)
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -83,7 +117,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}
 
-	var cs Clientset
+	var cs scopedClientset
 	var err error
 	cs.samplecontrollerV1alpha1, err = samplecontrollerv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -94,7 +128,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	return &cs, nil
+	return &Clientset{scopedClientset: &cs}, nil
 }
 
 // NewForConfigOrDie creates a new Clientset for the given config and
@@ -109,9 +143,9 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
-	var cs Clientset
+	var cs scopedClientset
 	cs.samplecontrollerV1alpha1 = samplecontrollerv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
-	return &cs
+	return &Clientset{scopedClientset: &cs}
 }

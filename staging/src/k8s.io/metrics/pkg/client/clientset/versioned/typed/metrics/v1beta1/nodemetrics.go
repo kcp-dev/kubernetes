@@ -45,13 +45,15 @@ type NodeMetricsInterface interface {
 
 // nodeMetricses implements NodeMetricsInterface
 type nodeMetricses struct {
-	client rest.Interface
+	client  rest.Interface
+	cluster string
 }
 
 // newNodeMetricses returns a NodeMetricses
 func newNodeMetricses(c *MetricsV1beta1Client) *nodeMetricses {
 	return &nodeMetricses{
-		client: c.RESTClient(),
+		client:  c.RESTClient(),
+		cluster: c.cluster,
 	}
 }
 
@@ -59,6 +61,7 @@ func newNodeMetricses(c *MetricsV1beta1Client) *nodeMetricses {
 func (c *nodeMetricses) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.NodeMetrics, err error) {
 	result = &v1beta1.NodeMetrics{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Resource("nodes").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -75,6 +78,7 @@ func (c *nodeMetricses) List(ctx context.Context, opts v1.ListOptions) (result *
 	}
 	result = &v1beta1.NodeMetricsList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Resource("nodes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

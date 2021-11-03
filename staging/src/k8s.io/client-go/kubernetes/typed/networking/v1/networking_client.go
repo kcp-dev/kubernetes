@@ -36,6 +36,7 @@ type NetworkingV1Interface interface {
 // NetworkingV1Client is used to interact with features provided by the networking.k8s.io group.
 type NetworkingV1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *NetworkingV1Client) Ingresses(namespace string) IngressInterface {
@@ -76,7 +77,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*NetworkingV1Client,
 	if err != nil {
 		return nil, err
 	}
-	return &NetworkingV1Client{client}, nil
+	return &NetworkingV1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new NetworkingV1Client for the given config and
@@ -91,7 +92,12 @@ func NewForConfigOrDie(c *rest.Config) *NetworkingV1Client {
 
 // New creates a new NetworkingV1Client for the given RESTClient.
 func New(c rest.Interface) *NetworkingV1Client {
-	return &NetworkingV1Client{c}
+	return &NetworkingV1Client{restClient: c}
+}
+
+// NewWithCluster creates a new NetworkingV1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *NetworkingV1Client {
+	return &NetworkingV1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

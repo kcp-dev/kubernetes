@@ -37,6 +37,7 @@ type RbacV1alpha1Interface interface {
 // RbacV1alpha1Client is used to interact with features provided by the rbac.authorization.k8s.io group.
 type RbacV1alpha1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *RbacV1alpha1Client) ClusterRoles() ClusterRoleInterface {
@@ -81,7 +82,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*RbacV1alpha1Client,
 	if err != nil {
 		return nil, err
 	}
-	return &RbacV1alpha1Client{client}, nil
+	return &RbacV1alpha1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new RbacV1alpha1Client for the given config and
@@ -96,7 +97,12 @@ func NewForConfigOrDie(c *rest.Config) *RbacV1alpha1Client {
 
 // New creates a new RbacV1alpha1Client for the given RESTClient.
 func New(c rest.Interface) *RbacV1alpha1Client {
-	return &RbacV1alpha1Client{c}
+	return &RbacV1alpha1Client{restClient: c}
+}
+
+// NewWithCluster creates a new RbacV1alpha1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *RbacV1alpha1Client {
+	return &RbacV1alpha1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

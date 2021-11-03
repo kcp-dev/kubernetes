@@ -35,6 +35,7 @@ type WardleV1alpha1Interface interface {
 // WardleV1alpha1Client is used to interact with features provided by the wardle.example.com group.
 type WardleV1alpha1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *WardleV1alpha1Client) Fischers() FischerInterface {
@@ -71,7 +72,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*WardleV1alpha1Clien
 	if err != nil {
 		return nil, err
 	}
-	return &WardleV1alpha1Client{client}, nil
+	return &WardleV1alpha1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new WardleV1alpha1Client for the given config and
@@ -86,7 +87,12 @@ func NewForConfigOrDie(c *rest.Config) *WardleV1alpha1Client {
 
 // New creates a new WardleV1alpha1Client for the given RESTClient.
 func New(c rest.Interface) *WardleV1alpha1Client {
-	return &WardleV1alpha1Client{c}
+	return &WardleV1alpha1Client{restClient: c}
+}
+
+// NewWithCluster creates a new WardleV1alpha1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *WardleV1alpha1Client {
+	return &WardleV1alpha1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

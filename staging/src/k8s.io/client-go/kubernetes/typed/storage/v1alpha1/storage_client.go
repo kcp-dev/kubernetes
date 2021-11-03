@@ -35,6 +35,7 @@ type StorageV1alpha1Interface interface {
 // StorageV1alpha1Client is used to interact with features provided by the storage.k8s.io group.
 type StorageV1alpha1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *StorageV1alpha1Client) CSIStorageCapacities(namespace string) CSIStorageCapacityInterface {
@@ -71,7 +72,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*StorageV1alpha1Clie
 	if err != nil {
 		return nil, err
 	}
-	return &StorageV1alpha1Client{client}, nil
+	return &StorageV1alpha1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new StorageV1alpha1Client for the given config and
@@ -86,7 +87,12 @@ func NewForConfigOrDie(c *rest.Config) *StorageV1alpha1Client {
 
 // New creates a new StorageV1alpha1Client for the given RESTClient.
 func New(c rest.Interface) *StorageV1alpha1Client {
-	return &StorageV1alpha1Client{c}
+	return &StorageV1alpha1Client{restClient: c}
+}
+
+// NewWithCluster creates a new StorageV1alpha1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *StorageV1alpha1Client {
+	return &StorageV1alpha1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

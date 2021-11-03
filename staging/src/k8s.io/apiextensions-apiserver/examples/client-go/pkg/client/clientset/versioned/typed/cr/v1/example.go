@@ -51,15 +51,17 @@ type ExampleInterface interface {
 
 // examples implements ExampleInterface
 type examples struct {
-	client rest.Interface
-	ns     string
+	client  rest.Interface
+	cluster string
+	ns      string
 }
 
 // newExamples returns a Examples
 func newExamples(c *CrV1Client, namespace string) *examples {
 	return &examples{
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }
 
@@ -67,6 +69,7 @@ func newExamples(c *CrV1Client, namespace string) *examples {
 func (c *examples) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Example, err error) {
 	result = &v1.Example{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("examples").
 		Name(name).
@@ -84,6 +87,7 @@ func (c *examples) List(ctx context.Context, opts metav1.ListOptions) (result *v
 	}
 	result = &v1.ExampleList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("examples").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -112,6 +116,7 @@ func (c *examples) Watch(ctx context.Context, opts metav1.ListOptions) (watch.In
 func (c *examples) Create(ctx context.Context, example *v1.Example, opts metav1.CreateOptions) (result *v1.Example, err error) {
 	result = &v1.Example{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("examples").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -125,6 +130,7 @@ func (c *examples) Create(ctx context.Context, example *v1.Example, opts metav1.
 func (c *examples) Update(ctx context.Context, example *v1.Example, opts metav1.UpdateOptions) (result *v1.Example, err error) {
 	result = &v1.Example{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("examples").
 		Name(example.Name).
@@ -138,6 +144,7 @@ func (c *examples) Update(ctx context.Context, example *v1.Example, opts metav1.
 // Delete takes name of the example and deletes it. Returns an error if one occurs.
 func (c *examples) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("examples").
 		Name(name).
@@ -153,6 +160,7 @@ func (c *examples) DeleteCollection(ctx context.Context, opts metav1.DeleteOptio
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("examples").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
@@ -166,6 +174,7 @@ func (c *examples) DeleteCollection(ctx context.Context, opts metav1.DeleteOptio
 func (c *examples) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Example, err error) {
 	result = &v1.Example{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("examples").
 		Name(name).

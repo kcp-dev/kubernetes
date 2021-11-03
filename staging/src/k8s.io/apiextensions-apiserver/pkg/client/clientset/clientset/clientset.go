@@ -29,6 +29,33 @@ import (
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 )
 
+type ClusterInterface interface {
+	Cluster(name string) Interface
+}
+
+type Cluster struct {
+	*scopedClientset
+}
+
+// Cluster sets the cluster for a Clientset.
+func (c *Cluster) Cluster(name string) Interface {
+	return &Clientset{
+		scopedClientset: c.scopedClientset,
+		cluster:         name,
+	}
+}
+
+// NewClusterForConfig creates a new Cluster for the given config.
+// If config's RateLimiter is not set and QPS and Burst are acceptable,
+// NewClusterForConfig will generate a rate-limiter in configShallowCopy.
+func NewClusterForConfig(c *rest.Config) (*Cluster, error) {
+	cs, err := NewForConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	return &Cluster{scopedClientset: cs.scopedClientset}, nil
+}
+
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	ApiextensionsV1beta1() apiextensionsv1beta1.ApiextensionsV1beta1Interface
@@ -38,6 +65,13 @@ type Interface interface {
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
+	*scopedClientset
+	cluster string
+}
+
+// scopedClientset contains the clients for groups. Each group has exactly one
+// version included in a Clientset.
+type scopedClientset struct {
 	*discovery.DiscoveryClient
 	apiextensionsV1beta1 *apiextensionsv1beta1.ApiextensionsV1beta1Client
 	apiextensionsV1      *apiextensionsv1.ApiextensionsV1Client
@@ -45,12 +79,12 @@ type Clientset struct {
 
 // ApiextensionsV1beta1 retrieves the ApiextensionsV1beta1Client
 func (c *Clientset) ApiextensionsV1beta1() apiextensionsv1beta1.ApiextensionsV1beta1Interface {
-	return c.apiextensionsV1beta1
+	return apiextensionsv1beta1.NewWithCluster(c.apiextensionsV1beta1.RESTClient(), c.cluster)
 }
 
 // ApiextensionsV1 retrieves the ApiextensionsV1Client
 func (c *Clientset) ApiextensionsV1() apiextensionsv1.ApiextensionsV1Interface {
-	return c.apiextensionsV1
+	return apiextensionsv1.NewWithCluster(c.apiextensionsV1.RESTClient(), c.cluster)
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -91,7 +125,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}
 
-	var cs Clientset
+	var cs scopedClientset
 	var err error
 	cs.apiextensionsV1beta1, err = apiextensionsv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -106,7 +140,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	return &cs, nil
+	return &Clientset{scopedClientset: &cs}, nil
 }
 
 // NewForConfigOrDie creates a new Clientset for the given config and
@@ -121,10 +155,10 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
-	var cs Clientset
+	var cs scopedClientset
 	cs.apiextensionsV1beta1 = apiextensionsv1beta1.New(c)
 	cs.apiextensionsV1 = apiextensionsv1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
-	return &cs
+	return &Clientset{scopedClientset: &cs}
 }

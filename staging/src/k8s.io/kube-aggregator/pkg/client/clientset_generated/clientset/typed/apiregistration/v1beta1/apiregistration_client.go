@@ -34,6 +34,7 @@ type ApiregistrationV1beta1Interface interface {
 // ApiregistrationV1beta1Client is used to interact with features provided by the apiregistration.k8s.io group.
 type ApiregistrationV1beta1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *ApiregistrationV1beta1Client) APIServices() APIServiceInterface {
@@ -66,7 +67,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*ApiregistrationV1be
 	if err != nil {
 		return nil, err
 	}
-	return &ApiregistrationV1beta1Client{client}, nil
+	return &ApiregistrationV1beta1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new ApiregistrationV1beta1Client for the given config and
@@ -81,7 +82,12 @@ func NewForConfigOrDie(c *rest.Config) *ApiregistrationV1beta1Client {
 
 // New creates a new ApiregistrationV1beta1Client for the given RESTClient.
 func New(c rest.Interface) *ApiregistrationV1beta1Client {
-	return &ApiregistrationV1beta1Client{c}
+	return &ApiregistrationV1beta1Client{restClient: c}
+}
+
+// NewWithCluster creates a new ApiregistrationV1beta1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *ApiregistrationV1beta1Client {
+	return &ApiregistrationV1beta1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

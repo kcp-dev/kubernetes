@@ -57,13 +57,15 @@ type FlowSchemaInterface interface {
 
 // flowSchemas implements FlowSchemaInterface
 type flowSchemas struct {
-	client rest.Interface
+	client  rest.Interface
+	cluster string
 }
 
 // newFlowSchemas returns a FlowSchemas
 func newFlowSchemas(c *FlowcontrolV1alpha1Client) *flowSchemas {
 	return &flowSchemas{
-		client: c.RESTClient(),
+		client:  c.RESTClient(),
+		cluster: c.cluster,
 	}
 }
 
@@ -71,6 +73,7 @@ func newFlowSchemas(c *FlowcontrolV1alpha1Client) *flowSchemas {
 func (c *flowSchemas) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.FlowSchema, err error) {
 	result = &v1alpha1.FlowSchema{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -87,6 +90,7 @@ func (c *flowSchemas) List(ctx context.Context, opts v1.ListOptions) (result *v1
 	}
 	result = &v1alpha1.FlowSchemaList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -113,6 +117,7 @@ func (c *flowSchemas) Watch(ctx context.Context, opts v1.ListOptions) (watch.Int
 func (c *flowSchemas) Create(ctx context.Context, flowSchema *v1alpha1.FlowSchema, opts v1.CreateOptions) (result *v1alpha1.FlowSchema, err error) {
 	result = &v1alpha1.FlowSchema{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(flowSchema).
@@ -125,6 +130,7 @@ func (c *flowSchemas) Create(ctx context.Context, flowSchema *v1alpha1.FlowSchem
 func (c *flowSchemas) Update(ctx context.Context, flowSchema *v1alpha1.FlowSchema, opts v1.UpdateOptions) (result *v1alpha1.FlowSchema, err error) {
 	result = &v1alpha1.FlowSchema{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		Name(flowSchema.Name).
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -139,6 +145,7 @@ func (c *flowSchemas) Update(ctx context.Context, flowSchema *v1alpha1.FlowSchem
 func (c *flowSchemas) UpdateStatus(ctx context.Context, flowSchema *v1alpha1.FlowSchema, opts v1.UpdateOptions) (result *v1alpha1.FlowSchema, err error) {
 	result = &v1alpha1.FlowSchema{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		Name(flowSchema.Name).
 		SubResource("status").
@@ -152,6 +159,7 @@ func (c *flowSchemas) UpdateStatus(ctx context.Context, flowSchema *v1alpha1.Flo
 // Delete takes name of the flowSchema and deletes it. Returns an error if one occurs.
 func (c *flowSchemas) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		Name(name).
 		Body(&opts).
@@ -166,6 +174,7 @@ func (c *flowSchemas) DeleteCollection(ctx context.Context, opts v1.DeleteOption
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -178,6 +187,7 @@ func (c *flowSchemas) DeleteCollection(ctx context.Context, opts v1.DeleteOption
 func (c *flowSchemas) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.FlowSchema, err error) {
 	result = &v1alpha1.FlowSchema{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		Name(name).
 		SubResource(subresources...).
@@ -204,6 +214,7 @@ func (c *flowSchemas) Apply(ctx context.Context, flowSchema *flowcontrolv1alpha1
 	}
 	result = &v1alpha1.FlowSchema{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		Name(*name).
 		VersionedParams(&patchOpts, scheme.ParameterCodec).
@@ -232,6 +243,7 @@ func (c *flowSchemas) ApplyStatus(ctx context.Context, flowSchema *flowcontrolv1
 
 	result = &v1alpha1.FlowSchema{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		Name(*name).
 		SubResource("status").

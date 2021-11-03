@@ -35,14 +35,16 @@ type EvictionInterface interface {
 
 // evictions implements EvictionInterface
 type evictions struct {
-	client rest.Interface
-	ns     string
+	client  rest.Interface
+	cluster string
+	ns      string
 }
 
 // newEvictions returns a Evictions
 func newEvictions(c *PolicyV1beta1Client, namespace string) *evictions {
 	return &evictions{
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }

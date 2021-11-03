@@ -59,15 +59,17 @@ type PodInterface interface {
 
 // pods implements PodInterface
 type pods struct {
-	client rest.Interface
-	ns     string
+	client  rest.Interface
+	cluster string
+	ns      string
 }
 
 // newPods returns a Pods
 func newPods(c *CoreV1Client, namespace string) *pods {
 	return &pods{
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }
 
@@ -75,6 +77,7 @@ func newPods(c *CoreV1Client, namespace string) *pods {
 func (c *pods) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.Pod, err error) {
 	result = &v1.Pod{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(name).
@@ -92,6 +95,7 @@ func (c *pods) List(ctx context.Context, opts metav1.ListOptions) (result *v1.Po
 	}
 	result = &v1.PodList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -120,6 +124,7 @@ func (c *pods) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interf
 func (c *pods) Create(ctx context.Context, pod *v1.Pod, opts metav1.CreateOptions) (result *v1.Pod, err error) {
 	result = &v1.Pod{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -133,6 +138,7 @@ func (c *pods) Create(ctx context.Context, pod *v1.Pod, opts metav1.CreateOption
 func (c *pods) Update(ctx context.Context, pod *v1.Pod, opts metav1.UpdateOptions) (result *v1.Pod, err error) {
 	result = &v1.Pod{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(pod.Name).
@@ -148,6 +154,7 @@ func (c *pods) Update(ctx context.Context, pod *v1.Pod, opts metav1.UpdateOption
 func (c *pods) UpdateStatus(ctx context.Context, pod *v1.Pod, opts metav1.UpdateOptions) (result *v1.Pod, err error) {
 	result = &v1.Pod{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(pod.Name).
@@ -162,6 +169,7 @@ func (c *pods) UpdateStatus(ctx context.Context, pod *v1.Pod, opts metav1.Update
 // Delete takes name of the pod and deletes it. Returns an error if one occurs.
 func (c *pods) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(name).
@@ -177,6 +185,7 @@ func (c *pods) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, 
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
@@ -190,6 +199,7 @@ func (c *pods) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, 
 func (c *pods) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.Pod, err error) {
 	result = &v1.Pod{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(name).
@@ -217,6 +227,7 @@ func (c *pods) Apply(ctx context.Context, pod *corev1.PodApplyConfiguration, opt
 	}
 	result = &v1.Pod{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(*name).
@@ -246,6 +257,7 @@ func (c *pods) ApplyStatus(ctx context.Context, pod *corev1.PodApplyConfiguratio
 
 	result = &v1.Pod{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(*name).
@@ -261,6 +273,7 @@ func (c *pods) ApplyStatus(ctx context.Context, pod *corev1.PodApplyConfiguratio
 func (c *pods) UpdateEphemeralContainers(ctx context.Context, podName string, pod *v1.Pod, opts metav1.UpdateOptions) (result *v1.Pod, err error) {
 	result = &v1.Pod{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		Name(podName).

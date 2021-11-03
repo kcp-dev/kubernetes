@@ -35,6 +35,7 @@ type ExampleV1Interface interface {
 // ExampleV1Client is used to interact with features provided by the example.crd.code-generator.k8s.io group.
 type ExampleV1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *ExampleV1Client) ClusterTestTypes() ClusterTestTypeInterface {
@@ -71,7 +72,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*ExampleV1Client, er
 	if err != nil {
 		return nil, err
 	}
-	return &ExampleV1Client{client}, nil
+	return &ExampleV1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new ExampleV1Client for the given config and
@@ -86,7 +87,12 @@ func NewForConfigOrDie(c *rest.Config) *ExampleV1Client {
 
 // New creates a new ExampleV1Client for the given RESTClient.
 func New(c rest.Interface) *ExampleV1Client {
-	return &ExampleV1Client{c}
+	return &ExampleV1Client{restClient: c}
+}
+
+// NewWithCluster creates a new ExampleV1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *ExampleV1Client {
+	return &ExampleV1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

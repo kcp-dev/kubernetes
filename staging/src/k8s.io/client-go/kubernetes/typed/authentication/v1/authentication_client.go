@@ -34,6 +34,7 @@ type AuthenticationV1Interface interface {
 // AuthenticationV1Client is used to interact with features provided by the authentication.k8s.io group.
 type AuthenticationV1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *AuthenticationV1Client) TokenReviews() TokenReviewInterface {
@@ -66,7 +67,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*AuthenticationV1Cli
 	if err != nil {
 		return nil, err
 	}
-	return &AuthenticationV1Client{client}, nil
+	return &AuthenticationV1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new AuthenticationV1Client for the given config and
@@ -81,7 +82,12 @@ func NewForConfigOrDie(c *rest.Config) *AuthenticationV1Client {
 
 // New creates a new AuthenticationV1Client for the given RESTClient.
 func New(c rest.Interface) *AuthenticationV1Client {
-	return &AuthenticationV1Client{c}
+	return &AuthenticationV1Client{restClient: c}
+}
+
+// NewWithCluster creates a new AuthenticationV1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *AuthenticationV1Client {
+	return &AuthenticationV1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {

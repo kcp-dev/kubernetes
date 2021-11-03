@@ -57,15 +57,17 @@ type PersistentVolumeClaimInterface interface {
 
 // persistentVolumeClaims implements PersistentVolumeClaimInterface
 type persistentVolumeClaims struct {
-	client rest.Interface
-	ns     string
+	client  rest.Interface
+	cluster string
+	ns      string
 }
 
 // newPersistentVolumeClaims returns a PersistentVolumeClaims
 func newPersistentVolumeClaims(c *CoreV1Client, namespace string) *persistentVolumeClaims {
 	return &persistentVolumeClaims{
-		client: c.RESTClient(),
-		ns:     namespace,
+		client:  c.RESTClient(),
+		cluster: c.cluster,
+		ns:      namespace,
 	}
 }
 
@@ -73,6 +75,7 @@ func newPersistentVolumeClaims(c *CoreV1Client, namespace string) *persistentVol
 func (c *persistentVolumeClaims) Get(ctx context.Context, name string, options metav1.GetOptions) (result *v1.PersistentVolumeClaim, err error) {
 	result = &v1.PersistentVolumeClaim{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		Name(name).
@@ -90,6 +93,7 @@ func (c *persistentVolumeClaims) List(ctx context.Context, opts metav1.ListOptio
 	}
 	result = &v1.PersistentVolumeClaimList{}
 	err = c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -118,6 +122,7 @@ func (c *persistentVolumeClaims) Watch(ctx context.Context, opts metav1.ListOpti
 func (c *persistentVolumeClaims) Create(ctx context.Context, persistentVolumeClaim *v1.PersistentVolumeClaim, opts metav1.CreateOptions) (result *v1.PersistentVolumeClaim, err error) {
 	result = &v1.PersistentVolumeClaim{}
 	err = c.client.Post().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -131,6 +136,7 @@ func (c *persistentVolumeClaims) Create(ctx context.Context, persistentVolumeCla
 func (c *persistentVolumeClaims) Update(ctx context.Context, persistentVolumeClaim *v1.PersistentVolumeClaim, opts metav1.UpdateOptions) (result *v1.PersistentVolumeClaim, err error) {
 	result = &v1.PersistentVolumeClaim{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		Name(persistentVolumeClaim.Name).
@@ -146,6 +152,7 @@ func (c *persistentVolumeClaims) Update(ctx context.Context, persistentVolumeCla
 func (c *persistentVolumeClaims) UpdateStatus(ctx context.Context, persistentVolumeClaim *v1.PersistentVolumeClaim, opts metav1.UpdateOptions) (result *v1.PersistentVolumeClaim, err error) {
 	result = &v1.PersistentVolumeClaim{}
 	err = c.client.Put().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		Name(persistentVolumeClaim.Name).
@@ -160,6 +167,7 @@ func (c *persistentVolumeClaims) UpdateStatus(ctx context.Context, persistentVol
 // Delete takes name of the persistentVolumeClaim and deletes it. Returns an error if one occurs.
 func (c *persistentVolumeClaims) Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error {
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		Name(name).
@@ -175,6 +183,7 @@ func (c *persistentVolumeClaims) DeleteCollection(ctx context.Context, opts meta
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
@@ -188,6 +197,7 @@ func (c *persistentVolumeClaims) DeleteCollection(ctx context.Context, opts meta
 func (c *persistentVolumeClaims) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (result *v1.PersistentVolumeClaim, err error) {
 	result = &v1.PersistentVolumeClaim{}
 	err = c.client.Patch(pt).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		Name(name).
@@ -215,6 +225,7 @@ func (c *persistentVolumeClaims) Apply(ctx context.Context, persistentVolumeClai
 	}
 	result = &v1.PersistentVolumeClaim{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		Name(*name).
@@ -244,6 +255,7 @@ func (c *persistentVolumeClaims) ApplyStatus(ctx context.Context, persistentVolu
 
 	result = &v1.PersistentVolumeClaim{}
 	err = c.client.Patch(types.ApplyPatchType).
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("persistentvolumeclaims").
 		Name(*name).

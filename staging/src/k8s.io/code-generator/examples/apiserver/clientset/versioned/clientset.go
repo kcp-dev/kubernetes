@@ -30,6 +30,33 @@ import (
 	thirdexamplev1 "k8s.io/code-generator/examples/apiserver/clientset/versioned/typed/example3.io/v1"
 )
 
+type ClusterInterface interface {
+	Cluster(name string) Interface
+}
+
+type Cluster struct {
+	*scopedClientset
+}
+
+// Cluster sets the cluster for a Clientset.
+func (c *Cluster) Cluster(name string) Interface {
+	return &Clientset{
+		scopedClientset: c.scopedClientset,
+		cluster:         name,
+	}
+}
+
+// NewClusterForConfig creates a new Cluster for the given config.
+// If config's RateLimiter is not set and QPS and Burst are acceptable,
+// NewClusterForConfig will generate a rate-limiter in configShallowCopy.
+func NewClusterForConfig(c *rest.Config) (*Cluster, error) {
+	cs, err := NewForConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	return &Cluster{scopedClientset: cs.scopedClientset}, nil
+}
+
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	ExampleV1() examplev1.ExampleV1Interface
@@ -40,6 +67,13 @@ type Interface interface {
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
+	*scopedClientset
+	cluster string
+}
+
+// scopedClientset contains the clients for groups. Each group has exactly one
+// version included in a Clientset.
+type scopedClientset struct {
 	*discovery.DiscoveryClient
 	exampleV1       *examplev1.ExampleV1Client
 	secondExampleV1 *secondexamplev1.SecondExampleV1Client
@@ -48,17 +82,17 @@ type Clientset struct {
 
 // ExampleV1 retrieves the ExampleV1Client
 func (c *Clientset) ExampleV1() examplev1.ExampleV1Interface {
-	return c.exampleV1
+	return examplev1.NewWithCluster(c.exampleV1.RESTClient(), c.cluster)
 }
 
 // SecondExampleV1 retrieves the SecondExampleV1Client
 func (c *Clientset) SecondExampleV1() secondexamplev1.SecondExampleV1Interface {
-	return c.secondExampleV1
+	return secondexamplev1.NewWithCluster(c.secondExampleV1.RESTClient(), c.cluster)
 }
 
 // ThirdExampleV1 retrieves the ThirdExampleV1Client
 func (c *Clientset) ThirdExampleV1() thirdexamplev1.ThirdExampleV1Interface {
-	return c.thirdExampleV1
+	return thirdexamplev1.NewWithCluster(c.thirdExampleV1.RESTClient(), c.cluster)
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -99,7 +133,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}
 
-	var cs Clientset
+	var cs scopedClientset
 	var err error
 	cs.exampleV1, err = examplev1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -118,7 +152,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
-	return &cs, nil
+	return &Clientset{scopedClientset: &cs}, nil
 }
 
 // NewForConfigOrDie creates a new Clientset for the given config and
@@ -133,11 +167,11 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
-	var cs Clientset
+	var cs scopedClientset
 	cs.exampleV1 = examplev1.New(c)
 	cs.secondExampleV1 = secondexamplev1.New(c)
 	cs.thirdExampleV1 = thirdexamplev1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
-	return &cs
+	return &Clientset{scopedClientset: &cs}
 }

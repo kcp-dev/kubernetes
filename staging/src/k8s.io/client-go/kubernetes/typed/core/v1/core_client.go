@@ -49,6 +49,7 @@ type CoreV1Interface interface {
 // CoreV1Client is used to interact with features provided by the  group.
 type CoreV1Client struct {
 	restClient rest.Interface
+	cluster    string
 }
 
 func (c *CoreV1Client) ComponentStatuses() ComponentStatusInterface {
@@ -141,7 +142,7 @@ func NewForConfigAndClient(c *rest.Config, h *http.Client) (*CoreV1Client, error
 	if err != nil {
 		return nil, err
 	}
-	return &CoreV1Client{client}, nil
+	return &CoreV1Client{restClient: client}, nil
 }
 
 // NewForConfigOrDie creates a new CoreV1Client for the given config and
@@ -156,7 +157,12 @@ func NewForConfigOrDie(c *rest.Config) *CoreV1Client {
 
 // New creates a new CoreV1Client for the given RESTClient.
 func New(c rest.Interface) *CoreV1Client {
-	return &CoreV1Client{c}
+	return &CoreV1Client{restClient: c}
+}
+
+// NewWithCluster creates a new CoreV1Client for the given RESTClient and cluster.
+func NewWithCluster(c rest.Interface, cluster string) *CoreV1Client {
+	return &CoreV1Client{restClient: c, cluster: cluster}
 }
 
 func setConfigDefaults(config *rest.Config) error {
