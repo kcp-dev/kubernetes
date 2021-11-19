@@ -51,7 +51,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -275,6 +274,18 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var crdClusterName string
 	var crd *apiextensionsv1.CustomResourceDefinition
 	var err error
+	handleErrorFunc := func(err error) {
+		if apierrors.IsNotFound(err) {
+			r.delegate.ServeHTTP(w, req)
+		}
+		if err != nil {
+			utilruntime.HandleError(err)
+			responsewriters.ErrorNegotiated(
+				apierrors.NewInternalError(fmt.Errorf("error resolving resource: %v", err)),
+				Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
+			)
+		}
+	}
 
 	cluster, err := genericapirequest.ValidClusterFrom(ctx)
 	if err != nil {
@@ -293,45 +304,32 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		// with non-equal specs (especially non-equal schemas).
 		var crds []*apiextensionsv1.CustomResourceDefinition
 		crds, err = r.crdLister.List(labels.Everything())
-		if err == nil {
-			if len(crds) == 0 {
-				err = errors.NewNotFound(schema.GroupResource{Group: apiextensionsv1.SchemeGroupVersion.Group, Resource: "customresourcedefinitions"}, "")
-			} else {
-				for _, aCRD := range crds {
-					if aCRD.Name != crdName {
-						continue
-					}
-					if crd == nil {
-						crd = aCRD
-						crdClusterName = aCRD.GetClusterName()
-					} else {
-						if !equality.Semantic.DeepEqual(crd.Spec, aCRD.Spec) {
-							responsewriters.ErrorNegotiated(
-								apierrors.NewInternalError(fmt.Errorf("error resolving resource: cannot watch across logical clusters for a resource type with several distinct schemas")),
-								Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
-							)
-							return
-						}
-					}
-				}
-			}
+		if err != nil {
+			handleErrorFunc(err)
+			return
 		}
+		var equal bool // true if all the found CRDs have the same spec
+		crd, equal = findCRD(crdName, crds)
+		if !equal {
+			err = apierrors.NewInternalError(fmt.Errorf("error resolving resource: cannot watch across logical clusters for a resource type with several distinct schemas"))
+			responsewriters.ErrorNegotiated(err, Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req)
+			return
+		}
+
+		if crd == nil {
+			handleErrorFunc(apierrors.NewNotFound(schema.GroupResource{Group: apiextensionsv1.SchemeGroupVersion.Group, Resource: "customresourcedefinitions"}, ""))
+			return
+		}
+		crdClusterName = crd.GetClusterName()
+
 	} else {
 		crdClusterName = cluster.Name
 		crdKey := clusters.ToClusterAwareKey(crdClusterName, crdName)
 		crd, err = r.crdLister.Get(crdKey)
-	}
-	if apierrors.IsNotFound(err) {
-		r.delegate.ServeHTTP(w, req)
-		return
-	}
-	if err != nil {
-		utilruntime.HandleError(err)
-		responsewriters.ErrorNegotiated(
-			apierrors.NewInternalError(fmt.Errorf("error resolving resource")),
-			Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
-		)
-		return
+		if err != nil {
+			handleErrorFunc(err)
+			return
+		}
 	}
 
 	// if the scope in the CRD and the scope in request differ (with exception of the verbs in possiblyAcrossAllNamespacesVerbs
@@ -1574,4 +1572,22 @@ func buildOpenAPIModelsForApply(staticOpenAPISpec *spec.Swagger, crd *apiextensi
 		return nil, err
 	}
 	return models, nil
+}
+func findCRD(crdName string, crds []*apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, bool) {
+	var crd *apiextensionsv1.CustomResourceDefinition
+
+	for _, aCRD := range crds {
+		if aCRD.Name != crdName {
+			continue
+		}
+		if crd == nil {
+			crd = aCRD
+		} else {
+			if !equality.Semantic.DeepEqual(crd.Spec, aCRD.Spec) {
+				return crd, false
+			}
+		}
+	}
+
+	return crd, true
 }
