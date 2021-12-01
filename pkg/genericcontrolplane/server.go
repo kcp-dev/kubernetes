@@ -234,20 +234,13 @@ func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 	[]admission.PluginInitializer,
 	error,
 ) {
-	genericConfig, serviceResolver, pluginInitializers, storageFactory, err := BuildGenericConfig(s.ServerRunOptions)
+	genericConfig, serviceResolver, pluginInitializers, storageFactory, versionedInformers, err := BuildGenericConfig(s.ServerRunOptions)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	s.Metrics.Apply()
 	serviceaccount.RegisterMetrics()
-
-	kubeClientConfig := genericConfig.LoopbackClientConfig
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create real external clientset: %v", err)
-	}
-	versionedInformers := clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
 
 	s.Logs.Apply()
 
@@ -314,6 +307,7 @@ func BuildGenericConfig(
 	pluginInitializers []admission.PluginInitializer,
 	// admissionPostStartHook genericapiserver.PostStartHookFunc,
 	storageFactory *serverstorage.DefaultStorageFactory,
+	versionedInformers clientgoinformers.SharedInformerFactory,
 	lastErr error,
 ) {
 	genericConfig = genericapiserver.NewConfig(genericcontrolplanescheme.Codecs)
@@ -392,7 +386,7 @@ func BuildGenericConfig(
 		lastErr = fmt.Errorf("failed to create real external clientset: %v", err)
 		return
 	}
-	versionedInformers := clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
+	versionedInformers = clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
 
 	// Authentication.ApplyTo requires already applied OpenAPIConfig and EgressSelector if present
 	if lastErr = AuthenticationApplyTo(s.Authentication, &genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig); lastErr != nil {
