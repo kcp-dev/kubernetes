@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type SecretLister interface {
 	// List lists all Secrets in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Secret, err error)
+	// ListWithContext lists all Secrets in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Secret, err error)
 	// Secrets returns an object that can list and get Secrets.
 	Secrets(namespace string) SecretNamespaceLister
 	SecretListerExpansion
@@ -48,6 +53,11 @@ func NewSecretLister(indexer cache.Indexer) SecretLister {
 
 // List lists all Secrets in the indexer.
 func (s *secretLister) List(selector labels.Selector) (ret []*v1.Secret, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Secrets in the indexer.
+func (s *secretLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Secret, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Secret))
 	})
@@ -80,6 +90,11 @@ type secretNamespaceLister struct {
 
 // List lists all Secrets in the indexer for a given namespace.
 func (s secretNamespaceLister) List(selector labels.Selector) (ret []*v1.Secret, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Secrets in the indexer for a given namespace.
+func (s secretNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Secret, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Secret))
 	})
@@ -88,6 +103,11 @@ func (s secretNamespaceLister) List(selector labels.Selector) (ret []*v1.Secret,
 
 // Get retrieves the Secret from the indexer for a given namespace and name.
 func (s secretNamespaceLister) Get(name string) (*v1.Secret, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Secret from the indexer for a given namespace and name.
+func (s secretNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Secret, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

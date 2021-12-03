@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type ClusterRoleBindingLister interface {
 	// List lists all ClusterRoleBindings in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ClusterRoleBinding, err error)
+	// ListWithContext lists all ClusterRoleBindings in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ClusterRoleBinding, err error)
 	// Get retrieves the ClusterRoleBinding from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.ClusterRoleBinding, error)
+	// GetWithContext retrieves the ClusterRoleBinding from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.ClusterRoleBinding, error)
 	ClusterRoleBindingListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewClusterRoleBindingLister(indexer cache.Indexer) ClusterRoleBindingLister
 
 // List lists all ClusterRoleBindings in the indexer.
 func (s *clusterRoleBindingLister) List(selector labels.Selector) (ret []*v1.ClusterRoleBinding, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all ClusterRoleBindings in the indexer.
+func (s *clusterRoleBindingLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ClusterRoleBinding, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ClusterRoleBinding))
 	})
@@ -57,6 +70,11 @@ func (s *clusterRoleBindingLister) List(selector labels.Selector) (ret []*v1.Clu
 
 // Get retrieves the ClusterRoleBinding from the index for a given name.
 func (s *clusterRoleBindingLister) Get(name string) (*v1.ClusterRoleBinding, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the ClusterRoleBinding from the index for a given name.
+func (s *clusterRoleBindingLister) GetWithContext(ctx context.Context, name string) (*v1.ClusterRoleBinding, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type ReplicationControllerLister interface {
 	// List lists all ReplicationControllers in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ReplicationController, err error)
+	// ListWithContext lists all ReplicationControllers in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ReplicationController, err error)
 	// ReplicationControllers returns an object that can list and get ReplicationControllers.
 	ReplicationControllers(namespace string) ReplicationControllerNamespaceLister
 	ReplicationControllerListerExpansion
@@ -48,6 +53,11 @@ func NewReplicationControllerLister(indexer cache.Indexer) ReplicationController
 
 // List lists all ReplicationControllers in the indexer.
 func (s *replicationControllerLister) List(selector labels.Selector) (ret []*v1.ReplicationController, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all ReplicationControllers in the indexer.
+func (s *replicationControllerLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ReplicationController, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ReplicationController))
 	})
@@ -80,6 +90,11 @@ type replicationControllerNamespaceLister struct {
 
 // List lists all ReplicationControllers in the indexer for a given namespace.
 func (s replicationControllerNamespaceLister) List(selector labels.Selector) (ret []*v1.ReplicationController, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all ReplicationControllers in the indexer for a given namespace.
+func (s replicationControllerNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ReplicationController, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ReplicationController))
 	})
@@ -88,6 +103,11 @@ func (s replicationControllerNamespaceLister) List(selector labels.Selector) (re
 
 // Get retrieves the ReplicationController from the indexer for a given namespace and name.
 func (s replicationControllerNamespaceLister) Get(name string) (*v1.ReplicationController, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the ReplicationController from the indexer for a given namespace and name.
+func (s replicationControllerNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.ReplicationController, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

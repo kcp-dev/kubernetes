@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
@@ -31,6 +33,9 @@ type FooLister interface {
 	// List lists all Foos in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Foo, err error)
+	// ListWithContext lists all Foos in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Foo, err error)
 	// Foos returns an object that can list and get Foos.
 	Foos(namespace string) FooNamespaceLister
 	FooListerExpansion
@@ -48,6 +53,11 @@ func NewFooLister(indexer cache.Indexer) FooLister {
 
 // List lists all Foos in the indexer.
 func (s *fooLister) List(selector labels.Selector) (ret []*v1alpha1.Foo, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Foos in the indexer.
+func (s *fooLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Foo, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Foo))
 	})
@@ -80,6 +90,11 @@ type fooNamespaceLister struct {
 
 // List lists all Foos in the indexer for a given namespace.
 func (s fooNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Foo, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Foos in the indexer for a given namespace.
+func (s fooNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Foo, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Foo))
 	})
@@ -88,6 +103,11 @@ func (s fooNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Foo,
 
 // Get retrieves the Foo from the indexer for a given namespace and name.
 func (s fooNamespaceLister) Get(name string) (*v1alpha1.Foo, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Foo from the indexer for a given namespace and name.
+func (s fooNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.Foo, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

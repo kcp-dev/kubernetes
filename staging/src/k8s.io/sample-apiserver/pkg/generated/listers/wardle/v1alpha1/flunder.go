@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
@@ -31,6 +33,9 @@ type FlunderLister interface {
 	// List lists all Flunders in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Flunder, err error)
+	// ListWithContext lists all Flunders in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Flunder, err error)
 	// Flunders returns an object that can list and get Flunders.
 	Flunders(namespace string) FlunderNamespaceLister
 	FlunderListerExpansion
@@ -48,6 +53,11 @@ func NewFlunderLister(indexer cache.Indexer) FlunderLister {
 
 // List lists all Flunders in the indexer.
 func (s *flunderLister) List(selector labels.Selector) (ret []*v1alpha1.Flunder, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Flunders in the indexer.
+func (s *flunderLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Flunder, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Flunder))
 	})
@@ -80,6 +90,11 @@ type flunderNamespaceLister struct {
 
 // List lists all Flunders in the indexer for a given namespace.
 func (s flunderNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Flunder, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Flunders in the indexer for a given namespace.
+func (s flunderNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Flunder, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Flunder))
 	})
@@ -88,6 +103,11 @@ func (s flunderNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.
 
 // Get retrieves the Flunder from the indexer for a given namespace and name.
 func (s flunderNamespaceLister) Get(name string) (*v1alpha1.Flunder, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Flunder from the indexer for a given namespace and name.
+func (s flunderNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.Flunder, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type PersistentVolumeClaimLister interface {
 	// List lists all PersistentVolumeClaims in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error)
+	// ListWithContext lists all PersistentVolumeClaims in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error)
 	// PersistentVolumeClaims returns an object that can list and get PersistentVolumeClaims.
 	PersistentVolumeClaims(namespace string) PersistentVolumeClaimNamespaceLister
 	PersistentVolumeClaimListerExpansion
@@ -48,6 +53,11 @@ func NewPersistentVolumeClaimLister(indexer cache.Indexer) PersistentVolumeClaim
 
 // List lists all PersistentVolumeClaims in the indexer.
 func (s *persistentVolumeClaimLister) List(selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all PersistentVolumeClaims in the indexer.
+func (s *persistentVolumeClaimLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.PersistentVolumeClaim))
 	})
@@ -80,6 +90,11 @@ type persistentVolumeClaimNamespaceLister struct {
 
 // List lists all PersistentVolumeClaims in the indexer for a given namespace.
 func (s persistentVolumeClaimNamespaceLister) List(selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all PersistentVolumeClaims in the indexer for a given namespace.
+func (s persistentVolumeClaimNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PersistentVolumeClaim, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.PersistentVolumeClaim))
 	})
@@ -88,6 +103,11 @@ func (s persistentVolumeClaimNamespaceLister) List(selector labels.Selector) (re
 
 // Get retrieves the PersistentVolumeClaim from the indexer for a given namespace and name.
 func (s persistentVolumeClaimNamespaceLister) Get(name string) (*v1.PersistentVolumeClaim, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the PersistentVolumeClaim from the indexer for a given namespace and name.
+func (s persistentVolumeClaimNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.PersistentVolumeClaim, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

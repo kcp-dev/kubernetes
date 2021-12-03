@@ -19,6 +19,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
@@ -31,9 +33,15 @@ type APIServiceLister interface {
 	// List lists all APIServices in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.APIService, err error)
+	// ListWithContext lists all APIServices in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.APIService, err error)
 	// Get retrieves the APIService from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1beta1.APIService, error)
+	// GetWithContext retrieves the APIService from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1beta1.APIService, error)
 	APIServiceListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewAPIServiceLister(indexer cache.Indexer) APIServiceLister {
 
 // List lists all APIServices in the indexer.
 func (s *aPIServiceLister) List(selector labels.Selector) (ret []*v1beta1.APIService, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all APIServices in the indexer.
+func (s *aPIServiceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.APIService, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.APIService))
 	})
@@ -57,6 +70,11 @@ func (s *aPIServiceLister) List(selector labels.Selector) (ret []*v1beta1.APISer
 
 // Get retrieves the APIService from the index for a given name.
 func (s *aPIServiceLister) Get(name string) (*v1beta1.APIService, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the APIService from the index for a given name.
+func (s *aPIServiceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.APIService, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

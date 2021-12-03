@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type CustomResourceDefinitionLister interface {
 	// List lists all CustomResourceDefinitions in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.CustomResourceDefinition, err error)
+	// ListWithContext lists all CustomResourceDefinitions in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CustomResourceDefinition, err error)
 	// Get retrieves the CustomResourceDefinition from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.CustomResourceDefinition, error)
+	// GetWithContext retrieves the CustomResourceDefinition from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.CustomResourceDefinition, error)
 	CustomResourceDefinitionListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewCustomResourceDefinitionLister(indexer cache.Indexer) CustomResourceDefi
 
 // List lists all CustomResourceDefinitions in the indexer.
 func (s *customResourceDefinitionLister) List(selector labels.Selector) (ret []*v1.CustomResourceDefinition, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all CustomResourceDefinitions in the indexer.
+func (s *customResourceDefinitionLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CustomResourceDefinition, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.CustomResourceDefinition))
 	})
@@ -57,6 +70,11 @@ func (s *customResourceDefinitionLister) List(selector labels.Selector) (ret []*
 
 // Get retrieves the CustomResourceDefinition from the index for a given name.
 func (s *customResourceDefinitionLister) Get(name string) (*v1.CustomResourceDefinition, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the CustomResourceDefinition from the index for a given name.
+func (s *customResourceDefinitionLister) GetWithContext(ctx context.Context, name string) (*v1.CustomResourceDefinition, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

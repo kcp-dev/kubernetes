@@ -19,6 +19,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
+
 	v1beta1 "k8s.io/api/events/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type EventLister interface {
 	// List lists all Events in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.Event, err error)
+	// ListWithContext lists all Events in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Event, err error)
 	// Events returns an object that can list and get Events.
 	Events(namespace string) EventNamespaceLister
 	EventListerExpansion
@@ -48,6 +53,11 @@ func NewEventLister(indexer cache.Indexer) EventLister {
 
 // List lists all Events in the indexer.
 func (s *eventLister) List(selector labels.Selector) (ret []*v1beta1.Event, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Events in the indexer.
+func (s *eventLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Event, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Event))
 	})
@@ -80,6 +90,11 @@ type eventNamespaceLister struct {
 
 // List lists all Events in the indexer for a given namespace.
 func (s eventNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.Event, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Events in the indexer for a given namespace.
+func (s eventNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Event, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Event))
 	})
@@ -88,6 +103,11 @@ func (s eventNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.Eve
 
 // Get retrieves the Event from the indexer for a given namespace and name.
 func (s eventNamespaceLister) Get(name string) (*v1beta1.Event, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Event from the indexer for a given namespace and name.
+func (s eventNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.Event, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

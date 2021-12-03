@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type JobLister interface {
 	// List lists all Jobs in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Job, err error)
+	// ListWithContext lists all Jobs in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Job, err error)
 	// Jobs returns an object that can list and get Jobs.
 	Jobs(namespace string) JobNamespaceLister
 	JobListerExpansion
@@ -48,6 +53,11 @@ func NewJobLister(indexer cache.Indexer) JobLister {
 
 // List lists all Jobs in the indexer.
 func (s *jobLister) List(selector labels.Selector) (ret []*v1.Job, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Jobs in the indexer.
+func (s *jobLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Job, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Job))
 	})
@@ -80,6 +90,11 @@ type jobNamespaceLister struct {
 
 // List lists all Jobs in the indexer for a given namespace.
 func (s jobNamespaceLister) List(selector labels.Selector) (ret []*v1.Job, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Jobs in the indexer for a given namespace.
+func (s jobNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Job, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Job))
 	})
@@ -88,6 +103,11 @@ func (s jobNamespaceLister) List(selector labels.Selector) (ret []*v1.Job, err e
 
 // Get retrieves the Job from the indexer for a given namespace and name.
 func (s jobNamespaceLister) Get(name string) (*v1.Job, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Job from the indexer for a given namespace and name.
+func (s jobNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Job, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

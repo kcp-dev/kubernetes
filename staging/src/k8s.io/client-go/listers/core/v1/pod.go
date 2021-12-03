@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type PodLister interface {
 	// List lists all Pods in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Pod, err error)
+	// ListWithContext lists all Pods in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Pod, err error)
 	// Pods returns an object that can list and get Pods.
 	Pods(namespace string) PodNamespaceLister
 	PodListerExpansion
@@ -48,6 +53,11 @@ func NewPodLister(indexer cache.Indexer) PodLister {
 
 // List lists all Pods in the indexer.
 func (s *podLister) List(selector labels.Selector) (ret []*v1.Pod, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Pods in the indexer.
+func (s *podLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Pod, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Pod))
 	})
@@ -80,6 +90,11 @@ type podNamespaceLister struct {
 
 // List lists all Pods in the indexer for a given namespace.
 func (s podNamespaceLister) List(selector labels.Selector) (ret []*v1.Pod, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Pods in the indexer for a given namespace.
+func (s podNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Pod, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Pod))
 	})
@@ -88,6 +103,11 @@ func (s podNamespaceLister) List(selector labels.Selector) (ret []*v1.Pod, err e
 
 // Get retrieves the Pod from the indexer for a given namespace and name.
 func (s podNamespaceLister) Get(name string) (*v1.Pod, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Pod from the indexer for a given namespace and name.
+func (s podNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Pod, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

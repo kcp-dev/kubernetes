@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type ComponentStatusLister interface {
 	// List lists all ComponentStatuses in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ComponentStatus, err error)
+	// ListWithContext lists all ComponentStatuses in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ComponentStatus, err error)
 	// Get retrieves the ComponentStatus from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.ComponentStatus, error)
+	// GetWithContext retrieves the ComponentStatus from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.ComponentStatus, error)
 	ComponentStatusListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewComponentStatusLister(indexer cache.Indexer) ComponentStatusLister {
 
 // List lists all ComponentStatuses in the indexer.
 func (s *componentStatusLister) List(selector labels.Selector) (ret []*v1.ComponentStatus, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all ComponentStatuses in the indexer.
+func (s *componentStatusLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ComponentStatus, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ComponentStatus))
 	})
@@ -57,6 +70,11 @@ func (s *componentStatusLister) List(selector labels.Selector) (ret []*v1.Compon
 
 // Get retrieves the ComponentStatus from the index for a given name.
 func (s *componentStatusLister) Get(name string) (*v1.ComponentStatus, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the ComponentStatus from the index for a given name.
+func (s *componentStatusLister) GetWithContext(ctx context.Context, name string) (*v1.ComponentStatus, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

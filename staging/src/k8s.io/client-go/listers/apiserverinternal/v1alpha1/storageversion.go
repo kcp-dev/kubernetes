@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	v1alpha1 "k8s.io/api/apiserverinternal/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type StorageVersionLister interface {
 	// List lists all StorageVersions in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.StorageVersion, err error)
+	// ListWithContext lists all StorageVersions in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.StorageVersion, err error)
 	// Get retrieves the StorageVersion from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.StorageVersion, error)
+	// GetWithContext retrieves the StorageVersion from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1alpha1.StorageVersion, error)
 	StorageVersionListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewStorageVersionLister(indexer cache.Indexer) StorageVersionLister {
 
 // List lists all StorageVersions in the indexer.
 func (s *storageVersionLister) List(selector labels.Selector) (ret []*v1alpha1.StorageVersion, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all StorageVersions in the indexer.
+func (s *storageVersionLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.StorageVersion, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.StorageVersion))
 	})
@@ -57,6 +70,11 @@ func (s *storageVersionLister) List(selector labels.Selector) (ret []*v1alpha1.S
 
 // Get retrieves the StorageVersion from the index for a given name.
 func (s *storageVersionLister) Get(name string) (*v1alpha1.StorageVersion, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the StorageVersion from the index for a given name.
+func (s *storageVersionLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.StorageVersion, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

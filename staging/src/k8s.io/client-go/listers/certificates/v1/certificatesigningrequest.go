@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/certificates/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type CertificateSigningRequestLister interface {
 	// List lists all CertificateSigningRequests in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.CertificateSigningRequest, err error)
+	// ListWithContext lists all CertificateSigningRequests in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CertificateSigningRequest, err error)
 	// Get retrieves the CertificateSigningRequest from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.CertificateSigningRequest, error)
+	// GetWithContext retrieves the CertificateSigningRequest from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.CertificateSigningRequest, error)
 	CertificateSigningRequestListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewCertificateSigningRequestLister(indexer cache.Indexer) CertificateSignin
 
 // List lists all CertificateSigningRequests in the indexer.
 func (s *certificateSigningRequestLister) List(selector labels.Selector) (ret []*v1.CertificateSigningRequest, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all CertificateSigningRequests in the indexer.
+func (s *certificateSigningRequestLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CertificateSigningRequest, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.CertificateSigningRequest))
 	})
@@ -57,6 +70,11 @@ func (s *certificateSigningRequestLister) List(selector labels.Selector) (ret []
 
 // Get retrieves the CertificateSigningRequest from the index for a given name.
 func (s *certificateSigningRequestLister) Get(name string) (*v1.CertificateSigningRequest, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the CertificateSigningRequest from the index for a given name.
+func (s *certificateSigningRequestLister) GetWithContext(ctx context.Context, name string) (*v1.CertificateSigningRequest, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

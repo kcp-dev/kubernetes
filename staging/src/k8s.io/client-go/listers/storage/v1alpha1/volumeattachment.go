@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	v1alpha1 "k8s.io/api/storage/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type VolumeAttachmentLister interface {
 	// List lists all VolumeAttachments in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.VolumeAttachment, err error)
+	// ListWithContext lists all VolumeAttachments in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.VolumeAttachment, err error)
 	// Get retrieves the VolumeAttachment from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.VolumeAttachment, error)
+	// GetWithContext retrieves the VolumeAttachment from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1alpha1.VolumeAttachment, error)
 	VolumeAttachmentListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewVolumeAttachmentLister(indexer cache.Indexer) VolumeAttachmentLister {
 
 // List lists all VolumeAttachments in the indexer.
 func (s *volumeAttachmentLister) List(selector labels.Selector) (ret []*v1alpha1.VolumeAttachment, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all VolumeAttachments in the indexer.
+func (s *volumeAttachmentLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.VolumeAttachment, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.VolumeAttachment))
 	})
@@ -57,6 +70,11 @@ func (s *volumeAttachmentLister) List(selector labels.Selector) (ret []*v1alpha1
 
 // Get retrieves the VolumeAttachment from the index for a given name.
 func (s *volumeAttachmentLister) Get(name string) (*v1alpha1.VolumeAttachment, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the VolumeAttachment from the index for a given name.
+func (s *volumeAttachmentLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.VolumeAttachment, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

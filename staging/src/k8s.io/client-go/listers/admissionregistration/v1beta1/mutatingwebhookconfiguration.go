@@ -19,6 +19,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
+
 	v1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type MutatingWebhookConfigurationLister interface {
 	// List lists all MutatingWebhookConfigurations in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.MutatingWebhookConfiguration, err error)
+	// ListWithContext lists all MutatingWebhookConfigurations in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.MutatingWebhookConfiguration, err error)
 	// Get retrieves the MutatingWebhookConfiguration from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1beta1.MutatingWebhookConfiguration, error)
+	// GetWithContext retrieves the MutatingWebhookConfiguration from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1beta1.MutatingWebhookConfiguration, error)
 	MutatingWebhookConfigurationListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewMutatingWebhookConfigurationLister(indexer cache.Indexer) MutatingWebhoo
 
 // List lists all MutatingWebhookConfigurations in the indexer.
 func (s *mutatingWebhookConfigurationLister) List(selector labels.Selector) (ret []*v1beta1.MutatingWebhookConfiguration, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all MutatingWebhookConfigurations in the indexer.
+func (s *mutatingWebhookConfigurationLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.MutatingWebhookConfiguration, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.MutatingWebhookConfiguration))
 	})
@@ -57,6 +70,11 @@ func (s *mutatingWebhookConfigurationLister) List(selector labels.Selector) (ret
 
 // Get retrieves the MutatingWebhookConfiguration from the index for a given name.
 func (s *mutatingWebhookConfigurationLister) Get(name string) (*v1beta1.MutatingWebhookConfiguration, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the MutatingWebhookConfiguration from the index for a given name.
+func (s *mutatingWebhookConfigurationLister) GetWithContext(ctx context.Context, name string) (*v1beta1.MutatingWebhookConfiguration, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

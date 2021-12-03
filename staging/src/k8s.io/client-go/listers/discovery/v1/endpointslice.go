@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type EndpointSliceLister interface {
 	// List lists all EndpointSlices in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.EndpointSlice, err error)
+	// ListWithContext lists all EndpointSlices in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.EndpointSlice, err error)
 	// EndpointSlices returns an object that can list and get EndpointSlices.
 	EndpointSlices(namespace string) EndpointSliceNamespaceLister
 	EndpointSliceListerExpansion
@@ -48,6 +53,11 @@ func NewEndpointSliceLister(indexer cache.Indexer) EndpointSliceLister {
 
 // List lists all EndpointSlices in the indexer.
 func (s *endpointSliceLister) List(selector labels.Selector) (ret []*v1.EndpointSlice, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all EndpointSlices in the indexer.
+func (s *endpointSliceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.EndpointSlice, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.EndpointSlice))
 	})
@@ -80,6 +90,11 @@ type endpointSliceNamespaceLister struct {
 
 // List lists all EndpointSlices in the indexer for a given namespace.
 func (s endpointSliceNamespaceLister) List(selector labels.Selector) (ret []*v1.EndpointSlice, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all EndpointSlices in the indexer for a given namespace.
+func (s endpointSliceNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.EndpointSlice, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.EndpointSlice))
 	})
@@ -88,6 +103,11 @@ func (s endpointSliceNamespaceLister) List(selector labels.Selector) (ret []*v1.
 
 // Get retrieves the EndpointSlice from the indexer for a given namespace and name.
 func (s endpointSliceNamespaceLister) Get(name string) (*v1.EndpointSlice, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the EndpointSlice from the indexer for a given namespace and name.
+func (s endpointSliceNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.EndpointSlice, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

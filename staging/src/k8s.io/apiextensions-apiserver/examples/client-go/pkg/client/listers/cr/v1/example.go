@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/apiextensions-apiserver/examples/client-go/pkg/apis/cr/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type ExampleLister interface {
 	// List lists all Examples in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Example, err error)
+	// ListWithContext lists all Examples in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Example, err error)
 	// Examples returns an object that can list and get Examples.
 	Examples(namespace string) ExampleNamespaceLister
 	ExampleListerExpansion
@@ -48,6 +53,11 @@ func NewExampleLister(indexer cache.Indexer) ExampleLister {
 
 // List lists all Examples in the indexer.
 func (s *exampleLister) List(selector labels.Selector) (ret []*v1.Example, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Examples in the indexer.
+func (s *exampleLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Example, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Example))
 	})
@@ -80,6 +90,11 @@ type exampleNamespaceLister struct {
 
 // List lists all Examples in the indexer for a given namespace.
 func (s exampleNamespaceLister) List(selector labels.Selector) (ret []*v1.Example, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Examples in the indexer for a given namespace.
+func (s exampleNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Example, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Example))
 	})
@@ -88,6 +103,11 @@ func (s exampleNamespaceLister) List(selector labels.Selector) (ret []*v1.Exampl
 
 // Get retrieves the Example from the indexer for a given namespace and name.
 func (s exampleNamespaceLister) Get(name string) (*v1.Example, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Example from the indexer for a given namespace and name.
+func (s exampleNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Example, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

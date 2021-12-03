@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	v1alpha1 "k8s.io/api/scheduling/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type PriorityClassLister interface {
 	// List lists all PriorityClasses in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.PriorityClass, err error)
+	// ListWithContext lists all PriorityClasses in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.PriorityClass, err error)
 	// Get retrieves the PriorityClass from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.PriorityClass, error)
+	// GetWithContext retrieves the PriorityClass from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1alpha1.PriorityClass, error)
 	PriorityClassListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewPriorityClassLister(indexer cache.Indexer) PriorityClassLister {
 
 // List lists all PriorityClasses in the indexer.
 func (s *priorityClassLister) List(selector labels.Selector) (ret []*v1alpha1.PriorityClass, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all PriorityClasses in the indexer.
+func (s *priorityClassLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.PriorityClass, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.PriorityClass))
 	})
@@ -57,6 +70,11 @@ func (s *priorityClassLister) List(selector labels.Selector) (ret []*v1alpha1.Pr
 
 // Get retrieves the PriorityClass from the index for a given name.
 func (s *priorityClassLister) Get(name string) (*v1alpha1.PriorityClass, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the PriorityClass from the index for a given name.
+func (s *priorityClassLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.PriorityClass, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

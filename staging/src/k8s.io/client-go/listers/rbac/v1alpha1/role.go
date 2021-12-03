@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"context"
+
 	v1alpha1 "k8s.io/api/rbac/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type RoleLister interface {
 	// List lists all Roles in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Role, err error)
+	// ListWithContext lists all Roles in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Role, err error)
 	// Roles returns an object that can list and get Roles.
 	Roles(namespace string) RoleNamespaceLister
 	RoleListerExpansion
@@ -48,6 +53,11 @@ func NewRoleLister(indexer cache.Indexer) RoleLister {
 
 // List lists all Roles in the indexer.
 func (s *roleLister) List(selector labels.Selector) (ret []*v1alpha1.Role, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Roles in the indexer.
+func (s *roleLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Role, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Role))
 	})
@@ -80,6 +90,11 @@ type roleNamespaceLister struct {
 
 // List lists all Roles in the indexer for a given namespace.
 func (s roleNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Role, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Roles in the indexer for a given namespace.
+func (s roleNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.Role, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.Role))
 	})
@@ -88,6 +103,11 @@ func (s roleNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Rol
 
 // Get retrieves the Role from the indexer for a given namespace and name.
 func (s roleNamespaceLister) Get(name string) (*v1alpha1.Role, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Role from the indexer for a given namespace and name.
+func (s roleNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.Role, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

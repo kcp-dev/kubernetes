@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/coordination/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type LeaseLister interface {
 	// List lists all Leases in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Lease, err error)
+	// ListWithContext lists all Leases in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Lease, err error)
 	// Leases returns an object that can list and get Leases.
 	Leases(namespace string) LeaseNamespaceLister
 	LeaseListerExpansion
@@ -48,6 +53,11 @@ func NewLeaseLister(indexer cache.Indexer) LeaseLister {
 
 // List lists all Leases in the indexer.
 func (s *leaseLister) List(selector labels.Selector) (ret []*v1.Lease, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Leases in the indexer.
+func (s *leaseLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Lease, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Lease))
 	})
@@ -80,6 +90,11 @@ type leaseNamespaceLister struct {
 
 // List lists all Leases in the indexer for a given namespace.
 func (s leaseNamespaceLister) List(selector labels.Selector) (ret []*v1.Lease, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Leases in the indexer for a given namespace.
+func (s leaseNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Lease, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Lease))
 	})
@@ -88,6 +103,11 @@ func (s leaseNamespaceLister) List(selector labels.Selector) (ret []*v1.Lease, e
 
 // Get retrieves the Lease from the indexer for a given namespace and name.
 func (s leaseNamespaceLister) Get(name string) (*v1.Lease, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Lease from the indexer for a given namespace and name.
+func (s leaseNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Lease, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type ClusterRoleLister interface {
 	// List lists all ClusterRoles in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ClusterRole, err error)
+	// ListWithContext lists all ClusterRoles in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ClusterRole, err error)
 	// Get retrieves the ClusterRole from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.ClusterRole, error)
+	// GetWithContext retrieves the ClusterRole from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.ClusterRole, error)
 	ClusterRoleListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewClusterRoleLister(indexer cache.Indexer) ClusterRoleLister {
 
 // List lists all ClusterRoles in the indexer.
 func (s *clusterRoleLister) List(selector labels.Selector) (ret []*v1.ClusterRole, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all ClusterRoles in the indexer.
+func (s *clusterRoleLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ClusterRole, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ClusterRole))
 	})
@@ -57,6 +70,11 @@ func (s *clusterRoleLister) List(selector labels.Selector) (ret []*v1.ClusterRol
 
 // Get retrieves the ClusterRole from the index for a given name.
 func (s *clusterRoleLister) Get(name string) (*v1.ClusterRole, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the ClusterRole from the index for a given name.
+func (s *clusterRoleLister) GetWithContext(ctx context.Context, name string) (*v1.ClusterRole, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

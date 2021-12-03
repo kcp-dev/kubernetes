@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type ValidatingWebhookConfigurationLister interface {
 	// List lists all ValidatingWebhookConfigurations in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ValidatingWebhookConfiguration, err error)
+	// ListWithContext lists all ValidatingWebhookConfigurations in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ValidatingWebhookConfiguration, err error)
 	// Get retrieves the ValidatingWebhookConfiguration from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.ValidatingWebhookConfiguration, error)
+	// GetWithContext retrieves the ValidatingWebhookConfiguration from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.ValidatingWebhookConfiguration, error)
 	ValidatingWebhookConfigurationListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewValidatingWebhookConfigurationLister(indexer cache.Indexer) ValidatingWe
 
 // List lists all ValidatingWebhookConfigurations in the indexer.
 func (s *validatingWebhookConfigurationLister) List(selector labels.Selector) (ret []*v1.ValidatingWebhookConfiguration, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all ValidatingWebhookConfigurations in the indexer.
+func (s *validatingWebhookConfigurationLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ValidatingWebhookConfiguration, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ValidatingWebhookConfiguration))
 	})
@@ -57,6 +70,11 @@ func (s *validatingWebhookConfigurationLister) List(selector labels.Selector) (r
 
 // Get retrieves the ValidatingWebhookConfiguration from the index for a given name.
 func (s *validatingWebhookConfigurationLister) Get(name string) (*v1.ValidatingWebhookConfiguration, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the ValidatingWebhookConfiguration from the index for a given name.
+func (s *validatingWebhookConfigurationLister) GetWithContext(ctx context.Context, name string) (*v1.ValidatingWebhookConfiguration, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

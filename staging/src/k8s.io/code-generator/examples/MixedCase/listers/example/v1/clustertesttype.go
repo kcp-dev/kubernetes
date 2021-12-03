@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
@@ -31,9 +33,15 @@ type ClusterTestTypeLister interface {
 	// List lists all ClusterTestTypes in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ClusterTestType, err error)
+	// ListWithContext lists all ClusterTestTypes in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ClusterTestType, err error)
 	// Get retrieves the ClusterTestType from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.ClusterTestType, error)
+	// GetWithContext retrieves the ClusterTestType from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.ClusterTestType, error)
 	ClusterTestTypeListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewClusterTestTypeLister(indexer cache.Indexer) ClusterTestTypeLister {
 
 // List lists all ClusterTestTypes in the indexer.
 func (s *clusterTestTypeLister) List(selector labels.Selector) (ret []*v1.ClusterTestType, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all ClusterTestTypes in the indexer.
+func (s *clusterTestTypeLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ClusterTestType, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ClusterTestType))
 	})
@@ -57,6 +70,11 @@ func (s *clusterTestTypeLister) List(selector labels.Selector) (ret []*v1.Cluste
 
 // Get retrieves the ClusterTestType from the index for a given name.
 func (s *clusterTestTypeLister) Get(name string) (*v1.ClusterTestType, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the ClusterTestType from the index for a given name.
+func (s *clusterTestTypeLister) GetWithContext(ctx context.Context, name string) (*v1.ClusterTestType, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

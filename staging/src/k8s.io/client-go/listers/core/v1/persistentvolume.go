@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type PersistentVolumeLister interface {
 	// List lists all PersistentVolumes in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.PersistentVolume, err error)
+	// ListWithContext lists all PersistentVolumes in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PersistentVolume, err error)
 	// Get retrieves the PersistentVolume from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.PersistentVolume, error)
+	// GetWithContext retrieves the PersistentVolume from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.PersistentVolume, error)
 	PersistentVolumeListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewPersistentVolumeLister(indexer cache.Indexer) PersistentVolumeLister {
 
 // List lists all PersistentVolumes in the indexer.
 func (s *persistentVolumeLister) List(selector labels.Selector) (ret []*v1.PersistentVolume, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all PersistentVolumes in the indexer.
+func (s *persistentVolumeLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PersistentVolume, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.PersistentVolume))
 	})
@@ -57,6 +70,11 @@ func (s *persistentVolumeLister) List(selector labels.Selector) (ret []*v1.Persi
 
 // Get retrieves the PersistentVolume from the index for a given name.
 func (s *persistentVolumeLister) Get(name string) (*v1.PersistentVolume, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the PersistentVolume from the index for a given name.
+func (s *persistentVolumeLister) GetWithContext(ctx context.Context, name string) (*v1.PersistentVolume, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

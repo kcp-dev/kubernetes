@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,9 +33,15 @@ type CSINodeLister interface {
 	// List lists all CSINodes in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.CSINode, err error)
+	// ListWithContext lists all CSINodes in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CSINode, err error)
 	// Get retrieves the CSINode from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.CSINode, error)
+	// GetWithContext retrieves the CSINode from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	GetWithContext(ctx context.Context, name string) (*v1.CSINode, error)
 	CSINodeListerExpansion
 }
 
@@ -49,6 +57,11 @@ func NewCSINodeLister(indexer cache.Indexer) CSINodeLister {
 
 // List lists all CSINodes in the indexer.
 func (s *cSINodeLister) List(selector labels.Selector) (ret []*v1.CSINode, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all CSINodes in the indexer.
+func (s *cSINodeLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CSINode, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.CSINode))
 	})
@@ -57,6 +70,11 @@ func (s *cSINodeLister) List(selector labels.Selector) (ret []*v1.CSINode, err e
 
 // Get retrieves the CSINode from the index for a given name.
 func (s *cSINodeLister) Get(name string) (*v1.CSINode, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the CSINode from the index for a given name.
+func (s *cSINodeLister) GetWithContext(ctx context.Context, name string) (*v1.CSINode, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,8 @@ limitations under the License.
 package v1
 
 import (
+	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +33,9 @@ type EndpointsLister interface {
 	// List lists all Endpoints in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Endpoints, err error)
+	// ListWithContext lists all Endpoints in the indexer.
+	// Objects returned here must be treated as read-only.
+	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Endpoints, err error)
 	// Endpoints returns an object that can list and get Endpoints.
 	Endpoints(namespace string) EndpointsNamespaceLister
 	EndpointsListerExpansion
@@ -48,6 +53,11 @@ func NewEndpointsLister(indexer cache.Indexer) EndpointsLister {
 
 // List lists all Endpoints in the indexer.
 func (s *endpointsLister) List(selector labels.Selector) (ret []*v1.Endpoints, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Endpoints in the indexer.
+func (s *endpointsLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Endpoints, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Endpoints))
 	})
@@ -80,6 +90,11 @@ type endpointsNamespaceLister struct {
 
 // List lists all Endpoints in the indexer for a given namespace.
 func (s endpointsNamespaceLister) List(selector labels.Selector) (ret []*v1.Endpoints, err error) {
+	return s.ListWithContext(context.Background(), selector)
+}
+
+// ListWithContext lists all Endpoints in the indexer for a given namespace.
+func (s endpointsNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Endpoints, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Endpoints))
 	})
@@ -88,6 +103,11 @@ func (s endpointsNamespaceLister) List(selector labels.Selector) (ret []*v1.Endp
 
 // Get retrieves the Endpoints from the indexer for a given namespace and name.
 func (s endpointsNamespaceLister) Get(name string) (*v1.Endpoints, error) {
+	return s.GetWithContext(context.Background(), name)
+}
+
+// GetWithContext retrieves the Endpoints from the indexer for a given namespace and name.
+func (s endpointsNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Endpoints, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
