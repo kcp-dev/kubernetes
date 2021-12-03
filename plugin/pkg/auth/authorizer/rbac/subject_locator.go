@@ -28,7 +28,7 @@ import (
 type RoleToRuleMapper interface {
 	// GetRoleReferenceRules attempts to resolve the role reference of a RoleBinding or ClusterRoleBinding.  The passed namespace should be the namespace
 	// of the role binding, the empty string if a cluster role binding.
-	GetRoleReferenceRules(roleRef rbacv1.RoleRef, namespace string) ([]rbacv1.PolicyRule, error)
+	GetRoleReferenceRules(roleRef rbacv1.RoleRef, namespace string, cluster ...string) ([]rbacv1.PolicyRule, error)
 }
 
 type SubjectLocator interface {
@@ -66,12 +66,12 @@ func (r *SubjectAccessEvaluator) AllowedSubjects(requestAttributes authorizer.At
 	}
 	errorlist := []error{}
 
-	if clusterRoleBindings, err := r.clusterRoleBindingLister.ListClusterRoleBindings(); err != nil {
+	if clusterRoleBindings, err := r.clusterRoleBindingLister.ListClusterRoleBindings(""); err != nil {
 		errorlist = append(errorlist, err)
 
 	} else {
 		for _, clusterRoleBinding := range clusterRoleBindings {
-			rules, err := r.roleToRuleMapper.GetRoleReferenceRules(clusterRoleBinding.RoleRef, "")
+			rules, err := r.roleToRuleMapper.GetRoleReferenceRules("", clusterRoleBinding.RoleRef, "")
 			if err != nil {
 				// if we have an error, just keep track of it and keep processing.  Since rules are additive,
 				// missing a reference is bad, but we can continue with other rolebindings and still have a list
@@ -85,7 +85,7 @@ func (r *SubjectAccessEvaluator) AllowedSubjects(requestAttributes authorizer.At
 	}
 
 	if namespace := requestAttributes.GetNamespace(); len(namespace) > 0 {
-		if roleBindings, err := r.roleBindingLister.ListRoleBindings(namespace); err != nil {
+		if roleBindings, err := r.roleBindingLister.ListRoleBindings("", namespace); err != nil {
 			errorlist = append(errorlist, err)
 
 		} else {

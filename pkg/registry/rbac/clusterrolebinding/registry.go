@@ -61,7 +61,7 @@ type AuthorizerAdapter struct {
 	Registry Registry
 }
 
-func (a AuthorizerAdapter) ListClusterRoleBindings() ([]*rbacv1.ClusterRoleBinding, error) {
+func (a AuthorizerAdapter) ListClusterRoleBindings(cluster string) ([]*rbacv1.ClusterRoleBinding, error) {
 	list, err := a.Registry.ListClusterRoleBindings(genericapirequest.NewContext(), &metainternalversion.ListOptions{})
 	if err != nil {
 		return nil, err

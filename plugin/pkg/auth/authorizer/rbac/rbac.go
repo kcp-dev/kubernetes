@@ -29,7 +29,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	rbaclisters "k8s.io/client-go/listers/rbac/v1"
+	"k8s.io/client-go/tools/clusters"
 	rbacv1helpers "k8s.io/kubernetes/pkg/apis/rbac/v1"
 	rbacregistryvalidation "k8s.io/kubernetes/pkg/registry/rbac/validation"
 )
@@ -60,6 +62,42 @@ type authorizingVisitor struct {
 	errors  []error
 }
 
+type UserInfoWithCluster struct {
+	Username string
+	UID      string
+	Groups   []string
+	Extra    map[string][]string
+}
+
+func UserInfo(clusterName string, requestAttributes authorizer.Attributes) *UserInfoWithCluster {
+	info := &UserInfoWithCluster{
+		Username: requestAttributes.GetUser().GetName(),
+		UID:      requestAttributes.GetUser().GetUID(),
+		Groups:   requestAttributes.GetUser().GetGroups(),
+		Extra:    map[string][]string{},
+	}
+
+	info.Extra["logical-cluster"] = []string{clusterName}
+
+	return info
+}
+
+func (u *UserInfoWithCluster) GetName() string {
+	return u.Username
+}
+
+func (u *UserInfoWithCluster) GetUID() string {
+	return u.UID
+}
+
+func (u *UserInfoWithCluster) GetGroups() []string {
+	return u.Groups
+}
+
+func (u *UserInfoWithCluster) GetExtra() map[string][]string {
+	return u.Extra
+}
+
 func (v *authorizingVisitor) visit(source fmt.Stringer, rule *rbacv1.PolicyRule, err error) bool {
 	if rule != nil && RuleAllows(v.requestAttributes, rule) {
 		v.allowed = true
@@ -73,9 +111,17 @@ func (v *authorizingVisitor) visit(source fmt.Stringer, rule *rbacv1.PolicyRule,
 }
 
 func (r *RBACAuthorizer) Authorize(ctx context.Context, requestAttributes authorizer.Attributes) (authorizer.Decision, string, error) {
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in authorize action : %s", err.Error())
+	}
+	klog.Infof("cluster is %s", clusterName)
+
 	ruleCheckingVisitor := &authorizingVisitor{requestAttributes: requestAttributes}
 
-	r.authorizationRuleResolver.VisitRulesFor(requestAttributes.GetUser(), requestAttributes.GetNamespace(), ruleCheckingVisitor.visit)
+	user := UserInfo(clusterName, requestAttributes)
+
+	r.authorizationRuleResolver.VisitRulesFor(user, requestAttributes.GetNamespace(), ruleCheckingVisitor.visit)
 	if ruleCheckingVisitor.allowed {
 		return authorizer.DecisionAllow, ruleCheckingVisitor.reason, nil
 	}
@@ -196,7 +242,7 @@ type RoleGetter struct {
 	Lister rbaclisters.RoleLister
 }
 
-func (g *RoleGetter) GetRole(namespace, name string) (*rbacv1.Role, error) {
+func (g *RoleGetter) GetRole(cluster, namespace, name string) (*rbacv1.Role, error) {
 	return g.Lister.Roles(namespace).Get(name)
 }
 
@@ -204,7 +250,7 @@ type RoleBindingLister struct {
 	Lister rbaclisters.RoleBindingLister
 }
 
-func (l *RoleBindingLister) ListRoleBindings(namespace string) ([]*rbacv1.RoleBinding, error) {
+func (l *RoleBindingLister) ListRoleBindings(cluster, namespace string) ([]*rbacv1.RoleBinding, error) {
 	return l.Lister.RoleBindings(namespace).List(labels.Everything())
 }
 
@@ -212,14 +258,29 @@ type ClusterRoleGetter struct {
 	Lister rbaclisters.ClusterRoleLister
 }
 
-func (g *ClusterRoleGetter) GetClusterRole(name string) (*rbacv1.ClusterRole, error) {
-	return g.Lister.Get(name)
+func (g *ClusterRoleGetter) GetClusterRole(cluster, name string) (*rbacv1.ClusterRole, error) {
+	klog.Infof("cluster is %s", cluster)
+	key := clusters.ToClusterAwareKey(cluster, name)
+	a, _ := g.Lister.Get(key)
+	klog.Infof("cluster role are %v", a)
+	return g.Lister.Get(key)
 }
 
 type ClusterRoleBindingLister struct {
 	Lister rbaclisters.ClusterRoleBindingLister
 }
 
-func (l *ClusterRoleBindingLister) ListClusterRoleBindings() ([]*rbacv1.ClusterRoleBinding, error) {
-	return l.Lister.List(labels.Everything())
+func (l *ClusterRoleBindingLister) ListClusterRoleBindings(cluster string) ([]*rbacv1.ClusterRoleBinding, error) {
+	clbs, err := l.Lister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := []*rbacv1.ClusterRoleBinding{}
+	for _, clb := range clbs {
+		if clb.ClusterName == cluster {
+			filtered = append(filtered, clb)
+		}
+	}
+	return filtered, nil
 }

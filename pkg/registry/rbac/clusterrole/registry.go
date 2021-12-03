@@ -62,6 +62,6 @@ type AuthorizerAdapter struct {
 }
 
 // GetClusterRole returns the corresponding ClusterRole by name
-func (a AuthorizerAdapter) GetClusterRole(name string) (*rbacv1.ClusterRole, error) {
+func (a AuthorizerAdapter) GetClusterRole(cluster, name string) (*rbacv1.ClusterRole, error) {
 	return a.Registry.GetClusterRole(genericapirequest.NewContext(), name, &metav1.GetOptions{})
 }

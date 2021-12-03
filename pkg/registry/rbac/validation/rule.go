@@ -37,7 +37,7 @@ import (
 type AuthorizationRuleResolver interface {
 	// GetRoleReferenceRules attempts to resolve the role reference of a RoleBinding or ClusterRoleBinding.  The passed namespace should be the namespace
 	// of the role binding, the empty string if a cluster role binding.
-	GetRoleReferenceRules(roleRef rbacv1.RoleRef, namespace string) ([]rbacv1.PolicyRule, error)
+	GetRoleReferenceRules(roleRef rbacv1.RoleRef, namespace string, cluster ...string) ([]rbacv1.PolicyRule, error)
 
 	// RulesFor returns the list of rules that apply to a given user in a given namespace and error.  If an error is returned, the slice of
 	// PolicyRules may not be complete, but it contains all retrievable rules.  This is done because policy rules are purely additive and policy determinations
@@ -100,19 +100,19 @@ func NewDefaultRuleResolver(roleGetter RoleGetter, roleBindingLister RoleBinding
 }
 
 type RoleGetter interface {
-	GetRole(namespace, name string) (*rbacv1.Role, error)
+	GetRole(cluster, namespace, name string) (*rbacv1.Role, error)
 }
 
 type RoleBindingLister interface {
-	ListRoleBindings(namespace string) ([]*rbacv1.RoleBinding, error)
+	ListRoleBindings(cluster, namespace string) ([]*rbacv1.RoleBinding, error)
 }
 
 type ClusterRoleGetter interface {
-	GetClusterRole(name string) (*rbacv1.ClusterRole, error)
+	GetClusterRole(cluster, name string) (*rbacv1.ClusterRole, error)
 }
 
 type ClusterRoleBindingLister interface {
-	ListClusterRoleBindings() ([]*rbacv1.ClusterRoleBinding, error)
+	ListClusterRoleBindings(cluster string) ([]*rbacv1.ClusterRoleBinding, error)
 }
 
 func (r *DefaultRuleResolver) RulesFor(user user.Info, namespace string) ([]rbacv1.PolicyRule, error) {
@@ -237,17 +237,22 @@ func (r *DefaultRuleResolver) VisitRulesFor(user user.Info, namespace string, vi
 }
 
 // GetRoleReferenceRules attempts to resolve the RoleBinding or ClusterRoleBinding.
-func (r *DefaultRuleResolver) GetRoleReferenceRules(roleRef rbacv1.RoleRef, bindingNamespace string) ([]rbacv1.PolicyRule, error) {
+func (r *DefaultRuleResolver) GetRoleReferenceRules(roleRef rbacv1.RoleRef, bindingNamespace string, cluster ...string) ([]rbacv1.PolicyRule, error) {
+	c := ""
+	if len(cluster) != 0 {
+		c = cluster[0]
+	}
+
 	switch roleRef.Kind {
 	case "Role":
-		role, err := r.roleGetter.GetRole(bindingNamespace, roleRef.Name)
+		role, err := r.roleGetter.GetRole(c, bindingNamespace, roleRef.Name)
 		if err != nil {
 			return nil, err
 		}
 		return role.Rules, nil
 
 	case "ClusterRole":
-		clusterRole, err := r.clusterRoleGetter.GetClusterRole(roleRef.Name)
+		clusterRole, err := r.clusterRoleGetter.GetClusterRole(c, roleRef.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -326,7 +331,7 @@ type StaticRoles struct {
 	clusterRoleBindings []*rbacv1.ClusterRoleBinding
 }
 
-func (r *StaticRoles) GetRole(namespace, name string) (*rbacv1.Role, error) {
+func (r *StaticRoles) GetRole(cluster, namespace, name string) (*rbacv1.Role, error) {
 	if len(namespace) == 0 {
 		return nil, errors.New("must provide namespace when getting role")
 	}
@@ -338,7 +343,7 @@ func (r *StaticRoles) GetRole(namespace, name string) (*rbacv1.Role, error) {
 	return nil, errors.New("role not found")
 }
 
-func (r *StaticRoles) GetClusterRole(name string) (*rbacv1.ClusterRole, error) {
+func (r *StaticRoles) GetClusterRole(cluster, name string) (*rbacv1.ClusterRole, error) {
 	for _, clusterRole := range r.clusterRoles {
 		if clusterRole.Name == name {
 			return clusterRole, nil
@@ -347,7 +352,7 @@ func (r *StaticRoles) GetClusterRole(name string) (*rbacv1.ClusterRole, error) {
 	return nil, errors.New("clusterrole not found")
 }
 
-func (r *StaticRoles) ListRoleBindings(namespace string) ([]*rbacv1.RoleBinding, error) {
+func (r *StaticRoles) ListRoleBindings(cluster, namespace string) ([]*rbacv1.RoleBinding, error) {
 	if len(namespace) == 0 {
 		return nil, errors.New("must provide namespace when listing role bindings")
 	}
@@ -363,6 +368,6 @@ func (r *StaticRoles) ListRoleBindings(namespace string) ([]*rbacv1.RoleBinding,
 	return roleBindingList, nil
 }
 
-func (r *StaticRoles) ListClusterRoleBindings() ([]*rbacv1.ClusterRoleBinding, error) {
+func (r *StaticRoles) ListClusterRoleBindings(cluster string) ([]*rbacv1.ClusterRoleBinding, error) {
 	return r.clusterRoleBindings, nil
 }
