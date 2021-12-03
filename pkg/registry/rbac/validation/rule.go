@@ -176,8 +176,22 @@ func (d *roleBindingDescriber) String() string {
 	)
 }
 
+func (r *DefaultRuleResolver) getClusterForUser(user user.Info) string {
+	extra := user.GetExtra()
+	if len(extra) == 0 {
+		return ""
+	}
+
+	clusters := extra["logical-cluster"]
+	if len(clusters) != 1 {
+		return ""
+	}
+	return clusters[0]
+}
+
 func (r *DefaultRuleResolver) VisitRulesFor(user user.Info, namespace string, visitor func(source fmt.Stringer, rule *rbacv1.PolicyRule, err error) bool) {
-	if clusterRoleBindings, err := r.clusterRoleBindingLister.ListClusterRoleBindings(); err != nil {
+	cluster := r.getClusterForUser(user)
+	if clusterRoleBindings, err := r.clusterRoleBindingLister.ListClusterRoleBindings(cluster); err != nil {
 		if !visitor(nil, nil, err) {
 			return
 		}
@@ -188,7 +202,7 @@ func (r *DefaultRuleResolver) VisitRulesFor(user user.Info, namespace string, vi
 			if !applies {
 				continue
 			}
-			rules, err := r.GetRoleReferenceRules(clusterRoleBinding.RoleRef, "")
+			rules, err := r.GetRoleReferenceRules(clusterRoleBinding.RoleRef, "", cluster)
 			if err != nil {
 				if !visitor(nil, nil, err) {
 					return
@@ -206,7 +220,7 @@ func (r *DefaultRuleResolver) VisitRulesFor(user user.Info, namespace string, vi
 	}
 
 	if len(namespace) > 0 {
-		if roleBindings, err := r.roleBindingLister.ListRoleBindings(namespace); err != nil {
+		if roleBindings, err := r.roleBindingLister.ListRoleBindings(cluster, namespace); err != nil {
 			if !visitor(nil, nil, err) {
 				return
 			}
@@ -217,7 +231,7 @@ func (r *DefaultRuleResolver) VisitRulesFor(user user.Info, namespace string, vi
 				if !applies {
 					continue
 				}
-				rules, err := r.GetRoleReferenceRules(roleBinding.RoleRef, namespace)
+				rules, err := r.GetRoleReferenceRules(roleBinding.RoleRef, namespace, cluster)
 				if err != nil {
 					if !visitor(nil, nil, err) {
 						return

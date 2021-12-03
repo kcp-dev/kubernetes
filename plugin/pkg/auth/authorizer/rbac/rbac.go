@@ -62,6 +62,7 @@ type authorizingVisitor struct {
 	errors  []error
 }
 
+// This is to implment the user.Info and add cluster as a extra field
 type UserInfoWithCluster struct {
 	Username string
 	UID      string
@@ -115,10 +116,10 @@ func (r *RBACAuthorizer) Authorize(ctx context.Context, requestAttributes author
 	if err != nil {
 		klog.Errorf("No cluster defined in authorize action : %s", err.Error())
 	}
-	klog.Infof("cluster is %s", clusterName)
 
 	ruleCheckingVisitor := &authorizingVisitor{requestAttributes: requestAttributes}
 
+	//Hack: inject the cluster name into user info so cluster can be picked in VisitRulesFor
 	user := UserInfo(clusterName, requestAttributes)
 
 	r.authorizationRuleResolver.VisitRulesFor(user, requestAttributes.GetNamespace(), ruleCheckingVisitor.visit)
@@ -243,7 +244,8 @@ type RoleGetter struct {
 }
 
 func (g *RoleGetter) GetRole(cluster, namespace, name string) (*rbacv1.Role, error) {
-	return g.Lister.Roles(namespace).Get(name)
+	key := clusters.ToClusterAwareKey(cluster, name)
+	return g.Lister.Roles(namespace).Get(key)
 }
 
 type RoleBindingLister struct {
@@ -251,7 +253,18 @@ type RoleBindingLister struct {
 }
 
 func (l *RoleBindingLister) ListRoleBindings(cluster, namespace string) ([]*rbacv1.RoleBinding, error) {
-	return l.Lister.RoleBindings(namespace).List(labels.Everything())
+	rbs, err := l.Lister.RoleBindings(namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := []*rbacv1.RoleBinding{}
+	for _, r := range rbs {
+		if r.ClusterName == cluster {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, nil
 }
 
 type ClusterRoleGetter struct {
@@ -259,10 +272,7 @@ type ClusterRoleGetter struct {
 }
 
 func (g *ClusterRoleGetter) GetClusterRole(cluster, name string) (*rbacv1.ClusterRole, error) {
-	klog.Infof("cluster is %s", cluster)
 	key := clusters.ToClusterAwareKey(cluster, name)
-	a, _ := g.Lister.Get(key)
-	klog.Infof("cluster role are %v", a)
 	return g.Lister.Get(key)
 }
 

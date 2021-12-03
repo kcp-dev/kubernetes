@@ -71,7 +71,7 @@ func (r *SubjectAccessEvaluator) AllowedSubjects(requestAttributes authorizer.At
 
 	} else {
 		for _, clusterRoleBinding := range clusterRoleBindings {
-			rules, err := r.roleToRuleMapper.GetRoleReferenceRules("", clusterRoleBinding.RoleRef, "")
+			rules, err := r.roleToRuleMapper.GetRoleReferenceRules(clusterRoleBinding.RoleRef, "")
 			if err != nil {
 				// if we have an error, just keep track of it and keep processing.  Since rules are additive,
 				// missing a reference is bad, but we can continue with other rolebindings and still have a list

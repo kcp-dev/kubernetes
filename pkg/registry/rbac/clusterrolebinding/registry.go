@@ -62,7 +62,8 @@ type AuthorizerAdapter struct {
 }
 
 func (a AuthorizerAdapter) ListClusterRoleBindings(cluster string) ([]*rbacv1.ClusterRoleBinding, error) {
-	list, err := a.Registry.ListClusterRoleBindings(genericapirequest.NewContext(), &metainternalversion.ListOptions{})
+	ctx := genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{Name: cluster})
+	list, err := a.Registry.ListClusterRoleBindings(ctx, &metainternalversion.ListOptions{})
 	if err != nil {
 		return nil, err
 	}

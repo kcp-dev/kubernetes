@@ -63,5 +63,6 @@ type AuthorizerAdapter struct {
 
 // GetRole returns the corresponding Role by name in specified namespace
 func (a AuthorizerAdapter) GetRole(cluster, namespace, name string) (*rbacv1.Role, error) {
-	return a.Registry.GetRole(genericapirequest.WithNamespace(genericapirequest.NewContext(), namespace), name, &metav1.GetOptions{})
+	ctx := genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{Name: cluster})
+	return a.Registry.GetRole(genericapirequest.WithNamespace(ctx, namespace), name, &metav1.GetOptions{})
 }
