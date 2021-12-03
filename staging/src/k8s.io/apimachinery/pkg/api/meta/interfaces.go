@@ -72,6 +72,9 @@ type MetadataAccessor interface {
 	Continue(obj runtime.Object) (string, error)
 	SetContinue(obj runtime.Object, c string) error
 
+	ClusterName(obj runtime.Object) (string, error)
+	SetClusterName(obj runtime.Object, clusterName string) error
+
 	runtime.ResourceVersioner
 }
 

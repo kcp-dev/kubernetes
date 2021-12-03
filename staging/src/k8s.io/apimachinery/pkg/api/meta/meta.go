@@ -375,6 +375,23 @@ func (resourceAccessor) SetContinue(obj runtime.Object, version string) error {
 	return nil
 }
 
+func (resourceAccessor) ClusterName(obj runtime.Object) (string, error) {
+	accessor, err := Accessor(obj)
+	if err != nil {
+		return "", err
+	}
+	return accessor.GetClusterName(), nil
+}
+
+func (resourceAccessor) SetClusterName(obj runtime.Object, clusterName string) error {
+	accessor, err := Accessor(obj)
+	if err != nil {
+		return err
+	}
+	accessor.SetClusterName(clusterName)
+	return nil
+}
+
 // extractFromOwnerReference extracts v to o. v is the OwnerReferences field of an object.
 func extractFromOwnerReference(v reflect.Value, o *metav1.OwnerReference) error {
 	if err := runtime.Field(v, "APIVersion", &o.APIVersion); err != nil {
