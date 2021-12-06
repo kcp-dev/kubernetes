@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/routes"
@@ -272,8 +273,9 @@ func buildVersionSpecs(crd *apiextensionsv1.CustomResourceDefinition, oldSpecs m
 // updateSpecLocked aggregates all OpenAPI specs and updates openAPIService.
 // It is not thread-safe. The caller is responsible to hold proper lock (Controller.lock).
 func (c *Controller) updateSpecLocked() error {
-	crdSpecs := []*spec.Swagger{}
+	var errs []error
 	for clusterName, clusterCrdSpecs := range c.crdSpecs {
+		crdSpecs := []*spec.Swagger{}
 		for _, versionSpecs := range clusterCrdSpecs {
 			for _, s := range versionSpecs {
 				crdSpecs = append(crdSpecs, s)
@@ -283,9 +285,12 @@ func (c *Controller) updateSpecLocked() error {
 		if err != nil {
 			return fmt.Errorf("failed to merge specs: %v", err)
 		}
-		return c.openAPIServiceProvider.ForCluster(clusterName).UpdateSpec(mergedSpec)
+		if err := c.openAPIServiceProvider.ForCluster(clusterName).UpdateSpec(mergedSpec); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+
+	return utilerrors.NewAggregate(errs)
 }
 
 func (c *Controller) addCustomResourceDefinition(obj interface{}) {
