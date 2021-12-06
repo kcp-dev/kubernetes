@@ -21,26 +21,25 @@ package genericcontrolplane
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/emicklei/go-restful"
+	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
-	"k8s.io/apiextensions-apiserver/pkg/controller/openapi/builder"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/authorization/union"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/filters"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
+	"k8s.io/apiserver/pkg/util/feature"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/apiserver/pkg/util/webhook"
@@ -50,10 +49,9 @@ import (
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
-	"k8s.io/kube-aggregator/pkg/controllers/openapi/aggregator"
-	"k8s.io/kube-openapi/pkg/handler"
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/aggregator"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/apis"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/clientutils"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
@@ -97,25 +95,43 @@ func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) erro
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
 
-	server, err := CreateServerChain(completeOptions, stopCh)
+	serverChain, err := CreateServerChain(completeOptions, stopCh)
 	if err != nil {
 		return err
 	}
+	server := serverChain.MiniAggregator.GenericAPIServer
 
 	prepared := server.PrepareRun()
 	return prepared.Run(stopCh)
 }
 
+type ServerChain struct {
+	CustomResourceDefinitions *apiextensionsapiserver.CustomResourceDefinitions
+	GenericControlPlane       *apis.GenericControlPlane
+	MiniAggregator            *aggregator.MiniAggregatorServer
+}
+
 // CreateServerChain creates the apiservers connected via delegation.
-func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan struct{}) (*genericapiserver.GenericAPIServer, error) {
+func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan struct{}) (*ServerChain, error) {
 	kubeAPIServerConfig, serviceResolver, pluginInitializer, err := CreateKubeAPIServerConfig(completedOptions)
 	if err != nil {
 		return nil, err
 	}
 
 	// If additional API servers are added, they should be gated.
-	apiExtensionsConfig, err := createAPIExtensionsConfig(*kubeAPIServerConfig.GenericConfig, kubeAPIServerConfig.ExtraConfig.VersionedInformers, pluginInitializer, completedOptions.ServerRunOptions,
-		serviceResolver, webhook.NewDefaultAuthenticationInfoResolverWrapper(nil, kubeAPIServerConfig.GenericConfig.EgressSelector, kubeAPIServerConfig.GenericConfig.LoopbackClientConfig, kubeAPIServerConfig.GenericConfig.TracerProvider))
+	apiExtensionsConfig, err := createAPIExtensionsConfig(
+		*kubeAPIServerConfig.GenericConfig,
+		kubeAPIServerConfig.ExtraConfig.VersionedInformers,
+		pluginInitializer,
+		completedOptions.ServerRunOptions,
+		serviceResolver,
+		webhook.NewDefaultAuthenticationInfoResolverWrapper(
+			nil,
+			kubeAPIServerConfig.GenericConfig.EgressSelector,
+			kubeAPIServerConfig.GenericConfig.LoopbackClientConfig,
+			kubeAPIServerConfig.GenericConfig.TracerProvider,
+		),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("configure api extensions: %v", err)
 	}
@@ -126,17 +142,6 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 
 	kubeAPIServer, err := CreateKubeAPIServer(kubeAPIServerConfig, apiExtensionsServer.GenericAPIServer)
 	if err != nil {
-		return nil, err
-	}
-
-	// aggregator comes last in the chain
-	aggregatorConfig, err := createAggregatorConfig(*kubeAPIServerConfig.GenericConfig, completedOptions.ServerRunOptions, kubeAPIServerConfig.ExtraConfig.VersionedInformers, serviceResolver, nil, pluginInitializer)
-	if err != nil {
-		return nil, err
-	}
-	aggregatorServer, err := createAggregatorServer(aggregatorConfig, kubeAPIServer.GenericAPIServer, apiExtensionsServer.Informers, kubeAPIServer.GenericAPIServer.ExternalAddress)
-	if err != nil {
-		// we don't need special handling for innerStopCh because the aggregator server doesn't create any go routines
 		return nil, err
 	}
 
@@ -152,71 +157,29 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 		}
 	})
 
-	// HACK: we don't use the OpenAPI Aggregator of the aggretorServer anymore (only the agregator generic server is prepared)
-	// because the openAPI Agregator isn't compatible with CRD tenancy.
-	// So instead, at the same path, we register our own handler that mainly returns the right merged openAPI schema
-	// based on the logical cluster based on the incoming request.
-	downloader := aggregator.NewDownloader()
-	aggregatorServer.GenericAPIServer.Handler.NonGoRestfulMux.HandleFunc("/openapi/v2", func(res http.ResponseWriter, req *http.Request) {
-		req = req.Clone(req.Context())
-		req.URL.Path = "/openapi/v2"
-		req.URL.RawPath = req.URL.Path
-
-		cluster := genericapirequest.ClusterFrom(req.Context())
-
-		withCluster := func(handler http.Handler) http.HandlerFunc {
-			return func(res http.ResponseWriter, req *http.Request) {
-				if cluster != nil {
-					req = req.Clone(genericapirequest.WithCluster(req.Context(), *cluster))
-				}
-				handler.ServeHTTP(res, req)
-			}
-		}
-
-		// DAVID TODO: try to understand why adding the cluster returns nil here. The default openAPIService should work
-		controlPlaneSpec, etag, httpStatus, err := downloader.Download(kubeAPIServer.GenericAPIServer.Handler.Director, "")
-		klog.Infof(etag, httpStatus)
-
-		crdSpecs, etag, httpStatus, err := downloader.Download(withCluster(apiExtensionsServer.GenericAPIServer.Handler.Director), "")
-		klog.Infof(etag, httpStatus)
-
-		mergedSpecs, err := builder.MergeSpecs(controlPlaneSpec, crdSpecs)
-
-		openAPIVersionedService, err := handler.NewOpenAPIService(mergedSpecs)
-		if err != nil {
-			klog.Errorf("Error while building OpenAPI schema: %v", err)
-		}
-
-		handler := &singlePathHandler{}
-
-		// In order to reuse the kube-openapi API as much as possible, we
-		// register the OpenAPI service in the singlePathHandler
-		err = openAPIVersionedService.RegisterOpenAPIVersionedService("/openapi/v2", handler)
-		if err != nil {
-			klog.Errorf("Error while building OpenAPI schema: %v", err)
-		}
-
-		handler.ServeHTTP(res, req)
-	})
-
-	return aggregatorServer.GenericAPIServer, nil
-}
-
-// singlePathHandler is a dummy PathHandler that mainly allows grabbing a http.Handler
-// from a PathHandler consumer and then being able to use the http.Handler
-// to serve a request.
-type singlePathHandler struct {
-	handler [1]http.Handler
-}
-
-func (sph *singlePathHandler) Handle(path string, handler http.Handler) {
-	sph.handler[0] = handler
-}
-func (sph *singlePathHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	if sph.handler[0] == nil {
-		res.WriteHeader(404)
+	miniAggregatorConfig := &aggregator.MiniAggregatorConfig{
+		GenericConfig: kubeAPIServerConfig.GenericConfig,
 	}
-	sph.handler[0].ServeHTTP(res, req)
+
+	if err := completedOptions.ServerRunOptions.Admission.ApplyTo(
+		kubeAPIServerConfig.GenericConfig,
+		kubeAPIServerConfig.ExtraConfig.VersionedInformers,
+		kubeAPIServerConfig.GenericConfig.LoopbackClientConfig,
+		feature.DefaultFeatureGate,
+		pluginInitializer...); err != nil {
+		return nil, err
+	}
+
+	miniAggregatorServer, err := miniAggregatorConfig.Complete(kubeAPIServerConfig.ExtraConfig.VersionedInformers).New(kubeAPIServer.GenericAPIServer, kubeAPIServer, apiExtensionsServer)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ServerChain{
+		CustomResourceDefinitions: apiExtensionsServer,
+		GenericControlPlane:       kubeAPIServer,
+		MiniAggregator:            miniAggregatorServer,
+	}, nil
 }
 
 // CreateKubeAPIServer creates and wires a workable kube-apiserver
@@ -314,7 +277,7 @@ func BuildGenericConfig(
 	genericConfig *genericapiserver.Config,
 	serviceResolver aggregatorapiserver.ServiceResolver,
 	pluginInitializers []admission.PluginInitializer,
-	// admissionPostStartHook genericapiserver.PostStartHookFunc,
+// admissionPostStartHook genericapiserver.PostStartHookFunc,
 	storageFactory *serverstorage.DefaultStorageFactory,
 	lastErr error,
 ) {
