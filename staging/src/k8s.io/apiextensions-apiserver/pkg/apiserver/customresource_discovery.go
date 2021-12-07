@@ -46,8 +46,6 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	apiResourcesForDiscovery := []metav1.APIResource{}
-
 	ctx := req.Context()
 
 	requestedGroup := pathParts[1]
@@ -58,8 +56,19 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	foundVersion := false
-	foundGroup := false
+
+	apiResources := APIResourcesForGroupVersion(requestedGroup, requestedVersion, crds)
+
+	resourceListerFunc := discovery.APIResourceListerFunc(func() []metav1.APIResource {
+		return apiResources
+	})
+
+	discovery.NewAPIVersionHandler(Codecs, schema.GroupVersion{Group: requestedGroup, Version: requestedVersion}, resourceListerFunc).ServeHTTP(w, req)
+}
+
+func APIResourcesForGroupVersion(requestedGroup, requestedVersion string, crds []*apiextensionsv1.CustomResourceDefinition) []metav1.APIResource {
+	apiResourcesForDiscovery := []metav1.APIResource{}
+
 	for _, crd := range crds {
 		if requestedGroup != crd.Spec.Group {
 			continue
@@ -69,14 +78,16 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 			continue
 		}
 
-		foundRequestedVersion := false
-		var storageVersionHash string
+		var (
+			storageVersionHash string
+			subresources       *apiextensionsv1.CustomResourceSubresources
+			foundVersion       = false
+		)
+
 		for _, v := range crd.Spec.Versions {
 			if !v.Served {
 				continue
 			}
-			// If there is any Served version, that means the group should show up in discovery
-			foundGroup = true
 
 			// HACK: support the case when we add core resources through CRDs (KCP scenario)
 			groupVersion := crd.Spec.Group + "/" + v.Name
@@ -87,18 +98,18 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 			gv := metav1.GroupVersion{Group: groupVersion, Version: v.Name}
 
 			if v.Name == requestedVersion {
-				foundRequestedVersion = true
+				foundVersion = true
+				subresources = v.Subresources
 			}
 			if v.Storage {
 				storageVersionHash = discovery.StorageVersionHash(crd.ClusterName, gv.Group, gv.Version, crd.Spec.Names.Kind)
 			}
 		}
 
-		if !foundRequestedVersion {
+		if !foundVersion {
 			// This CRD doesn't have the requested version
 			continue
 		}
-		foundVersion = true
 
 		verbs := metav1.Verbs([]string{"delete", "deletecollection", "get", "list", "patch", "create", "update", "watch"})
 		// if we're terminating we don't allow some verbs
@@ -117,11 +128,6 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 			StorageVersionHash: storageVersionHash,
 		})
 
-		subresources, err := apiextensionshelpers.GetSubresourcesForVersion(crd, requestedVersion)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 		if subresources != nil && subresources.Status != nil {
 			apiResourcesForDiscovery = append(apiResourcesForDiscovery, metav1.APIResource{
 				Name:       crd.Status.AcceptedNames.Plural + "/status",
@@ -143,28 +149,7 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 		}
 	}
 
-	resourceListerFunc := discovery.APIResourceListerFunc(func() []metav1.APIResource {
-		return apiResourcesForDiscovery
-	})
-
-	// HACK: if we are adding resources in legacy scheme group through CRDs (KCP scenario)
-	// then do not expose the CRD `APIResource`s in their own CRD-related group`,
-	// But instead add them in the existing legacy schema group
-	// if genericcontrolplanescheme.Scheme.IsGroupRegistered(clusterGroupVersion.Group) {
-	// 	if !foundGroup || !foundVersion {
-	// 		delete(discovery.ContributedResources, clusterGroupVersion)
-	// 	}
-
-	// 	discovery.ContributedResources[clusterGroupVersion] = resourceListerFunc
-	// 	return nil
-	// }
-
-	if !foundGroup || !foundVersion {
-		r.delegate.ServeHTTP(w, req)
-		return
-	}
-
-	discovery.NewAPIVersionHandler(Codecs, schema.GroupVersion{Group: requestedGroup, Version: requestedVersion}, resourceListerFunc).ServeHTTP(w, req)
+	return apiResourcesForDiscovery
 }
 
 type groupDiscoveryHandler struct {
@@ -229,18 +214,6 @@ func (r *groupDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 
 	sortGroupDiscoveryByKubeAwareVersion(apiVersionsForDiscovery)
 
-	// HACK: if we are adding resources in legacy scheme group through CRDs (KCP scenario)
-	// then do not expose the CRD `APIResource`s in their own CRD-related group`,
-	// But instead add them in the existing legacy schema group
-	// if genericcontrolplanescheme.Scheme.IsGroupRegistered(clusterGroupVersion.Group) {
-	// 	if !foundGroup || !foundVersion {
-	// 		delete(discovery.ContributedResources, clusterGroupVersion)
-	// 	}
-
-	// 	discovery.ContributedResources[clusterGroupVersion] = resourceListerFunc
-	// 	return nil
-	// }
-
 	if !foundGroup {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -280,11 +253,12 @@ func (r *rootDiscoveryHandler) Groups(ctx context.Context, req *http.Request) ([
 				continue
 			}
 
-			// HACK: support the case when we add core resources through CRDs (KCP scenario)
-			groupVersion := crd.Spec.Group + "/" + v.Name
 			if crd.Spec.Group == "" {
-				groupVersion = v.Name
+				// Don't include CRDs in the core ("") group in /apis discovery. They
+				// instead are in /api/v1 handled elsewhere.
+				continue
 			}
+			groupVersion := crd.Spec.Group + "/" + v.Name
 
 			gv := metav1.GroupVersion{Group: crd.Spec.Group, Version: v.Name}
 
