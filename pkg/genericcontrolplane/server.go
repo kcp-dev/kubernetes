@@ -26,14 +26,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/emicklei/go-restful"
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/authorization/union"
-	"k8s.io/apiserver/pkg/endpoints/discovery"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -144,18 +142,6 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 	if err != nil {
 		return nil, err
 	}
-
-	// HACK: support the case when we can add core or other legacy scheme resources through CRDs (KCP scenario)
-	// In such a case, the request should be processed by the CRD handler
-	// (registered in the apiExtensionsServer NonGoRestfulMux handler)
-	// and not by the main KubeAPIServer.
-	kubeAPIServer.GenericAPIServer.Handler.GoRestfulContainer.Filter(func(req *restful.Request, res *restful.Response, chain *restful.FilterChain) {
-		if discovery.IsAPIContributed(req.Request.URL.Path) {
-			apiExtensionsServer.GenericAPIServer.Handler.NonGoRestfulMux.ServeHTTP(res.ResponseWriter, req.Request)
-		} else {
-			chain.ProcessFilter(req, res)
-		}
-	})
 
 	miniAggregatorConfig := &aggregator.MiniAggregatorConfig{
 		GenericConfig: kubeAPIServerConfig.GenericConfig,
