@@ -105,6 +105,7 @@ func (c *cSINodes) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interf
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("csinodes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

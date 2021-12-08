@@ -111,6 +111,7 @@ func (c *statefulSets) Watch(ctx context.Context, opts v1.ListOptions) (watch.In
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("statefulsets").
 		VersionedParams(&opts, scheme.ParameterCodec).

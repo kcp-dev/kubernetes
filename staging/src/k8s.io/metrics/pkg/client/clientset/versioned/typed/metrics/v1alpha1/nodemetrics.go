@@ -95,6 +95,7 @@ func (c *nodeMetricses) Watch(ctx context.Context, opts v1.ListOptions) (watch.I
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("nodes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

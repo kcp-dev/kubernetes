@@ -105,6 +105,7 @@ func (c *ingressClasses) Watch(ctx context.Context, opts metav1.ListOptions) (wa
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("ingressclasses").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

@@ -105,6 +105,7 @@ func (c *clusterRoleBindings) Watch(ctx context.Context, opts metav1.ListOptions
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("clusterrolebindings").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

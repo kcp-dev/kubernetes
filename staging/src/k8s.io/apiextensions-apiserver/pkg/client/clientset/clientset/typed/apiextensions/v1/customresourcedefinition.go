@@ -102,6 +102,7 @@ func (c *customResourceDefinitions) Watch(ctx context.Context, opts metav1.ListO
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("customresourcedefinitions").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

@@ -115,6 +115,7 @@ func (c *replicaSets) Watch(ctx context.Context, opts v1.ListOptions) (watch.Int
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("replicasets").
 		VersionedParams(&opts, scheme.ParameterCodec).

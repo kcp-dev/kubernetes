@@ -109,6 +109,7 @@ func (c *cSIStorageCapacities) Watch(ctx context.Context, opts v1.ListOptions) (
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("csistoragecapacities").
 		VersionedParams(&opts, scheme.ParameterCodec).

@@ -106,6 +106,7 @@ func (c *flunders) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interf
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("flunders").
 		VersionedParams(&opts, scheme.ParameterCodec).

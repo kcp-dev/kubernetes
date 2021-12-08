@@ -111,6 +111,7 @@ func (c *resourceQuotas) Watch(ctx context.Context, opts metav1.ListOptions) (wa
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("resourcequotas").
 		VersionedParams(&opts, scheme.ParameterCodec).

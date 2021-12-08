@@ -109,6 +109,7 @@ func (c *leases) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interfac
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("leases").
 		VersionedParams(&opts, scheme.ParameterCodec).

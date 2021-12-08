@@ -111,6 +111,7 @@ func (c *cronJobs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.In
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("cronjobs").
 		VersionedParams(&opts, scheme.ParameterCodec).

@@ -101,6 +101,7 @@ func (c *fischers) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interf
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("fischers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

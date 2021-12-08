@@ -105,6 +105,7 @@ func (c *runtimeClasses) Watch(ctx context.Context, opts metav1.ListOptions) (wa
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("runtimeclasses").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

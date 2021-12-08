@@ -111,6 +111,7 @@ func (c *jobs) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interf
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("jobs").
 		VersionedParams(&opts, scheme.ParameterCodec).

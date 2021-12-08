@@ -107,6 +107,7 @@ func (c *persistentVolumes) Watch(ctx context.Context, opts metav1.ListOptions) 
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("persistentvolumes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

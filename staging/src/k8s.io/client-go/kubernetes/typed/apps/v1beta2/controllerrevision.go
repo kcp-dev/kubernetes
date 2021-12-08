@@ -109,6 +109,7 @@ func (c *controllerRevisions) Watch(ctx context.Context, opts v1.ListOptions) (w
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("controllerrevisions").
 		VersionedParams(&opts, scheme.ParameterCodec).

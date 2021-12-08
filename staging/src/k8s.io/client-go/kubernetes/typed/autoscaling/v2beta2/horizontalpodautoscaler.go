@@ -111,6 +111,7 @@ func (c *horizontalPodAutoscalers) Watch(ctx context.Context, opts v1.ListOption
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("horizontalpodautoscalers").
 		VersionedParams(&opts, scheme.ParameterCodec).

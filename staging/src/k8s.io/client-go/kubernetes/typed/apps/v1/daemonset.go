@@ -111,6 +111,7 @@ func (c *daemonSets) Watch(ctx context.Context, opts metav1.ListOptions) (watch.
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("daemonsets").
 		VersionedParams(&opts, scheme.ParameterCodec).

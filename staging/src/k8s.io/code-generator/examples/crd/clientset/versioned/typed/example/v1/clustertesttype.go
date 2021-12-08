@@ -106,6 +106,7 @@ func (c *clusterTestTypes) Watch(ctx context.Context, opts metav1.ListOptions) (
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("clustertesttypes").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

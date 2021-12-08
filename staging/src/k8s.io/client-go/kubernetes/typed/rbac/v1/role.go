@@ -109,6 +109,7 @@ func (c *roles) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Inter
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("roles").
 		VersionedParams(&opts, scheme.ParameterCodec).

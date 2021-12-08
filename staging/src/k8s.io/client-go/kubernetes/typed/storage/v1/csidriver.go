@@ -105,6 +105,7 @@ func (c *cSIDrivers) Watch(ctx context.Context, opts metav1.ListOptions) (watch.
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("csidrivers").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

@@ -107,6 +107,7 @@ func (c *priorityLevelConfigurations) Watch(ctx context.Context, opts v1.ListOpt
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("prioritylevelconfigurations").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

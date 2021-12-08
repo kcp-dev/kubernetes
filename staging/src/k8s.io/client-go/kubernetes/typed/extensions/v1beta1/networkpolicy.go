@@ -109,6 +109,7 @@ func (c *networkPolicies) Watch(ctx context.Context, opts v1.ListOptions) (watch
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("networkpolicies").
 		VersionedParams(&opts, scheme.ParameterCodec).

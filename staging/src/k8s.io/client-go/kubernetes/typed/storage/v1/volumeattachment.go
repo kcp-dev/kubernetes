@@ -107,6 +107,7 @@ func (c *volumeAttachments) Watch(ctx context.Context, opts metav1.ListOptions) 
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("volumeattachments").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

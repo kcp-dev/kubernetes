@@ -105,6 +105,7 @@ func (c *validatingWebhookConfigurations) Watch(ctx context.Context, opts metav1
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("validatingwebhookconfigurations").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

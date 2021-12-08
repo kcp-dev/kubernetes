@@ -113,6 +113,7 @@ func (c *pods) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interf
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("pods").
 		VersionedParams(&opts, scheme.ParameterCodec).

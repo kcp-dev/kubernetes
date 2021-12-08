@@ -115,6 +115,7 @@ func (c *replicationControllers) Watch(ctx context.Context, opts metav1.ListOpti
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("replicationcontrollers").
 		VersionedParams(&opts, scheme.ParameterCodec).

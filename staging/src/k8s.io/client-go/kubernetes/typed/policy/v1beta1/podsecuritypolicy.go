@@ -105,6 +105,7 @@ func (c *podSecurityPolicies) Watch(ctx context.Context, opts v1.ListOptions) (w
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("podsecuritypolicies").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

@@ -111,6 +111,7 @@ func (c *ingresses) Watch(ctx context.Context, opts metav1.ListOptions) (watch.I
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("ingresses").
 		VersionedParams(&opts, scheme.ParameterCodec).

@@ -111,6 +111,7 @@ func (c *podDisruptionBudgets) Watch(ctx context.Context, opts metav1.ListOption
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("poddisruptionbudgets").
 		VersionedParams(&opts, scheme.ParameterCodec).

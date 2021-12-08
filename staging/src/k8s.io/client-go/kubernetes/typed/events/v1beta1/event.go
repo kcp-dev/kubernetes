@@ -109,6 +109,7 @@ func (c *events) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interfac
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("events").
 		VersionedParams(&opts, scheme.ParameterCodec).

@@ -112,6 +112,7 @@ func (c *serviceAccounts) Watch(ctx context.Context, opts metav1.ListOptions) (w
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("serviceaccounts").
 		VersionedParams(&opts, scheme.ParameterCodec).

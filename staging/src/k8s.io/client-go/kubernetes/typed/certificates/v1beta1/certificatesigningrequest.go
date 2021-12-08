@@ -107,6 +107,7 @@ func (c *certificateSigningRequests) Watch(ctx context.Context, opts v1.ListOpti
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("certificatesigningrequests").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).

@@ -109,6 +109,7 @@ func (c *roleBindings) Watch(ctx context.Context, opts metav1.ListOptions) (watc
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Namespace(c.ns).
 		Resource("rolebindings").
 		VersionedParams(&opts, scheme.ParameterCodec).

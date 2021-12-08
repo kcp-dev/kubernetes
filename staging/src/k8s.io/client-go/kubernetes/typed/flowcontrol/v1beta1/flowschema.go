@@ -107,6 +107,7 @@ func (c *flowSchemas) Watch(ctx context.Context, opts v1.ListOptions) (watch.Int
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		Resource("flowschemas").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
