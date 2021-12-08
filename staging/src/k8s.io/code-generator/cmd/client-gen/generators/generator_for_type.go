@@ -662,6 +662,7 @@ func (c *$.type|privatePlural$) Watch(ctx context.Context, opts $.ListOptions|ra
 	}
 	opts.Watch = true
 	return c.client.Get().
+		Cluster(c.cluster).
 		$if .namespaced$Namespace(c.ns).$end$
 		Resource("$.type|resource$").
 		VersionedParams(&opts, $.schemeParameterCodec|raw$).
