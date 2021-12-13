@@ -86,10 +86,12 @@ func createAPIExtensionsConfig(
 			SharedInformerFactory: externalInformers,
 		},
 		ExtraConfig: apiextensionsapiserver.ExtraConfig{
-			CRDRESTOptionsGetter: apiextensionsoptions.NewCRDRESTOptionsGetter(etcdOptions),
-			MasterCount:          3,
-			AuthResolverWrapper:  authResolverWrapper,
-			ServiceResolver:      serviceResolver,
+			CRDRESTOptionsGetter:   apiextensionsoptions.NewCRDRESTOptionsGetter(etcdOptions),
+			MasterCount:            1, // TODO: pass this in correctly
+			AuthResolverWrapper:    authResolverWrapper,
+			ServiceResolver:        serviceResolver,
+			NewClientFunc:          commandOptions.APIExtensionsNewClientFunc,
+			NewInformerFactoryFunc: commandOptions.APIExtensionsNewSharedInformerFactoryFunc,
 		},
 	}
 

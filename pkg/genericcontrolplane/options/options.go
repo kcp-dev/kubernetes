@@ -19,10 +19,13 @@ package options
 import (
 	"time"
 
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiextensionsinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/mutating"
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/validating"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
+	"k8s.io/client-go/rest"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics"
 
@@ -66,6 +69,10 @@ type ServerRunOptions struct {
 	ServiceAccountTokenMaxExpiration time.Duration
 
 	ShowHiddenMetricsForVersion string
+
+	// TODO consider either moving into an apiextensions-specific struct, or maybe reuse apiextensions-apiserver/pkg/cmd/options?
+	APIExtensionsNewClientFunc                func(config *rest.Config) (apiextensionsclient.Interface, error)
+	APIExtensionsNewSharedInformerFactoryFunc func(client apiextensionsclient.Interface, resyncPeriod time.Duration) apiextensionsinformers.SharedInformerFactory
 }
 
 // NewServerRunOptions creates a new ServerRunOptions object with default parameters
@@ -84,8 +91,8 @@ func NewServerRunOptions() *ServerRunOptions {
 		Logs:                    logs.NewOptions(),
 		Traces:                  genericoptions.NewTracingOptions(),
 
-		EnableLogsHandler:                 true,
-		EventTTL:                          1 * time.Hour,
+		EnableLogsHandler: true,
+		EventTTL:          1 * time.Hour,
 
 		IdentityLeaseDurationSeconds:      3600,
 		IdentityLeaseRenewIntervalSeconds: 10,
