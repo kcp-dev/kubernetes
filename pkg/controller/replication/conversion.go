@@ -82,6 +82,10 @@ type conversionLister struct {
 }
 
 func (l conversionLister) List(selector labels.Selector) ([]*apps.ReplicaSet, error) {
+	return l.ListWithContext(context.Background(), selector)
+}
+
+func (l conversionLister) ListWithContext(ctx context.Context, selector labels.Selector) ([]*apps.ReplicaSet, error) {
 	rcList, err := l.rcLister.List(selector)
 	if err != nil {
 		return nil, err
