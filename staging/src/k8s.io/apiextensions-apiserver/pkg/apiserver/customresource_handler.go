@@ -49,7 +49,6 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 
-	"k8s.io/apimachinery/pkg/api/equality"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -75,7 +74,6 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
@@ -90,7 +88,6 @@ import (
 	"k8s.io/client-go/scale"
 	"k8s.io/client-go/scale/scheme/autoscalingv1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clusters"
 	"k8s.io/klog/v2"
 	"k8s.io/kube-openapi/pkg/util/proto"
 	"k8s.io/kube-openapi/pkg/validation/spec"
@@ -266,70 +263,18 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	crdName := requestInfo.Resource + "." + requestInfo.APIGroup
-	// HACK: support the case when we add core resources through CRDs (KCP scenario)
-	if requestInfo.APIGroup == "" {
-		crdName = crdName + "core"
+	crd, err := r.crdLister.GetWithContext(ctx, crdName)
+	if apierrors.IsNotFound(err) {
+		r.delegate.ServeHTTP(w, req)
+		return
 	}
-
-	var crdClusterName string
-	var crd *apiextensionsv1.CustomResourceDefinition
-	var err error
-	handleErrorFunc := func(err error) {
-		if apierrors.IsNotFound(err) {
-			r.delegate.ServeHTTP(w, req)
-		}
-		if err != nil {
-			utilruntime.HandleError(err)
-			responsewriters.ErrorNegotiated(
-				apierrors.NewInternalError(fmt.Errorf("error resolving resource: %v", err)),
-				Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
-			)
-		}
-	}
-
-	cluster, err := genericapirequest.ValidClusterFrom(ctx)
 	if err != nil {
+		utilruntime.HandleError(err)
 		responsewriters.ErrorNegotiated(
 			apierrors.NewInternalError(fmt.Errorf("error resolving resource: %v", err)),
 			Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req,
 		)
 		return
-	}
-
-	if cluster.Wildcard {
-		// HACK: Search for the right logical cluster hosting the given CRD when watching or listing with wildcards.
-		// This is a temporary fix for issue https://github.com/kcp-dev/kcp/issues/183: One cannot watch with wildcards
-		// (across logical clusters) if the CRD of the related API Resource hasn't been added in the admin logical cluster first.
-		// The fix in this HACK is limited since the request will fail if 2 logical clusters contain CRDs for the same GVK
-		// with non-equal specs (especially non-equal schemas).
-		var crds []*apiextensionsv1.CustomResourceDefinition
-		crds, err = r.crdLister.List(labels.Everything())
-		if err != nil {
-			handleErrorFunc(err)
-			return
-		}
-		var equal bool // true if all the found CRDs have the same spec
-		crd, equal = findCRD(crdName, crds)
-		if !equal {
-			err = apierrors.NewInternalError(fmt.Errorf("error resolving resource: cannot watch across logical clusters for a resource type with several distinct schemas"))
-			responsewriters.ErrorNegotiated(err, Codecs, schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}, w, req)
-			return
-		}
-
-		if crd == nil {
-			handleErrorFunc(apierrors.NewNotFound(schema.GroupResource{Group: apiextensionsv1.SchemeGroupVersion.Group, Resource: "customresourcedefinitions"}, ""))
-			return
-		}
-		crdClusterName = crd.GetClusterName()
-
-	} else {
-		crdClusterName = cluster.Name
-		crdKey := clusters.ToClusterAwareKey(crdClusterName, crdName)
-		crd, err = r.crdLister.Get(crdKey)
-		if err != nil {
-			handleErrorFunc(err)
-			return
-		}
 	}
 
 	// if the scope in the CRD and the scope in request differ (with exception of the verbs in possiblyAcrossAllNamespacesVerbs
@@ -361,7 +306,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	terminating := apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Terminating)
 
-	crdInfo, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name, crdClusterName)
+	crdInfo, err := r.getOrCreateServingInfoFor(crd)
 	if apierrors.IsNotFound(err) {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -715,18 +660,18 @@ func (r *crdHandler) tearDown(oldInfo *crdInfo) {
 // GetCustomResourceListerCollectionDeleter returns the ListerCollectionDeleter of
 // the given crd.
 func (r *crdHandler) GetCustomResourceListerCollectionDeleter(crd *apiextensionsv1.CustomResourceDefinition) (finalizer.ListerCollectionDeleter, error) {
-	info, err := r.getOrCreateServingInfoFor(crd.UID, crd.Name, crd.GetClusterName())
+	info, err := r.getOrCreateServingInfoFor(crd)
 	if err != nil {
 		return nil, err
 	}
 	return info.storages[info.storageVersion].CustomResource, nil
 }
 
-// getOrCreateServingInfoFor gets the CRD serving info for the given CRD UID if the key exists in the storage map.
-// Otherwise the function fetches the up-to-date CRD using the given CRD name and creates CRD serving info.
-func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name, clusterName string) (*crdInfo, error) {
+// getOrCreateServingInfoFor gets the CRD serving info for the given CRD (by its UID) if the key exists in the storage map.
+// Otherwise the function creates CRD serving info.
+func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResourceDefinition) (*crdInfo, error) {
 	storageMap := r.customStorage.Load().(crdStorageMap)
-	if ret, ok := storageMap[uid]; ok {
+	if ret, ok := storageMap[crd.UID]; ok {
 		return ret, nil
 	}
 
@@ -737,11 +682,11 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name, clusterName 
 	// If updateCustomResourceDefinition sees an update and happens later, the storage will be deleted and
 	// we will re-create the updated storage on demand. If updateCustomResourceDefinition happens before,
 	// we make sure that we observe the same up-to-date CRD.
-	crdKey := name
-	if clusterName != "" {
-		crdKey = clusters.ToClusterAwareKey(clusterName, crdKey)
+	key, err := cache.MetaNamespaceKeyFunc(crd)
+	if err != nil {
+		return nil, err
 	}
-	crd, err := r.crdLister.Get(crdKey)
+	crd, err = r.crdLister.Get(key)
 	if err != nil {
 		return nil, err
 	}
@@ -1572,22 +1517,4 @@ func buildOpenAPIModelsForApply(staticOpenAPISpec *spec.Swagger, crd *apiextensi
 		return nil, err
 	}
 	return models, nil
-}
-func findCRD(crdName string, crds []*apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, bool) {
-	var crd *apiextensionsv1.CustomResourceDefinition
-
-	for _, aCRD := range crds {
-		if aCRD.Name != crdName {
-			continue
-		}
-		if crd == nil {
-			crd = aCRD
-		} else {
-			if !equality.Semantic.DeepEqual(crd.Spec, aCRD.Spec) {
-				return crd, false
-			}
-		}
-	}
-
-	return crd, true
 }

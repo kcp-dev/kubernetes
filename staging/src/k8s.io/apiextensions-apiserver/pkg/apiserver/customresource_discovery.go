@@ -17,21 +17,25 @@ limitations under the License.
 package apiserver
 
 import (
+	"context"
 	"net/http"
+	"sort"
 	"strings"
-	"sync"
 
+	autoscaling "k8s.io/api/autoscaling/v1"
+	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	listers "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 )
 
 type versionDiscoveryHandler struct {
-	// TODO, writing is infrequent, optimize this
-	discoveryLock sync.RWMutex
-	discovery     map[string]map[schema.GroupVersion]*discovery.APIVersionHandler
-
-	delegate http.Handler
+	crdLister listers.CustomResourceDefinitionLister
+	delegate  http.Handler
 }
 
 func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -42,63 +46,130 @@ func (r *versionDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Req
 		return
 	}
 
-	clusterName, err := genericapirequest.ClusterNameFrom(req.Context())
+	apiResourcesForDiscovery := []metav1.APIResource{}
+
+	ctx := req.Context()
+
+	requestedGroup := pathParts[1]
+	requestedVersion := pathParts[2]
+
+	crds, err := r.crdLister.ListWithContext(ctx, labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	foundVersion := false
+	foundGroup := false
+	for _, crd := range crds {
+		if requestedGroup != crd.Spec.Group {
+			continue
+		}
 
-	discovery, ok := r.getDiscovery(clusterName, schema.GroupVersion{Group: pathParts[1], Version: pathParts[2]})
-	if !ok {
+		if !apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Established) {
+			continue
+		}
+
+		foundRequestedVersion := false
+		var storageVersionHash string
+		for _, v := range crd.Spec.Versions {
+			if !v.Served {
+				continue
+			}
+			// If there is any Served version, that means the group should show up in discovery
+			foundGroup = true
+
+			// HACK: support the case when we add core resources through CRDs (KCP scenario)
+			groupVersion := crd.Spec.Group + "/" + v.Name
+			if crd.Spec.Group == "" {
+				groupVersion = v.Name
+			}
+
+			gv := metav1.GroupVersion{Group: groupVersion, Version: v.Name}
+
+			if v.Name == requestedVersion {
+				foundRequestedVersion = true
+			}
+			if v.Storage {
+				storageVersionHash = discovery.StorageVersionHash(crd.ClusterName, gv.Group, gv.Version, crd.Spec.Names.Kind)
+			}
+		}
+
+		if !foundRequestedVersion {
+			// This CRD doesn't have the requested version
+			continue
+		}
+		foundVersion = true
+
+		verbs := metav1.Verbs([]string{"delete", "deletecollection", "get", "list", "patch", "create", "update", "watch"})
+		// if we're terminating we don't allow some verbs
+		if apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Terminating) {
+			verbs = metav1.Verbs([]string{"delete", "deletecollection", "get", "list", "watch"})
+		}
+
+		apiResourcesForDiscovery = append(apiResourcesForDiscovery, metav1.APIResource{
+			Name:               crd.Status.AcceptedNames.Plural,
+			SingularName:       crd.Status.AcceptedNames.Singular,
+			Namespaced:         crd.Spec.Scope == apiextensionsv1.NamespaceScoped,
+			Kind:               crd.Status.AcceptedNames.Kind,
+			Verbs:              verbs,
+			ShortNames:         crd.Status.AcceptedNames.ShortNames,
+			Categories:         crd.Status.AcceptedNames.Categories,
+			StorageVersionHash: storageVersionHash,
+		})
+
+		subresources, err := apiextensionshelpers.GetSubresourcesForVersion(crd, requestedVersion)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if subresources != nil && subresources.Status != nil {
+			apiResourcesForDiscovery = append(apiResourcesForDiscovery, metav1.APIResource{
+				Name:       crd.Status.AcceptedNames.Plural + "/status",
+				Namespaced: crd.Spec.Scope == apiextensionsv1.NamespaceScoped,
+				Kind:       crd.Status.AcceptedNames.Kind,
+				Verbs:      metav1.Verbs([]string{"get", "patch", "update"}),
+			})
+		}
+
+		if subresources != nil && subresources.Scale != nil {
+			apiResourcesForDiscovery = append(apiResourcesForDiscovery, metav1.APIResource{
+				Group:      autoscaling.GroupName,
+				Version:    "v1",
+				Kind:       "Scale",
+				Name:       crd.Status.AcceptedNames.Plural + "/scale",
+				Namespaced: crd.Spec.Scope == apiextensionsv1.NamespaceScoped,
+				Verbs:      metav1.Verbs([]string{"get", "patch", "update"}),
+			})
+		}
+	}
+
+	resourceListerFunc := discovery.APIResourceListerFunc(func() []metav1.APIResource {
+		return apiResourcesForDiscovery
+	})
+
+	// HACK: if we are adding resources in legacy scheme group through CRDs (KCP scenario)
+	// then do not expose the CRD `APIResource`s in their own CRD-related group`,
+	// But instead add them in the existing legacy schema group
+	// if genericcontrolplanescheme.Scheme.IsGroupRegistered(clusterGroupVersion.Group) {
+	// 	if !foundGroup || !foundVersion {
+	// 		delete(discovery.ContributedResources, clusterGroupVersion)
+	// 	}
+
+	// 	discovery.ContributedResources[clusterGroupVersion] = resourceListerFunc
+	// 	return nil
+	// }
+
+	if !foundGroup || !foundVersion {
 		r.delegate.ServeHTTP(w, req)
 		return
 	}
 
-	discovery.ServeHTTP(w, req)
-}
-
-func (r *versionDiscoveryHandler) getDiscovery(clusterName string, gv schema.GroupVersion) (*discovery.APIVersionHandler, bool) {
-	r.discoveryLock.RLock()
-	defer r.discoveryLock.RUnlock()
-
-	clusterDiscovery, clusterExists := r.discovery[clusterName]
-	if !clusterExists {
-		return nil, false
-	}
-	ret, ok := clusterDiscovery[gv]
-	return ret, ok
-}
-
-func (r *versionDiscoveryHandler) setDiscovery(clusterName string, gv schema.GroupVersion, discoveryHandler *discovery.APIVersionHandler) {
-	r.discoveryLock.Lock()
-	defer r.discoveryLock.Unlock()
-
-	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
-		r.discovery[clusterName] = map[schema.GroupVersion]*discovery.APIVersionHandler{}
-	}
-	r.discovery[clusterName][gv] = discoveryHandler
-}
-
-func (r *versionDiscoveryHandler) unsetDiscovery(clusterName string, gv schema.GroupVersion) {
-	r.discoveryLock.Lock()
-	defer r.discoveryLock.Unlock()
-
-	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
-		return
-	}
-
-	delete(r.discovery[clusterName], gv)
-	if len(r.discovery[clusterName]) == 0 {
-		delete(r.discovery, clusterName)
-	}
+	discovery.NewAPIVersionHandler(Codecs, schema.GroupVersion{Group: requestedGroup, Version: requestedVersion}, resourceListerFunc).ServeHTTP(w, req)
 }
 
 type groupDiscoveryHandler struct {
-	// TODO, writing is infrequent, optimize this
-	discoveryLock sync.RWMutex
-	discovery     map[string]map[string]*discovery.APIGroupHandler
-
-	delegate http.Handler
+	crdLister listers.CustomResourceDefinitionLister
+	delegate  http.Handler
 }
 
 func (r *groupDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -109,55 +180,148 @@ func (r *groupDiscoveryHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	clusterName, err := genericapirequest.ClusterNameFrom(req.Context())
+	apiVersionsForDiscovery := []metav1.GroupVersionForDiscovery{}
+	versionsForDiscoveryMap := map[metav1.GroupVersion]bool{}
+
+	ctx := req.Context()
+
+	requestedGroup := pathParts[1]
+
+	crds, err := r.crdLister.ListWithContext(ctx, labels.Everything())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	foundGroup := false
+	for _, crd := range crds {
+		if requestedGroup != crd.Spec.Group {
+			continue
+		}
 
-	discovery, ok := r.getDiscovery(clusterName, pathParts[1])
-	if !ok {
+		if !apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Established) {
+			continue
+		}
+
+		for _, v := range crd.Spec.Versions {
+			if !v.Served {
+				continue
+			}
+			// If there is any Served version, that means the group should show up in discovery
+			foundGroup = true
+
+			// HACK: support the case when we add core resources through CRDs (KCP scenario)
+			groupVersion := crd.Spec.Group + "/" + v.Name
+			if crd.Spec.Group == "" {
+				groupVersion = v.Name
+			}
+
+			gv := metav1.GroupVersion{Group: crd.Spec.Group, Version: v.Name}
+
+			if !versionsForDiscoveryMap[gv] {
+				versionsForDiscoveryMap[gv] = true
+				apiVersionsForDiscovery = append(apiVersionsForDiscovery, metav1.GroupVersionForDiscovery{
+					GroupVersion: groupVersion,
+					Version:      v.Name,
+				})
+			}
+		}
+	}
+
+	sortGroupDiscoveryByKubeAwareVersion(apiVersionsForDiscovery)
+
+	// HACK: if we are adding resources in legacy scheme group through CRDs (KCP scenario)
+	// then do not expose the CRD `APIResource`s in their own CRD-related group`,
+	// But instead add them in the existing legacy schema group
+	// if genericcontrolplanescheme.Scheme.IsGroupRegistered(clusterGroupVersion.Group) {
+	// 	if !foundGroup || !foundVersion {
+	// 		delete(discovery.ContributedResources, clusterGroupVersion)
+	// 	}
+
+	// 	discovery.ContributedResources[clusterGroupVersion] = resourceListerFunc
+	// 	return nil
+	// }
+
+	if !foundGroup {
 		r.delegate.ServeHTTP(w, req)
 		return
 	}
 
-	discovery.ServeHTTP(w, req)
+	apiGroup := metav1.APIGroup{
+		Name:     requestedGroup,
+		Versions: apiVersionsForDiscovery,
+		// the preferred versions for a group is the first item in
+		// apiVersionsForDiscovery after it put in the right ordered
+		PreferredVersion: apiVersionsForDiscovery[0],
+	}
+
+	discovery.NewAPIGroupHandler(Codecs, apiGroup).ServeHTTP(w, req)
 }
 
-func (r *groupDiscoveryHandler) getDiscovery(clusterName, group string) (*discovery.APIGroupHandler, bool) {
-	r.discoveryLock.RLock()
-	defer r.discoveryLock.RUnlock()
-
-	clusterDiscovery, clusterExists := r.discovery[clusterName]
-	if !clusterExists {
-		return nil, false
-	}
-	ret, ok := clusterDiscovery[group]
-	return ret, ok
+type rootDiscoveryHandler struct {
+	crdLister listers.CustomResourceDefinitionLister
+	delegate  http.Handler
 }
 
-func (r *groupDiscoveryHandler) setDiscovery(clusterName, group string, discoveryHandler *discovery.APIGroupHandler) {
-	r.discoveryLock.Lock()
-	defer r.discoveryLock.Unlock()
+func (r *rootDiscoveryHandler) Groups(ctx context.Context, req *http.Request) ([]metav1.APIGroup, error) {
+	apiVersionsForDiscovery := map[string][]metav1.GroupVersionForDiscovery{}
+	versionsForDiscoveryMap := map[string]map[metav1.GroupVersion]bool{}
 
-	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
-		r.discovery[clusterName] = map[string]*discovery.APIGroupHandler{}
+	crds, err := r.crdLister.ListWithContext(ctx, labels.Everything())
+	if err != nil {
+		return []metav1.APIGroup{}, err
 	}
-	r.discovery[clusterName][group] = discoveryHandler
-}
+	for _, crd := range crds {
+		if !apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Established) {
+			continue
+		}
 
-func (r *groupDiscoveryHandler) unsetDiscovery(clusterName, group string) {
-	r.discoveryLock.Lock()
-	defer r.discoveryLock.Unlock()
+		for _, v := range crd.Spec.Versions {
+			if !v.Served {
+				continue
+			}
 
-	if _, clusterExists := r.discovery[clusterName]; !clusterExists {
-		return
+			// HACK: support the case when we add core resources through CRDs (KCP scenario)
+			groupVersion := crd.Spec.Group + "/" + v.Name
+			if crd.Spec.Group == "" {
+				groupVersion = v.Name
+			}
+
+			gv := metav1.GroupVersion{Group: crd.Spec.Group, Version: v.Name}
+
+			m, ok := versionsForDiscoveryMap[crd.Spec.Group]
+			if !ok {
+				m = make(map[metav1.GroupVersion]bool)
+			}
+
+			if !m[gv] {
+				m[gv] = true
+				groupVersions := apiVersionsForDiscovery[crd.Spec.Group]
+				groupVersions = append(groupVersions, metav1.GroupVersionForDiscovery{
+					GroupVersion: groupVersion,
+					Version:      v.Name,
+				})
+				apiVersionsForDiscovery[crd.Spec.Group] = groupVersions
+			}
+
+			versionsForDiscoveryMap[crd.Spec.Group] = m
+		}
 	}
 
-	delete(r.discovery[clusterName], group)
-	if len(r.discovery[clusterName]) == 0 {
-		delete(r.discovery, clusterName)
+	for _, versions := range apiVersionsForDiscovery {
+		sortGroupDiscoveryByKubeAwareVersion(versions)
+
 	}
+
+	groupList := make([]metav1.APIGroup, 0, len(apiVersionsForDiscovery))
+	for group, versions := range apiVersionsForDiscovery {
+		g := metav1.APIGroup{
+			Name:             group,
+			Versions:         versions,
+			PreferredVersion: versions[0],
+		}
+		groupList = append(groupList, g)
+	}
+	return groupList, nil
 }
 
 // splitPath returns the segments for a URL path.
@@ -167,4 +331,10 @@ func splitPath(path string) []string {
 		return []string{}
 	}
 	return strings.Split(path, "/")
+}
+
+func sortGroupDiscoveryByKubeAwareVersion(gd []metav1.GroupVersionForDiscovery) {
+	sort.Slice(gd, func(i, j int) bool {
+		return version.CompareKubeAwareVersionStrings(gd[i].Version, gd[j].Version) > 0
+	})
 }
