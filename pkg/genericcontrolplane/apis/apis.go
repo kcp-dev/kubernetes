@@ -27,13 +27,12 @@ import (
 	authorizationapiv1 "k8s.io/api/authorization/v1"
 	certificatesapiv1 "k8s.io/api/certificates/v1"
 	coordinationapiv1 "k8s.io/api/coordination/v1"
-	eventsv1 "k8s.io/api/events/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	flowcontrolv1alpha1 "k8s.io/api/flowcontrol/v1alpha1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	rbacv1alpha1 "k8s.io/api/rbac/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
@@ -54,6 +53,7 @@ import (
 	"k8s.io/kubernetes/pkg/routes"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 	nodeutil "k8s.io/kubernetes/pkg/util/node"
+	"k8s.io/utils/clock"
 
 	// RESTStorage installers
 	apiserverinternalrest "k8s.io/kubernetes/pkg/registry/apiserverinternal/rest"
