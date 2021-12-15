@@ -203,7 +203,11 @@ func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 	}
 	versionedInformers := clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
 
-	s.Logs.Apply()
+	// TODO(ncdc,1.23) upstream has this in the Cobra RunE method and it's called as early as
+	// possible. Do we want to consider doing something similar?
+	if err := s.Logs.ValidateAndApply(); err != nil {
+		return nil, nil, nil, err
+	}
 
 	config := &apis.Config{
 		GenericConfig: genericConfig,
