@@ -42,6 +42,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/apiserver/pkg/util/notfoundhandler"
+	"k8s.io/apiserver/pkg/util/openapi"
 	"k8s.io/apiserver/pkg/util/webhook"
 	clientgoinformers "k8s.io/client-go/informers"
 	clientgoclientset "k8s.io/client-go/kubernetes"
@@ -50,6 +51,7 @@ import (
 	"k8s.io/klog/v2"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/aggregator"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/apis"
@@ -298,7 +300,9 @@ func BuildGenericConfig(
 		}
 	}
 
-	genericConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(genericcontrolplanescheme.Scheme, extensionsapiserver.Scheme))
+	// wrap the definitions to revert any changes from disabled features
+	getOpenAPIDefinitions := openapi.GetOpenAPIDefinitionsWithoutDisabledFeatures(generatedopenapi.GetOpenAPIDefinitions)
+	genericConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(getOpenAPIDefinitions, openapinamer.NewDefinitionNamer(legacyscheme.Scheme, extensionsapiserver.Scheme, extensionsapiserver.Scheme))
 	genericConfig.OpenAPIConfig.Info.Title = "Kubernetes"
 	genericConfig.LongRunningFunc = filters.BasicLongRunningRequestCheck(
 		sets.NewString("watch", "proxy"),
