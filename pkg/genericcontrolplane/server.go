@@ -21,6 +21,7 @@ package genericcontrolplane
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -49,7 +50,6 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
-	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
@@ -113,12 +113,27 @@ type ServerChain struct {
 	MiniAggregator            *aggregator.MiniAggregatorServer
 }
 
+// unimplementedServiceResolver is a webhook.ServiceResolver that always returns an error, because
+// we have not implemented support for this yet. As a result, CRD webhook conversions are not
+// supported.
+type unimplementedServiceResolver struct{}
+
+// ResolveEndpoint always returns an error that this is not yet supported.
+func (r *unimplementedServiceResolver) ResolveEndpoint(namespace string, name string, port int32) (*url.URL, error) {
+	return nil, fmt.Errorf("CRD webhook conversions are not yet supported in kcp")
+}
+
 // CreateServerChain creates the apiservers connected via delegation.
 func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan struct{}) (*ServerChain, error) {
-	kubeAPIServerConfig, serviceResolver, pluginInitializer, err := CreateKubeAPIServerConfig(completedOptions)
+	kubeAPIServerConfig, pluginInitializer, err := CreateKubeAPIServerConfig(completedOptions)
 	if err != nil {
 		return nil, err
 	}
+
+	// Wire in a ServiceResolver that always returns an error that ResolveEndpoint is not yet
+	// supported. The effect is that CRD webhook conversions are not supported and will always get an
+	// error.
+	serviceResolver := &unimplementedServiceResolver{}
 
 	// If additional API servers are added, they should be gated.
 	apiExtensionsConfig, err := createAPIExtensionsConfig(
@@ -186,13 +201,12 @@ func CreateKubeAPIServer(kubeAPIServerConfig *apis.Config, delegateAPIServer gen
 // CreateKubeAPIServerConfig creates all the resources for running the API server, but runs none of them
 func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 	*apis.Config,
-	aggregatorapiserver.ServiceResolver,
 	[]admission.PluginInitializer,
 	error,
 ) {
-	genericConfig, serviceResolver, pluginInitializers, storageFactory, err := BuildGenericConfig(s.ServerRunOptions)
+	genericConfig, pluginInitializers, storageFactory, err := BuildGenericConfig(s.ServerRunOptions)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	s.Metrics.Apply()
@@ -201,14 +215,14 @@ func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 	kubeClientConfig := genericConfig.LoopbackClientConfig
 	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create real external clientset: %v", err)
+		return nil, nil, fmt.Errorf("failed to create real external clientset: %v", err)
 	}
 	versionedInformers := clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
 
 	// TODO(ncdc,1.23) upstream has this in the Cobra RunE method and it's called as early as
 	// possible. Do we want to consider doing something similar?
 	if err := s.Logs.ValidateAndApply(); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	config := &apis.Config{
@@ -228,13 +242,13 @@ func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 
 	clientCAProvider, err := s.Authentication.ClientCert.GetClientCAContentProvider()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	config.ExtraConfig.ClusterAuthenticationInfo.ClientCA = clientCAProvider
 
 	requestHeaderConfig, err := s.Authentication.RequestHeader.ToAuthenticationRequestHeaderConfig()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if requestHeaderConfig != nil {
 		config.ExtraConfig.ClusterAuthenticationInfo.RequestHeaderCA = requestHeaderConfig.CAContentProvider
@@ -262,7 +276,7 @@ func CreateKubeAPIServerConfig(s completedServerRunOptions) (
 	// config.ExtraConfig.ServiceAccountJWKSURI = s.Authentication.ServiceAccounts.JWKSURI
 	// config.ExtraConfig.ServiceAccountPublicKeys = pubKeys
 
-	return config, serviceResolver, pluginInitializers, nil
+	return config, pluginInitializers, nil
 }
 
 // BuildGenericConfig takes the master server options and produces the genericapiserver.Config associated with it
@@ -270,7 +284,6 @@ func BuildGenericConfig(
 	s *options.ServerRunOptions,
 ) (
 	genericConfig *genericapiserver.Config,
-	serviceResolver aggregatorapiserver.ServiceResolver,
 	pluginInitializers []admission.PluginInitializer,
 	// admissionPostStartHook genericapiserver.PostStartHookFunc,
 	storageFactory *serverstorage.DefaultStorageFactory,
