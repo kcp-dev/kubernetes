@@ -33,8 +33,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/client-go/tools/clusters"
 	v1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	apiregistrationclient "k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/typed/apiregistration/v1"
 	informers "k8s.io/kube-aggregator/pkg/client/informers/externalversions/apiregistration/v1"
@@ -60,7 +58,7 @@ type AutoAPIServiceRegistration interface {
 	// AddAPIServiceToSync adds an API service to sync continuously.
 	AddAPIServiceToSync(in *v1.APIService)
 	// RemoveAPIServiceToSync removes an API service to auto-register.
-	RemoveAPIServiceToSync(clusterAndName string)
+	RemoveAPIServiceToSync(name string)
 }
 
 // autoRegisterController is used to keep a particular set of APIServices present in the API.  It is useful
@@ -73,7 +71,7 @@ type autoRegisterController struct {
 	apiServicesToSyncLock sync.RWMutex
 	apiServicesToSync     map[string]*v1.APIService
 
-	syncHandler func(clusterAndApiServiceName string) error
+	syncHandler func(apiServiceName string) error
 
 	// track which services we have synced
 	syncedSuccessfullyLock *sync.RWMutex
@@ -106,11 +104,11 @@ func NewAutoRegisterController(apiServiceInformer informers.APIServiceInformer, 
 	apiServiceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			cast := obj.(*v1.APIService)
-			c.queue.Add(clusters.ToClusterAwareKey(cast.GetClusterName(), cast.Name))
+			c.queue.Add(cast.Name)
 		},
 		UpdateFunc: func(_, obj interface{}) {
 			cast := obj.(*v1.APIService)
-			c.queue.Add(clusters.ToClusterAwareKey(cast.GetClusterName(), cast.Name))
+			c.queue.Add(cast.Name)
 		},
 		DeleteFunc: func(obj interface{}) {
 			cast, ok := obj.(*v1.APIService)
@@ -126,7 +124,7 @@ func NewAutoRegisterController(apiServiceInformer informers.APIServiceInformer, 
 					return
 				}
 			}
-			c.queue.Add(clusters.ToClusterAwareKey(cast.GetClusterName(), cast.Name))
+			c.queue.Add(cast.Name)
 		},
 	})
 
@@ -151,7 +149,7 @@ func (c *autoRegisterController) Run(workers int, stopCh <-chan struct{}) {
 	// record APIService objects that existed when we started
 	if services, err := c.apiServiceLister.List(labels.Everything()); err == nil {
 		for _, service := range services {
-			c.apiServicesAtStart[clusters.ToClusterAwareKey(service.GetClusterName(), service.Name)] = true
+			c.apiServicesAtStart[service.Name] = true
 		}
 	}
 
@@ -214,16 +212,16 @@ func (c *autoRegisterController) processNextWorkItem() bool {
 // 4. current: sync on start, not present at start | -                     | -                         | -
 // 5. current: sync on start, present at start     | delete once           | update once               | update once
 // 6. current: sync always                         | delete                | update once               | update
-func (c *autoRegisterController) checkAPIService(clusterAndName string) (err error) {
-	desired := c.GetAPIServiceToSync(clusterAndName)
-	curr, err := c.apiServiceLister.Get(clusterAndName)
+func (c *autoRegisterController) checkAPIService(name string) (err error) {
+	desired := c.GetAPIServiceToSync(name)
+	curr, err := c.apiServiceLister.Get(name)
 
 	// if we've never synced this service successfully, record a successful sync.
-	hasSynced := c.hasSyncedSuccessfully(clusterAndName)
+	hasSynced := c.hasSyncedSuccessfully(name)
 	if !hasSynced {
 		defer func() {
 			if err == nil {
-				c.setSyncedSuccessfully(clusterAndName)
+				c.setSyncedSuccessfully(name)
 			}
 		}()
 	}
@@ -243,10 +241,7 @@ func (c *autoRegisterController) checkAPIService(clusterAndName string) (err err
 
 	// we don't have an entry and we do want one (2B,2C)
 	case apierrors.IsNotFound(err) && desired != nil:
-		context := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{
-			Name: desired.GetClusterName(),
-		})
-		_, err := c.apiServiceClient.APIServices().Create(context, desired, metav1.CreateOptions{})
+		_, err := c.apiServiceClient.APIServices().Create(context.TODO(), desired, metav1.CreateOptions{})
 		if apierrors.IsAlreadyExists(err) {
 			// created in the meantime, we'll get called again
 			return nil
@@ -258,7 +253,7 @@ func (c *autoRegisterController) checkAPIService(clusterAndName string) (err err
 		return nil
 
 	// the remote object only wants to sync on start, but was added after we started (4A,4B,4C)
-	case isAutomanagedOnStart(curr) && !c.apiServicesAtStart[clusterAndName]:
+	case isAutomanagedOnStart(curr) && !c.apiServicesAtStart[name]:
 		return nil
 
 	// the remote object only wants to sync on start and has already synced (5A,5B,5C "once" enforcement)
@@ -268,10 +263,7 @@ func (c *autoRegisterController) checkAPIService(clusterAndName string) (err err
 	// we have a spurious APIService that we're managing, delete it (5A,6A)
 	case desired == nil:
 		opts := metav1.DeleteOptions{Preconditions: metav1.NewUIDPreconditions(string(curr.UID))}
-		context := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{
-			Name: curr.GetClusterName(),
-		})
-		err := c.apiServiceClient.APIServices().Delete(context, curr.Name, opts)
+		err := c.apiServiceClient.APIServices().Delete(context.TODO(), curr.Name, opts)
 		if apierrors.IsNotFound(err) || apierrors.IsConflict(err) {
 			// deleted or changed in the meantime, we'll get called again
 			return nil
@@ -295,11 +287,11 @@ func (c *autoRegisterController) checkAPIService(clusterAndName string) (err err
 }
 
 // GetAPIServiceToSync gets a single API service to sync.
-func (c *autoRegisterController) GetAPIServiceToSync(clusterAndName string) *v1.APIService {
+func (c *autoRegisterController) GetAPIServiceToSync(name string) *v1.APIService {
 	c.apiServicesToSyncLock.RLock()
 	defer c.apiServicesToSyncLock.RUnlock()
 
-	return c.apiServicesToSync[clusterAndName]
+	return c.apiServicesToSync[name]
 }
 
 // AddAPIServiceToSyncOnStart registers an API service to sync only when the controller starts.
@@ -322,30 +314,29 @@ func (c *autoRegisterController) addAPIServiceToSync(in *v1.APIService, syncType
 	}
 	apiService.Labels[AutoRegisterManagedLabel] = syncType
 
-	clusterAndName := clusters.ToClusterAwareKey(apiService.GetClusterName(), apiService.Name)
-	c.apiServicesToSync[clusterAndName] = apiService
-	c.queue.Add(clusterAndName)
+	c.apiServicesToSync[apiService.Name] = apiService
+	c.queue.Add(apiService.Name)
 }
 
 // RemoveAPIServiceToSync deletes a registered APIService.
-func (c *autoRegisterController) RemoveAPIServiceToSync(clusterAndName string) {
+func (c *autoRegisterController) RemoveAPIServiceToSync(name string) {
 	c.apiServicesToSyncLock.Lock()
 	defer c.apiServicesToSyncLock.Unlock()
 
-	delete(c.apiServicesToSync, clusterAndName)
-	c.queue.Add(clusterAndName)
+	delete(c.apiServicesToSync, name)
+	c.queue.Add(name)
 }
 
-func (c *autoRegisterController) hasSyncedSuccessfully(clusterAndName string) bool {
+func (c *autoRegisterController) hasSyncedSuccessfully(name string) bool {
 	c.syncedSuccessfullyLock.RLock()
 	defer c.syncedSuccessfullyLock.RUnlock()
-	return c.syncedSuccessfully[clusterAndName]
+	return c.syncedSuccessfully[name]
 }
 
-func (c *autoRegisterController) setSyncedSuccessfully(clusterAndName string) {
+func (c *autoRegisterController) setSyncedSuccessfully(name string) {
 	c.syncedSuccessfullyLock.Lock()
 	defer c.syncedSuccessfullyLock.Unlock()
-	c.syncedSuccessfully[clusterAndName] = true
+	c.syncedSuccessfully[name] = true
 }
 
 func automanagedType(service *v1.APIService) string {
