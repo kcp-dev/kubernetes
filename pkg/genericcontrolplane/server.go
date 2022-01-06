@@ -22,7 +22,6 @@ package genericcontrolplane
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -69,28 +68,6 @@ const (
 	etcdRetryInterval = 1 * time.Second
 	RootClusterName   = "admin"
 )
-
-func SanitizeClusterId(id string) string {
-	r := regexp.MustCompile(`[^a-zA-Z0-9]`)
-	return r.ReplaceAllString(id, "-")
-}
-
-func SanitizedClusterName(id, name string) string {
-	return fmt.Sprintf("%s---%s", SanitizeClusterId(id), name)
-}
-
-func ParseClusterName(name string) (string, string, error) {
-	parts := strings.Split(name, "---")
-	switch len(parts) {
-	case 1:
-		// nothing provided, no error though
-		return "", "", nil
-	case 2:
-		return parts[0], parts[1], nil
-	default:
-		return "", "", fmt.Errorf("invalid cluster: %v", name)
-	}
-}
 
 // Run runs the specified APIServer.  This should never exit.
 func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) error {
