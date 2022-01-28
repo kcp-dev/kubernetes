@@ -37,7 +37,7 @@ import (
 	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
 )
 
-func createAPIExtensionsConfig(
+func CreateAPIExtensionsConfig(
 	kubeAPIServerConfig genericapiserver.Config,
 	externalInformers kubeexternalinformers.SharedInformerFactory,
 	pluginInitializers []admission.PluginInitializer,
@@ -86,12 +86,10 @@ func createAPIExtensionsConfig(
 			SharedInformerFactory: externalInformers,
 		},
 		ExtraConfig: apiextensionsapiserver.ExtraConfig{
-			CRDRESTOptionsGetter:   apiextensionsoptions.NewCRDRESTOptionsGetter(etcdOptions),
-			MasterCount:            1, // TODO: pass this in correctly
-			AuthResolverWrapper:    authResolverWrapper,
-			ServiceResolver:        serviceResolver,
-			NewClientFunc:          commandOptions.APIExtensionsNewClientFunc,
-			NewInformerFactoryFunc: commandOptions.APIExtensionsNewSharedInformerFactoryFunc,
+			CRDRESTOptionsGetter: apiextensionsoptions.NewCRDRESTOptionsGetter(etcdOptions),
+			MasterCount:          1, // TODO: pass this in correctly
+			AuthResolverWrapper:  authResolverWrapper,
+			ServiceResolver:      serviceResolver,
 		},
 	}
 
@@ -99,8 +97,4 @@ func createAPIExtensionsConfig(
 	apiextensionsConfig.GenericConfig.PostStartHooks = map[string]genericapiserver.PostStartHookConfigEntry{}
 
 	return apiextensionsConfig, nil
-}
-
-func createAPIExtensionsServer(apiextensionsConfig *apiextensionsapiserver.Config, delegateAPIServer genericapiserver.DelegationTarget) (*apiextensionsapiserver.CustomResourceDefinitions, error) {
-	return apiextensionsConfig.Complete().New(delegateAPIServer)
 }
