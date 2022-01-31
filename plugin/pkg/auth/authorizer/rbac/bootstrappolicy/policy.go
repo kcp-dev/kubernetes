@@ -568,6 +568,11 @@ func ClusterRoles() []rbacv1.ClusterRole {
 
 const systemNodeRoleName = "system:node"
 
+func clusterRoleBindingCustomName(b rbacv1.ClusterRoleBinding, name string) rbacv1.ClusterRoleBinding {
+	b.ObjectMeta.Name = name
+	return b
+}
+
 // ClusterRoleBindings return default rolebindings to the default roles
 func ClusterRoleBindings() []rbacv1.ClusterRoleBinding {
 	rolebindings := []rbacv1.ClusterRoleBinding{
@@ -581,6 +586,11 @@ func ClusterRoleBindings() []rbacv1.ClusterRoleBinding {
 		rbacv1helpers.NewClusterBinding("system:kube-dns").SAs("kube-system", "kube-dns").BindingOrDie(),
 		rbacv1helpers.NewClusterBinding("system:kube-scheduler").Users(user.KubeScheduler).BindingOrDie(),
 		rbacv1helpers.NewClusterBinding("system:volume-scheduler").Users(user.KubeScheduler).BindingOrDie(),
+
+		// TODO: move to kcp policy
+		clusterRoleBindingCustomName(rbacv1helpers.NewClusterBinding("edit").Groups("system:kcp:workspace:edit").BindingOrDie(), "system:kcp:workspace:edit"),
+		clusterRoleBindingCustomName(rbacv1helpers.NewClusterBinding("view").Groups("system:kcp:workspace:view").BindingOrDie(), "system:kcp:workspace:view"),
+		clusterRoleBindingCustomName(rbacv1helpers.NewClusterBinding("admin").Groups("system:kcp:workspace:admin").BindingOrDie(), "system:kcp:workspace:admin"),
 
 		// This default binding of the system:node role to the system:nodes group is deprecated in 1.7 with the availability of the Node authorizer.
 		// This leaves the binding, but with an empty set of subjects, so that tightening reconciliation can remove the subject.
