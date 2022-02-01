@@ -23,13 +23,6 @@ import (
 	quota "k8s.io/apiserver/pkg/quota/v1"
 )
 
-// TODO add a `WantsToRun` which takes a stopCh.  Might make it generic.
-
-// WantsCloudConfig defines a function which sets CloudConfig for admission plugins that need it.
-type WantsCloudConfig interface {
-	SetCloudConfig([]byte)
-}
-
 // WantsRESTMapper defines a function which sets RESTMapper for admission plugins that need it.
 type WantsRESTMapper interface {
 	SetRESTMapper(meta.RESTMapper)
