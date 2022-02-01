@@ -30,6 +30,8 @@ const (
 	ErrCodeResourceVersionConflicts
 	ErrCodeInvalidObj
 	ErrCodeUnreachable
+	ErrCodeReadOnly
+	ErrCodeInsufficientQuota
 )
 
 var errCodeToMessage = map[int]string{
@@ -38,6 +40,8 @@ var errCodeToMessage = map[int]string{
 	ErrCodeResourceVersionConflicts: "resource version conflicts",
 	ErrCodeInvalidObj:               "invalid object",
 	ErrCodeUnreachable:              "server unreachable",
+	ErrCodeReadOnly:                 "key range marked read-only",
+	ErrCodeInsufficientQuota:        "insufficient quota in key range",
 }
 
 func NewKeyNotFoundError(key string, rv int64) *StorageError {
@@ -80,6 +84,22 @@ func NewInvalidObjError(key, msg string) *StorageError {
 	}
 }
 
+func NewReadOnlyError(key string, rv int64) *StorageError {
+	return &StorageError{
+		Code:            ErrCodeReadOnly,
+		Key:             key,
+		ResourceVersion: rv,
+	}
+}
+
+func NewInsufficientQuotaError(key string, rv int64) *StorageError {
+	return &StorageError{
+		Code:            ErrCodeInsufficientQuota,
+		Key:             key,
+		ResourceVersion: rv,
+	}
+}
+
 type StorageError struct {
 	Code               int
 	Key                string
@@ -115,6 +135,16 @@ func IsConflict(err error) bool {
 // IsInvalidObj returns true if and only if err is invalid error
 func IsInvalidObj(err error) bool {
 	return isErrCode(err, ErrCodeInvalidObj)
+}
+
+// IsReadOnly returns true if and only if err is read-only error
+func IsReadOnly(err error) bool {
+	return isErrCode(err, ErrCodeReadOnly)
+}
+
+// IsInsufficientQuota returns true if and only if err is insufficient quota error
+func IsInsufficientQuota(err error) bool {
+	return isErrCode(err, ErrCodeInsufficientQuota)
 }
 
 func isErrCode(err error, code int) bool {

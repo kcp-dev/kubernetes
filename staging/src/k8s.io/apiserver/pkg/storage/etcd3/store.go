@@ -382,7 +382,7 @@ func (s *store) GuaranteedUpdate(
 		}
 		if !origState.stale && bytes.Equal(data, origState.data) {
 			// if we skipped the original Get in this loop, we must refresh from
-			// etcd in order to be sure the data in the store is equivalent to
+			// etcd in order to be sure the data in the store is equivalent toz
 			// our desired serialization
 			if !origStateIsCurrent {
 				origState, err = getCurrentState()
