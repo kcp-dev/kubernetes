@@ -21,7 +21,9 @@ package genericcontrolplane
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"k8s.io/apiserver/pkg/authorization/union"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/filters"
@@ -310,7 +313,7 @@ func BuildGenericConfig(
 
 	kubeClientConfig := genericConfig.LoopbackClientConfig
 
-	clientutils.EnableMultiCluster(genericConfig.LoopbackClientConfig, genericConfig, "namespaces", "apiservices", "customresourcedefinitions")
+	clientutils.EnableMultiCluster(genericConfig.LoopbackClientConfig, genericConfig, "namespaces", "apiservices", "customresourcedefinitions", "clusterroles", "clusterrolebindings", "roles", "rolebindings")
 
 	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
 	if err != nil {
