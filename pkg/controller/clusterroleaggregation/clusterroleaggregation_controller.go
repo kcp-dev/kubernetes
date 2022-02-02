@@ -126,7 +126,7 @@ func (c *ClusterRoleAggregationController) syncClusterRole(ctx context.Context, 
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.ServerSideApply) {
-		err = c.applyClusterRoles(ctx, sharedClusterRole.Name, newPolicyRules)
+		err = c.applyClusterRoles(ctx, sharedClusterRole, newPolicyRules)
 		if errors.IsUnsupportedMediaType(err) { // TODO: Remove this fallback at least one release after ServerSideApply GA
 			// When Server Side Apply is not enabled, fallback to Update. This is required when running
 			// 1.21 since api-server can be 1.20 during the upgrade/downgrade.
@@ -140,8 +140,8 @@ func (c *ClusterRoleAggregationController) syncClusterRole(ctx context.Context, 
 	return err
 }
 
-func (c *ClusterRoleAggregationController) applyClusterRoles(ctx context.Context, name string, newPolicyRules []rbacv1.PolicyRule) error {
-	clusterRoleApply := rbacv1ac.ClusterRole(name).
+func (c *ClusterRoleAggregationController) applyClusterRoles(ctx context.Context, sharedClusterRole *rbacv1.ClusterRole, newPolicyRules []rbacv1.PolicyRule) error {
+	clusterRoleApply := rbacv1ac.ClusterRole(sharedClusterRole.Name).WithClusterName(sharedClusterRole.ClusterName).
 		WithRules(toApplyPolicyRules(newPolicyRules)...)
 
 	opts := metav1.ApplyOptions{FieldManager: "clusterrole-aggregation-controller", Force: true}
