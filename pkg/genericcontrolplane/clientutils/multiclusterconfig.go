@@ -135,7 +135,7 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 			fallthrough
 		default:
 			if resourceClusterName != "" {
-				if contextCluster != nil && contextCluster.Name != resourceClusterName {
+				if contextCluster != nil && contextCluster.Name != "" && contextCluster.Name != resourceClusterName {
 					return nil, errors.New("Resource cluster name " + resourceClusterName + " incompatible with context cluster name " + contextCluster.Name)
 				}
 				headerCluster = resourceClusterName
