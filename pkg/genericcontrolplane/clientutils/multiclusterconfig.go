@@ -102,7 +102,7 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 			} else {
 				headerCluster = "*"
 			}
-		case "create", "update":
+		case "create", "update", "patch":
 			err := func() error {
 				// We dn't try to mutate the object here. Just guessing the ClusterName field from the body,
 				// in order to set the header accordingly
