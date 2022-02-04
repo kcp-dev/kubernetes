@@ -23,8 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"strings"
 	"time"
 
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
@@ -73,11 +71,11 @@ const (
 )
 
 // Run runs the specified APIServer.  This should never exit.
-func Run(completedOptions completedServerRunOptions, stopCh <-chan struct{}) error {
+func Run(options options.CompletedServerRunOptions, stopCh <-chan struct{}) error {
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
 
-	genericConfig, storageFactory, err := BuildGenericConfig(completedOptions.ServerRunOptions)
+	genericConfig, storageFactory, err := BuildGenericConfig(options)
 	if err != nil {
 		return err
 	}
@@ -88,7 +86,7 @@ func Run(completedOptions completedServerRunOptions, stopCh <-chan struct{}) err
 	}
 	versionedInformers := clientgoinformers.NewSharedInformerFactory(client, 10*time.Minute)
 
-	config, err := CreateKubeAPIServerConfig(genericConfig, completedOptions, versionedInformers, nil, storageFactory)
+	config, err := CreateKubeAPIServerConfig(genericConfig, options, versionedInformers, nil, storageFactory)
 	if err != nil {
 		return err
 	}
@@ -98,7 +96,7 @@ func Run(completedOptions completedServerRunOptions, stopCh <-chan struct{}) err
 		*config.GenericConfig,
 		config.ExtraConfig.VersionedInformers,
 		nil,
-		completedOptions.ServerRunOptions,
+		options,
 		&unimplementedServiceResolver{},
 		webhook.NewDefaultAuthenticationInfoResolverWrapper(
 			nil,
@@ -157,7 +155,7 @@ func CreateServerChain(config apis.CompletedConfig, apiExtensionConfig apiextens
 // CreateKubeAPIServerConfig creates all the resources for running the API server, but runs none of them
 func CreateKubeAPIServerConfig(
 	genericConfig *genericapiserver.Config,
-	s completedServerRunOptions,
+	o options.CompletedServerRunOptions,
 	versionedInformers kubeexternalinformers.SharedInformerFactory,
 	additionalPluginInitializers []admission.PluginInitializer,
 	storageFactory *serverstorage.DefaultStorageFactory,
@@ -165,12 +163,12 @@ func CreateKubeAPIServerConfig(
 	*apis.Config,
 	error,
 ) {
-	s.Metrics.Apply()
+	o.Metrics.Apply()
 	serviceaccount.RegisterMetrics()
 
 	// TODO(ncdc,1.23) upstream has this in the Cobra RunE method and it's called as early as
 	// possible. Do we want to consider doing something similar?
-	if err := s.Logs.ValidateAndApply(); err != nil {
+	if err := o.Logs.ValidateAndApply(); err != nil {
 		return nil, err
 	}
 
@@ -179,23 +177,23 @@ func CreateKubeAPIServerConfig(
 		ExtraConfig: apis.ExtraConfig{
 			APIResourceConfigSource: storageFactory.APIResourceConfigSource,
 			StorageFactory:          storageFactory,
-			EventTTL:                s.EventTTL,
-			EnableLogsSupport:       s.EnableLogsHandler,
+			EventTTL:                o.EventTTL,
+			EnableLogsSupport:       o.EnableLogsHandler,
 
 			VersionedInformers: versionedInformers,
 
-			IdentityLeaseDurationSeconds:      s.IdentityLeaseDurationSeconds,
-			IdentityLeaseRenewIntervalSeconds: s.IdentityLeaseRenewIntervalSeconds,
+			IdentityLeaseDurationSeconds:      o.IdentityLeaseDurationSeconds,
+			IdentityLeaseRenewIntervalSeconds: o.IdentityLeaseRenewIntervalSeconds,
 		},
 	}
 
-	clientCAProvider, err := s.Authentication.ClientCert.GetClientCAContentProvider()
+	clientCAProvider, err := o.Authentication.ClientCert.GetClientCAContentProvider()
 	if err != nil {
 		return nil, err
 	}
 	config.ExtraConfig.ClusterAuthenticationInfo.ClientCA = clientCAProvider
 
-	requestHeaderConfig, err := s.Authentication.RequestHeader.ToAuthenticationRequestHeaderConfig()
+	requestHeaderConfig, err := o.Authentication.RequestHeader.ToAuthenticationRequestHeaderConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +205,7 @@ func CreateKubeAPIServerConfig(
 		config.ExtraConfig.ClusterAuthenticationInfo.RequestHeaderUsernameHeaders = requestHeaderConfig.UsernameHeaders
 	}
 
-	if err := s.ServerRunOptions.Admission.ApplyTo(
+	if err := o.ServerRunOptions.Admission.ApplyTo(
 		config.GenericConfig,
 		config.ExtraConfig.VersionedInformers,
 		config.GenericConfig.LoopbackClientConfig,
@@ -235,32 +233,31 @@ func CreateKubeAPIServerConfig(
 
 // BuildGenericConfig takes the master server options and produces the genericapiserver.Config associated with it
 func BuildGenericConfig(
-	s *options.ServerRunOptions,
+	o options.CompletedServerRunOptions,
 ) (
 	genericConfig *genericapiserver.Config,
 	storageFactory *serverstorage.DefaultStorageFactory,
 	lastErr error,
 ) {
 	genericConfig = genericapiserver.NewConfig(genericcontrolplanescheme.Codecs)
-
-	if lastErr = s.GenericServerRunOptions.ApplyTo(genericConfig); lastErr != nil {
+	if lastErr = o.GenericServerRunOptions.ApplyTo(genericConfig); lastErr != nil {
 		return
 	}
 
-	if lastErr = s.SecureServing.ApplyTo(&genericConfig.SecureServing, &genericConfig.LoopbackClientConfig); lastErr != nil {
+	if lastErr = o.SecureServing.ApplyTo(&genericConfig.SecureServing, &genericConfig.LoopbackClientConfig); lastErr != nil {
 		return
 	}
-	if lastErr = s.Features.ApplyTo(genericConfig); lastErr != nil {
+	if lastErr = o.Features.ApplyTo(genericConfig); lastErr != nil {
 		return
 	}
-	if lastErr = s.APIEnablement.ApplyTo(genericConfig, apis.DefaultAPIResourceConfigSource(), genericcontrolplanescheme.Scheme); lastErr != nil {
+	if lastErr = o.APIEnablement.ApplyTo(genericConfig, apis.DefaultAPIResourceConfigSource(), genericcontrolplanescheme.Scheme); lastErr != nil {
 		return
 	}
-	if lastErr = s.EgressSelector.ApplyTo(genericConfig); lastErr != nil {
+	if lastErr = o.EgressSelector.ApplyTo(genericConfig); lastErr != nil {
 		return
 	}
 	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIServerTracing) {
-		if lastErr = s.Traces.ApplyTo(genericConfig.EgressSelector, genericConfig); lastErr != nil {
+		if lastErr = o.Traces.ApplyTo(genericConfig.EgressSelector, genericConfig); lastErr != nil {
 			return
 		}
 	}
@@ -279,7 +276,7 @@ func BuildGenericConfig(
 
 	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(genericcontrolplanescheme.Scheme, genericcontrolplanescheme.Codecs)
 	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
-	completedStorageFactoryConfig, err := storageFactoryConfig.Complete(s.Etcd)
+	completedStorageFactoryConfig, err := storageFactoryConfig.Complete(o.Etcd)
 	if err != nil {
 		lastErr = err
 		return
@@ -294,7 +291,7 @@ func BuildGenericConfig(
 	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIServerTracing) && genericConfig.TracerProvider != nil {
 		storageFactory.StorageConfig.Transport.TracerProvider = genericConfig.TracerProvider
 	}
-	if lastErr = s.Etcd.ApplyWithStorageFactoryTo(storageFactory, genericConfig); lastErr != nil {
+	if lastErr = o.Etcd.ApplyWithStorageFactoryTo(storageFactory, genericConfig); lastErr != nil {
 		return
 	}
 
@@ -317,18 +314,14 @@ func BuildGenericConfig(
 	versionedInformers := clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
 
 	// Authentication.ApplyTo requires already applied OpenAPIConfig and EgressSelector if present
-	if lastErr = AuthenticationApplyTo(s.Authentication, &genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig); lastErr != nil {
+	if lastErr = AuthenticationApplyTo(o.Authentication, &genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig); lastErr != nil {
 		return
 	}
 
-	genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, err = BuildAuthorizer(s, versionedInformers)
+	genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, err = BuildAuthorizer(&o.ServerRunOptions, versionedInformers)
 	if err != nil {
 		lastErr = fmt.Errorf("invalid authorization config: %v", err)
 		return
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIPriorityAndFairness) && s.GenericServerRunOptions.EnablePriorityAndFairness {
-		genericConfig.FlowControl, lastErr = BuildPriorityAndFairness(s, clientgoExternalClient, versionedInformers)
 	}
 
 	return
@@ -364,52 +357,6 @@ func BuildPriorityAndFairness(s *options.ServerRunOptions, extclient clientgocli
 		s.GenericServerRunOptions.MaxRequestsInFlight+s.GenericServerRunOptions.MaxMutatingRequestsInFlight,
 		s.GenericServerRunOptions.RequestTimeout/4,
 	), nil
-}
-
-// completedServerRunOptions is a private wrapper that enforces a call of Complete() before Run can be invoked.
-type completedServerRunOptions struct {
-	*options.ServerRunOptions
-}
-
-// Complete set default ServerRunOptions.
-// Should be called after kube-apiserver flags parsed.
-func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
-	var options completedServerRunOptions
-	// set defaults
-	if err := s.GenericServerRunOptions.DefaultAdvertiseAddress(s.SecureServing.SecureServingOptions); err != nil {
-		return options, err
-	}
-
-	if err := s.SecureServing.MaybeDefaultWithSelfSignedCerts(s.GenericServerRunOptions.AdvertiseAddress.String(), nil, nil); err != nil {
-		return options, fmt.Errorf("error creating self-signed certificates: %v", err)
-	}
-
-	if len(s.GenericServerRunOptions.ExternalHost) == 0 {
-		if len(s.GenericServerRunOptions.AdvertiseAddress) > 0 {
-			s.GenericServerRunOptions.ExternalHost = s.GenericServerRunOptions.AdvertiseAddress.String()
-		} else {
-			if hostname, err := os.Hostname(); err == nil {
-				s.GenericServerRunOptions.ExternalHost = hostname
-			} else {
-				return options, fmt.Errorf("error finding host name: %v", err)
-			}
-		}
-		klog.Infof("external host was not specified, using %v", s.GenericServerRunOptions.ExternalHost)
-	}
-
-	for key, value := range s.APIEnablement.RuntimeConfig {
-		if key == "v1" || strings.HasPrefix(key, "v1/") ||
-			key == "api/v1" || strings.HasPrefix(key, "api/v1/") {
-			delete(s.APIEnablement.RuntimeConfig, key)
-			s.APIEnablement.RuntimeConfig["/v1"] = value
-		}
-		if key == "api/legacy" {
-			delete(s.APIEnablement.RuntimeConfig, key)
-		}
-	}
-
-	options.ServerRunOptions = s
-	return options, nil
 }
 
 // unimplementedServiceResolver is a webhook.ServiceResolver that always returns an error.

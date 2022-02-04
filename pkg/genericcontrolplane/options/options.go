@@ -17,6 +17,9 @@ limitations under the License.
 package options
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/mutating"
@@ -25,6 +28,7 @@ import (
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics"
+	"k8s.io/klog/v2"
 
 	kubeoptions "k8s.io/kubernetes/pkg/kubeapiserver/options"
 	"k8s.io/kubernetes/pkg/serviceaccount"
@@ -68,6 +72,16 @@ type ServerRunOptions struct {
 	ShowHiddenMetricsForVersion string
 }
 
+// completedServerRunOptions is a private wrapper that enforces a call of Complete() before Run can be invoked.
+type completedServerRunOptions struct {
+	ServerRunOptions
+}
+
+type CompletedServerRunOptions struct {
+	// Embed a private pointer that cannot be instantiated outside of this package.
+	*completedServerRunOptions
+}
+
 // NewServerRunOptions creates a new ServerRunOptions object with default parameters
 func NewServerRunOptions() *ServerRunOptions {
 	s := ServerRunOptions{
@@ -101,4 +115,45 @@ func NewServerRunOptions() *ServerRunOptions {
 	s.Etcd.DefaultStorageMediaType = "application/vnd.kubernetes.protobuf"
 
 	return &s
+}
+
+// Complete defaults missing field values. It mutates the receiver.
+func (o *ServerRunOptions) Complete() (CompletedServerRunOptions, error) {
+	if err := o.GenericServerRunOptions.DefaultAdvertiseAddress(o.SecureServing.SecureServingOptions); err != nil {
+		return CompletedServerRunOptions{}, err
+	}
+
+	if err := o.SecureServing.MaybeDefaultWithSelfSignedCerts(o.GenericServerRunOptions.AdvertiseAddress.String(), nil, nil); err != nil {
+		return CompletedServerRunOptions{}, fmt.Errorf("error creating self-signed certificates: %v", err)
+	}
+
+	if len(o.GenericServerRunOptions.ExternalHost) == 0 {
+		if len(o.GenericServerRunOptions.AdvertiseAddress) > 0 {
+			o.GenericServerRunOptions.ExternalHost = o.GenericServerRunOptions.AdvertiseAddress.String()
+		} else {
+			if hostname, err := os.Hostname(); err == nil {
+				o.GenericServerRunOptions.ExternalHost = hostname
+			} else {
+				return CompletedServerRunOptions{}, fmt.Errorf("error finding host name: %v", err)
+			}
+		}
+		klog.Infof("external host was not specified, using %v", o.GenericServerRunOptions.ExternalHost)
+	}
+
+	for key, value := range o.APIEnablement.RuntimeConfig {
+		if key == "v1" || strings.HasPrefix(key, "v1/") ||
+			key == "api/v1" || strings.HasPrefix(key, "api/v1/") {
+			delete(o.APIEnablement.RuntimeConfig, key)
+			o.APIEnablement.RuntimeConfig["/v1"] = value
+		}
+		if key == "api/legacy" {
+			delete(o.APIEnablement.RuntimeConfig, key)
+		}
+	}
+
+	return CompletedServerRunOptions{
+		&completedServerRunOptions{
+			ServerRunOptions: *o,
+		},
+	}, nil
 }
