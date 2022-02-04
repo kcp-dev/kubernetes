@@ -95,7 +95,7 @@ func Run(options options.CompletedServerRunOptions, stopCh <-chan struct{}) erro
 	apiExtensionsConfig, err := CreateAPIExtensionsConfig(
 		*config.GenericConfig,
 		config.ExtraConfig.VersionedInformers,
-		nil,
+		nil, // pluginInitializer
 		options,
 		&unimplementedServiceResolver{},
 		webhook.NewDefaultAuthenticationInfoResolverWrapper(
@@ -214,7 +214,7 @@ func CreateKubeAPIServerConfig(
 		return nil, err
 	}
 
-	// // Load the public keys.g
+	// // Load the public keys.
 	// var pubKeys []interface{}
 	// for _, f := range s.Authentication.ServiceAccounts.KeyFiles {
 	// 	keys, err := keyutil.PublicKeysFromFile(f)
@@ -322,6 +322,11 @@ func BuildGenericConfig(
 	if err != nil {
 		lastErr = fmt.Errorf("invalid authorization config: %v", err)
 		return
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIPriorityAndFairness) && o.GenericServerRunOptions.EnablePriorityAndFairness {
+		// TODO(sttts): make BuildPriorityAndFairness take the completed options
+		genericConfig.FlowControl, lastErr = BuildPriorityAndFairness(&o.ServerRunOptions, clientgoExternalClient, versionedInformers)
 	}
 
 	return
