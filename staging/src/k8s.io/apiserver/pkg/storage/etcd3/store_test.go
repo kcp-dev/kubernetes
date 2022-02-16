@@ -1742,7 +1742,11 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 				t.Fatalf("expected error but got none")
 			}
 			if (len(out.Continue) > 0) != tt.expectContinue {
-				t.Errorf("unexpected continue token: %q", out.Continue)
+				data, err := base64.RawURLEncoding.DecodeString(out.Continue)
+				if err != nil {
+					t.Errorf("unexpected continue token: %s", out.Continue)
+				}
+				t.Errorf("unexpected continue token: %s", string(data))
 			}
 
 			// If a client requests an exact resource version, it must be echoed back to them.
@@ -1754,13 +1758,13 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			if len(tt.expectedOut) != len(out.Items) {
 				t.Fatalf("length of list want=%d, got=%d", len(tt.expectedOut), len(out.Items))
 			}
-			if e, a := tt.expectedRemainingItemCount, out.ListMeta.GetRemainingItemCount(); (e == nil) != (a == nil) || (e != nil && a != nil && *e != *a) {
-				t.Errorf("remainingItemCount want=%#v, got=%#v", e, a)
+			if diff := cmp.Diff(tt.expectedRemainingItemCount, out.ListMeta.GetRemainingItemCount()); diff != "" {
+				t.Errorf("remainingItemCount incorrect: %v", diff)
 			}
 			for j, wantPod := range tt.expectedOut {
 				getPod := &out.Items[j]
-				if !reflect.DeepEqual(wantPod, getPod) {
-					t.Errorf("pod want=%#v, got=%#v", wantPod, getPod)
+				if diff := cmp.Diff(wantPod, getPod); diff != "" {
+					t.Errorf("pod incorrect: %v", diff)
 				}
 			}
 		})
