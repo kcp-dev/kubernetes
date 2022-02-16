@@ -19,14 +19,17 @@ package storage
 import (
 	"context"
 	"fmt"
+	"testing"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apiserver/pkg/storage/value"
 )
 
 // Versioner abstracts setting and retrieving metadata fields from database response
@@ -277,4 +280,26 @@ type ListOptions struct {
 	// ProgressNotify determines whether storage-originated bookmark (progress notify) events should
 	// be delivered to the users. The option is ignored for non-watch requests.
 	ProgressNotify bool
+}
+
+// FOR INTERNAL TESTING ONLY
+
+type InternalTestClient interface {
+	RawGet(ctx context.Context, key string) (data []byte, notFound bool, err error)
+	RawPut(ctx context.Context, key, data string) (revision int64, err error)
+	RawCompact(ctx context.Context, revision int64) error
+	Reads() uint64
+	ResetReads()
+}
+
+type InternalTestInterface interface {
+	Interface
+	Decode([]byte) (runtime.Object, error)
+	UpdateTransformer(func(transformer value.Transformer) value.Transformer)
+	PathPrefix() string
+}
+
+type TestBootstrapper interface {
+	Setup(t *testing.T, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) (context.Context, InternalTestInterface, InternalTestClient)
+	InterfaceForClient(t *testing.T, client InternalTestClient, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) InternalTestInterface
 }
