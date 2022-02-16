@@ -1357,7 +1357,7 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 		expectedRemainingItemCount *int64
 		expectError                bool
 		expectRVTooLarge           bool
-		expectRV                   string
+		expectRV                   func(string) (string, bool)
 	}{
 		{
 			name:        "rejects invalid resource version",
@@ -1405,7 +1405,10 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectedOut: []*example.Pod{},
 			rv:          oneLess(preset[0].storedObj.ResourceVersion),
 			rvMatch:     metav1.ResourceVersionMatchExact,
-			expectRV:    "1",
+			expectRV: func(s string) (string, bool) {
+				expected := oneLess(preset[0].storedObj.ResourceVersion)
+				return expected, s == expected
+			},
 		},
 		{
 			name:        "test List on existing key with resource version set before first write, match=NotOlderThan",
@@ -1437,7 +1440,10 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectedOut: []*example.Pod{preset[0].storedObj},
 			rv:          list.ResourceVersion,
 			rvMatch:     metav1.ResourceVersionMatchExact,
-			expectRV:    list.ResourceVersion,
+			expectRV: func(s string) (string, bool) {
+				expected := list.ResourceVersion
+				return expected, s == expected
+			},
 		},
 		{
 			name:        "test List on existing key with resource version set to current resource version, match=NotOlderThan",
@@ -1486,7 +1492,10 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectContinue:             true,
 			expectedRemainingItemCount: utilpointer.Int64Ptr(1),
 			rv:                         list.ResourceVersion,
-			expectRV:                   list.ResourceVersion,
+			expectRV: func(s string) (string, bool) {
+				expected := list.ResourceVersion
+				return expected, s == expected
+			},
 		},
 		{
 			name:   "test List with limit at current resource version and match=Exact",
@@ -1501,7 +1510,10 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectedRemainingItemCount: utilpointer.Int64Ptr(1),
 			rv:                         list.ResourceVersion,
 			rvMatch:                    metav1.ResourceVersionMatchExact,
-			expectRV:                   list.ResourceVersion,
+			expectRV: func(s string) (string, bool) {
+				expected := list.ResourceVersion
+				return expected, s == expected
+			},
 		},
 		{
 			name:   "test List with limit at resource version 0",
@@ -1515,7 +1527,17 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectContinue:             true,
 			expectedRemainingItemCount: utilpointer.Int64Ptr(1),
 			rv:                         "0",
-			expectRV:                   list.ResourceVersion,
+			expectRV: func(s string) (string, bool) {
+				expected, err := strconv.ParseInt(list.ResourceVersion, 10, 64)
+				if err != nil {
+					return err.Error(), false
+				}
+				got, err := strconv.ParseInt(s, 10, 64)
+				if err != nil {
+					return err.Error(), false
+				}
+				return ">=" + list.ResourceVersion, got >= expected // CRDB keeps ticking, so we can't assume no change from the last write, but we can require a newer RV
+			},
 		},
 		{
 			name:   "test List with limit at resource version 0 match=NotOlderThan",
@@ -1530,7 +1552,6 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectedRemainingItemCount: utilpointer.Int64Ptr(1),
 			rv:                         "0",
 			rvMatch:                    metav1.ResourceVersionMatchNotOlderThan,
-			expectRV:                   list.ResourceVersion,
 		},
 		{
 			name:   "test List with limit at resource version 1 and match=Exact",
@@ -1539,6 +1560,16 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 				Label: labels.Everything(),
 				Field: fields.Everything(),
 				Limit: 1,
+			expectRV: func(s string) (string, bool) {
+				expected, err := strconv.ParseInt(list.ResourceVersion, 10, 64)
+				if err != nil {
+					return err.Error(), false
+				}
+				got, err := strconv.ParseInt(s, 10, 64)
+				if err != nil {
+					return err.Error(), false
+				}
+				return ">=" + list.ResourceVersion, got >= expected // CRDB keeps ticking, so we can't assume no change from the last write, but we can require a newer RV
 			},
 			expectedOut:    []*example.Pod{},
 			expectContinue: false,
@@ -1558,7 +1589,10 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectContinue: false,
 			rv:             oneLess(preset[0].storedObj.ResourceVersion),
 			rvMatch:        metav1.ResourceVersionMatchExact,
-			expectRV:       "1",
+			expectRV: func(s string) (string, bool) {
+				expected := oneLess(preset[0].storedObj.ResourceVersion)
+				return expected, s == expected
+			},
 		},
 		{
 			name:          "test List with limit when paging disabled",
@@ -1750,9 +1784,9 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			}
 
 			// If a client requests an exact resource version, it must be echoed back to them.
-			if tt.expectRV != "" {
-				if tt.expectRV != out.ResourceVersion {
-					t.Errorf("resourceVersion in list response want=%s, got=%s", tt.expectRV, out.ResourceVersion)
+			if tt.expectRV != nil {
+				if want, ok := tt.expectRV(out.ResourceVersion); !ok {
+					t.Errorf("resourceVersion in list response want=%s, got=%s", want, out.ResourceVersion)
 				}
 			}
 			if len(tt.expectedOut) != len(out.Items) {
