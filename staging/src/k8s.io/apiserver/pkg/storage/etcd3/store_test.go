@@ -112,7 +112,7 @@ func TestCreate(t *testing.T) {
 
 	key := "/testkey"
 	out := &example.Pod{}
-	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink"}}
+	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink", ClusterName: "admin"}}
 
 	// verify that kv pair is empty before set
 	getResp, err := etcdClient.KV.Get(ctx, key)
