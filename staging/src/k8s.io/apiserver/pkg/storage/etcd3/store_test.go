@@ -2192,6 +2192,18 @@ func RunTestListInconsistentContinuation(t *testing.T, bootstrapper storage.Test
 		t.Fatalf("expect non-empty continue token")
 	}
 
+	expectGreatherThanLastRV := func(rv string) (string, bool) {
+		expected, err := strconv.ParseInt(lastRVString, 10, 64)
+		if err != nil {
+			return err.Error(), false
+		}
+		got, err := strconv.ParseInt(rv, 10, 64)
+		if err != nil {
+			return err.Error(), false
+		}
+		return ">=" + lastRVString, got >= expected // CRDB keeps ticking, so we can't assume no change from the last write, but we can require a newer RV
+	}
+
 	out = &example.PodList{}
 	if err := store.List(ctx, "/", storage.ListOptions{ResourceVersion: "0", Predicate: pred(1, inconsistentContinueFromSecondItem)}, out); err != nil {
 		t.Fatalf("Unable to get second page: %v", err)
@@ -2202,8 +2214,8 @@ func RunTestListInconsistentContinuation(t *testing.T, bootstrapper storage.Test
 	if len(out.Items) != 1 || !reflect.DeepEqual(&out.Items[0], preset[1].storedObj) {
 		t.Fatalf("Unexpected second page: %#v", out.Items)
 	}
-	if out.ResourceVersion != lastRVString {
-		t.Fatalf("Expected list resource version to be %s, got %s", lastRVString, out.ResourceVersion)
+	if want, ok := expectGreatherThanLastRV(out.ResourceVersion); !ok {
+		t.Fatalf("Expected list resource version to be %s, got %s", want, out.ResourceVersion)
 	}
 	continueFromThirdItem := out.Continue
 	out = &example.PodList{}
@@ -2216,8 +2228,10 @@ func RunTestListInconsistentContinuation(t *testing.T, bootstrapper storage.Test
 	if len(out.Items) != 1 || !reflect.DeepEqual(&out.Items[0], preset[2].storedObj) {
 		t.Fatalf("Unexpected third page: %#v", out.Items)
 	}
-	if out.ResourceVersion != lastRVString {
-		t.Fatalf("Expected list resource version to be %s, got %s", lastRVString, out.ResourceVersion)
+	if want, ok := expectGreatherThanLastRV(out.ResourceVersion); !ok {
+		t.Fatalf("Expected list resource version to be %s, got %s", want, out.ResourceVersion)
+	}
+}
 
 type setupOptions struct {
 	codec         runtime.Codec
