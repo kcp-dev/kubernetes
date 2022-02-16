@@ -639,68 +639,80 @@ func RunTestGetToList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	currentRV, _ := strconv.Atoi(storedObj.ResourceVersion)
 
 	tests := []struct {
+		name             string
 		key              string
 		pred             storage.SelectionPredicate
 		expectedOut      []*example.Pod
 		rv               string
 		rvMatch          metav1.ResourceVersionMatch
 		expectRVTooLarge bool
-	}{{ // test GetToList on existing key
+	}{{
+		name:        "test GetToList on existing key",
 		key:         key,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{storedObj},
-	}, { // test GetToList on existing key with minimum resource version set to 0
+	}, {
+		name:        "test GetToList on existing key with minimum resource version set to 0",
 		key:         key,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{storedObj},
 		rv:          "0",
-	}, { // test GetToList on existing key with minimum resource version set to 0, match=minimum
+	}, {
+		name:        "test GetToList on existing key with minimum resource version set to 0, match=minimum",
 		key:         key,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{storedObj},
 		rv:          "0",
 		rvMatch:     metav1.ResourceVersionMatchNotOlderThan,
-	}, { // test GetToList on existing key with minimum resource version set to current resource version
+	}, {
+		name:        "test GetToList on existing key with minimum resource version set to current resource version",
 		key:         key,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{storedObj},
 		rv:          fmt.Sprintf("%d", currentRV),
-	}, { // test GetToList on existing key with minimum resource version set to current resource version, match=minimum
+	}, {
+		name:        "test GetToList on existing key with minimum resource version set to current resource version, match=minimum",
 		key:         key,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{storedObj},
 		rv:          fmt.Sprintf("%d", currentRV),
 		rvMatch:     metav1.ResourceVersionMatchNotOlderThan,
-	}, { // test GetToList on existing key with minimum resource version set to previous resource version, match=minimum
+	}, {
+		name:        "test GetToList on existing key with minimum resource version set to previous resource version, match=minimum",
 		key:         key,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{storedObj},
 		rv:          fmt.Sprintf("%d", prevRV),
 		rvMatch:     metav1.ResourceVersionMatchNotOlderThan,
-	}, { // test GetToList on existing key with resource version set to current resource version, match=exact
+	}, {
+		name:        "test GetToList on existing key with resource version set to current resource version, match=exact",
 		key:         key,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{storedObj},
 		rv:          fmt.Sprintf("%d", currentRV),
 		rvMatch:     metav1.ResourceVersionMatchExact,
-	}, { // test GetToList on existing key with resource version set to previous resource version, match=exact
+	}, {
+		name:        "test GetToList on existing key with resource version set to previous resource version, match=exact",
 		key:         prevKey,
 		pred:        storage.Everything,
 		expectedOut: []*example.Pod{prevStoredObj},
 		rv:          fmt.Sprintf("%d", prevRV),
 		rvMatch:     metav1.ResourceVersionMatchExact,
-	}, { // test GetToList on existing key with minimum resource version set too high
+	}, {
+		name:             "test GetToList on existing key with minimum resource version set too high",
 		key:              key,
 		pred:             storage.Everything,
 		expectedOut:      []*example.Pod{storedObj},
 		rv:               fmt.Sprintf("%d", currentRV+1e9), // NOTE: we're checking with CRDB logical timestamp, which is always moving forward, so we need to add enough so that we're in front ...
 		expectRVTooLarge: true,
-	}, { // test GetToList on non-existing key
+	}, {
+		name:        "test GetToList on non-existing key",
 		key:         "/non-existing",
 		pred:        storage.Everything,
 		expectedOut: nil,
-	}, { // test GetToList with matching pod name
-		key: "/non-existing",
+	}, {
+		name: "test GetToList with matching pod name",
+		key:  "/non-existing",
 		pred: storage.SelectionPredicate{
 			Label: labels.Everything(),
 			Field: fields.ParseSelectorOrDie("metadata.name!=" + storedObj.Name),
@@ -713,32 +725,34 @@ func RunTestGetToList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	}}
 
 	for i, tt := range tests {
-		out := &example.PodList{}
-		err := store.GetToList(ctx, tt.key, storage.ListOptions{ResourceVersion: tt.rv, ResourceVersionMatch: tt.rvMatch, Predicate: tt.pred}, out)
+		t.Run(tt.name, func(t *testing.T) {
+			out := &example.PodList{}
+			err := store.GetToList(ctx, tt.key, storage.ListOptions{ResourceVersion: tt.rv, ResourceVersionMatch: tt.rvMatch, Predicate: tt.pred}, out)
 
-		if tt.expectRVTooLarge {
-			if err == nil || !storage.IsTooLargeResourceVersion(err) {
-				t.Errorf("#%d: expecting resource version too high error, but get: %s", i, err)
+			if tt.expectRVTooLarge {
+				if err == nil || !storage.IsTooLargeResourceVersion(err) {
+					t.Errorf("#%d: %s: expecting resource version too high error, but get: %s", i, tt.name, err)
+				}
+				return
 			}
-			continue
-		}
 
-		if err != nil {
-			t.Fatalf("GetToList failed: %v", err)
-		}
-		if len(out.ResourceVersion) == 0 {
-			t.Errorf("#%d: unset resourceVersion", i)
-		}
-		if len(out.Items) != len(tt.expectedOut) {
-			t.Errorf("#%d: length of list want=%d, get=%d", i, len(tt.expectedOut), len(out.Items))
-			continue
-		}
-		for j, wantPod := range tt.expectedOut {
-			getPod := &out.Items[j]
-			if !reflect.DeepEqual(wantPod, getPod) {
-				t.Errorf("#%d: pod want=%#v, get=%#v", i, wantPod, getPod)
+			if err != nil {
+				t.Fatalf("GetToList failed: %v", err)
 			}
-		}
+			if len(out.ResourceVersion) == 0 {
+				t.Errorf("#%d: %s: unset resourceVersion", i, tt.name)
+			}
+			if len(out.Items) != len(tt.expectedOut) {
+				t.Errorf("#%d: %s: length of list want=%d, get=%d", i, tt.name, len(tt.expectedOut), len(out.Items))
+				return
+			}
+			for j, wantPod := range tt.expectedOut {
+				getPod := &out.Items[j]
+				if diff := cmp.Diff(wantPod, getPod); diff != "" {
+					t.Errorf("#%d: %s: incorrect pod: %s", i, tt.name, diff)
+				}
+			}
+		})
 	}
 }
 
