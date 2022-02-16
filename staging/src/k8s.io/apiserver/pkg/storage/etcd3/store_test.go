@@ -1337,6 +1337,14 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 		return nil, fields.Set{"metadata.name": pod.Name}, nil
 	}
 
+	oneLess := func(inputRv string) string {
+		i, err := strconv.ParseUint(inputRv, 10, 64)
+		if err != nil {
+			t.Errorf("failed to parse rv: %v", err)
+		}
+		return strconv.FormatUint(i-1, 10)
+	}
+
 	tests := []struct {
 		name                       string
 		disablePaging              bool
@@ -1391,27 +1399,27 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			rv:          "0",
 		},
 		{
-			name:        "test List on existing key with resource version set to 1, match=Exact",
+			name:        "test List on existing key with resource version set before first write, match=Exact",
 			prefix:      "/one-level/",
 			pred:        storage.Everything,
 			expectedOut: []*example.Pod{},
-			rv:          "1",
+			rv:          oneLess(preset[0].storedObj.ResourceVersion),
 			rvMatch:     metav1.ResourceVersionMatchExact,
 			expectRV:    "1",
 		},
 		{
-			name:        "test List on existing key with resource version set to 1, match=NotOlderThan",
+			name:        "test List on existing key with resource version set before first write, match=NotOlderThan",
 			prefix:      "/one-level/",
 			pred:        storage.Everything,
 			expectedOut: []*example.Pod{preset[0].storedObj},
-			rv:          "0",
+			rv:          oneLess(preset[0].storedObj.ResourceVersion),
 			rvMatch:     metav1.ResourceVersionMatchNotOlderThan,
 		},
 		{
-			name:        "test List on existing key with resource version set to 1, match=Invalid",
+			name:        "test List on existing key with resource version set before first write, match=Invalid",
 			prefix:      "/one-level/",
 			pred:        storage.Everything,
-			rv:          "0",
+			rv:          oneLess(preset[0].storedObj.ResourceVersion),
 			rvMatch:     "Invalid",
 			expectError: true,
 		},
@@ -1539,7 +1547,7 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectRV:       "1",
 		},
 		{
-			name:   "test List with limit at old resource version and match=Exact",
+			name:   "test List with limit at resource version before first write and match=Exact",
 			prefix: "/two-level/",
 			pred: storage.SelectionPredicate{
 				Label: labels.Everything(),
@@ -1548,7 +1556,7 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			},
 			expectedOut:    []*example.Pod{},
 			expectContinue: false,
-			rv:             "1",
+			rv:             oneLess(preset[0].storedObj.ResourceVersion),
 			rvMatch:        metav1.ResourceVersionMatchExact,
 			expectRV:       "1",
 		},
