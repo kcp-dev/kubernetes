@@ -288,7 +288,7 @@ func RunTestGet(t *testing.T, bootstrapper storage.TestBootstrapper) {
 		name:             "too high resource version",
 		key:              key,
 		expectRVTooLarge: true,
-		rv:               fmt.Sprintf("%d", lastUpdatedCurrentRV+1),
+		rv:               fmt.Sprintf("%d", lastUpdatedCurrentRV+1e9), // NOTE: we're checking with CRDB logical timestamp, which is always moving forward, so we need to add enough so that we're in front ...
 	}, { // test get on non-existing item with ignoreNotFound=false
 		name:              "get non-existing",
 		key:               "/non-existing",
@@ -693,7 +693,7 @@ func RunTestGetToList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 		key:              key,
 		pred:             storage.Everything,
 		expectedOut:      []*example.Pod{storedObj},
-		rv:               fmt.Sprintf("%d", currentRV+1),
+		rv:               fmt.Sprintf("%d", currentRV+1e9), // NOTE: we're checking with CRDB logical timestamp, which is always moving forward, so we need to add enough so that we're in front ...
 		expectRVTooLarge: true,
 	}, { // test GetToList on non-existing key
 		key:         "/non-existing",
@@ -1340,7 +1340,8 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 		{
 			name:             "rejects resource version set too high",
 			prefix:           "/",
-			rv:               fmt.Sprintf("%d", continueRV+1),
+			pred:             storage.Everything,
+			rv:               fmt.Sprintf("%d", continueRV+1e9), // NOTE: we're checking with CRDB logical timestamp, which is always moving forward, so we need to add enough so that we're in front ...
 			expectRVTooLarge: true,
 		},
 		{
