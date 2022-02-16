@@ -68,6 +68,7 @@ func (a APIObjectVersioner) PrepareObjectForStorage(obj runtime.Object) error {
 	}
 	accessor.SetResourceVersion("")
 	accessor.SetSelfLink("")
+	accessor.SetClusterName("")
 	return nil
 }
 

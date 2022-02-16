@@ -160,6 +160,9 @@ func checkStorageInvariants(ctx context.Context, t *testing.T, etcdClient *clien
 	if obj.SelfLink != "" {
 		t.Errorf("stored output should have empty self link")
 	}
+	if obj.ClusterName != "" {
+		t.Errorf("stored output should have empty cluster")
+	}
 }
 
 func TestCreateWithTTL(t *testing.T) {
