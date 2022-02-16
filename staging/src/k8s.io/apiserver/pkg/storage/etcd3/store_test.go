@@ -1552,14 +1552,6 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 			expectedRemainingItemCount: utilpointer.Int64Ptr(1),
 			rv:                         "0",
 			rvMatch:                    metav1.ResourceVersionMatchNotOlderThan,
-		},
-		{
-			name:   "test List with limit at resource version 1 and match=Exact",
-			prefix: "/two-level/",
-			pred: storage.SelectionPredicate{
-				Label: labels.Everything(),
-				Field: fields.Everything(),
-				Limit: 1,
 			expectRV: func(s string) (string, bool) {
 				expected, err := strconv.ParseInt(list.ResourceVersion, 10, 64)
 				if err != nil {
@@ -1571,11 +1563,6 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 				}
 				return ">=" + list.ResourceVersion, got >= expected // CRDB keeps ticking, so we can't assume no change from the last write, but we can require a newer RV
 			},
-			expectedOut:    []*example.Pod{},
-			expectContinue: false,
-			rv:             "1",
-			rvMatch:        metav1.ResourceVersionMatchExact,
-			expectRV:       "1",
 		},
 		{
 			name:   "test List with limit at resource version before first write and match=Exact",
