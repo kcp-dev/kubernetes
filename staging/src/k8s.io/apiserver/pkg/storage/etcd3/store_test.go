@@ -32,13 +32,13 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc/grpclog"
 
-	apitesting "k8s.io/apimachinery/pkg/api/apitesting"
+	"k8s.io/apimachinery/pkg/api/apitesting"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -48,13 +48,10 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/apis/example"
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
-	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/testserver"
 	storagetesting "k8s.io/apiserver/pkg/storage/testing"
 	"k8s.io/apiserver/pkg/storage/value"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	utilpointer "k8s.io/utils/pointer"
 )
 
@@ -108,18 +105,22 @@ func newPod() runtime.Object {
 }
 
 func TestCreate(t *testing.T) {
-	ctx, store, etcdClient := testSetup(t)
+	RunTestCreate(t, TestBoostrapper(nil))
+}
+
+func RunTestCreate(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, client := setup(t, bootstrapper)
 
 	key := "/testkey"
 	out := &example.Pod{}
 	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink", ClusterName: "admin"}}
 
 	// verify that kv pair is empty before set
-	getResp, err := etcdClient.KV.Get(ctx, key)
+	_, notFound, err := client.RawGet(ctx, key)
 	if err != nil {
-		t.Fatalf("etcdClient.KV.Get failed: %v", err)
+		t.Fatalf("client.RawGet failed: %v", err)
 	}
-	if len(getResp.Kvs) != 0 {
+	if !notFound {
 		t.Fatalf("expecting empty result on key: %s", key)
 	}
 
@@ -138,20 +139,20 @@ func TestCreate(t *testing.T) {
 		t.Errorf("output should have empty self link")
 	}
 
-	checkStorageInvariants(ctx, t, etcdClient, store, key)
+	checkStorageInvariants(ctx, t, client, store, key)
 }
 
-func checkStorageInvariants(ctx context.Context, t *testing.T, etcdClient *clientv3.Client, store *store, key string) {
-	getResp, err := etcdClient.KV.Get(ctx, key)
+func checkStorageInvariants(ctx context.Context, t *testing.T, client storage.InternalTestClient, store storage.InternalTestInterface, key string) {
+	getResp, notFound, err := client.RawGet(ctx, key)
 	if err != nil {
 		t.Fatalf("etcdClient.KV.Get failed: %v", err)
 	}
-	if len(getResp.Kvs) == 0 {
+	if notFound {
 		t.Fatalf("expecting non empty result on key: %s", key)
 	}
-	decoded, err := runtime.Decode(store.codec, getResp.Kvs[0].Value[len(defaultTestPrefix):])
+	decoded, err := store.Decode(getResp[len(defaultTestPrefix):])
 	if err != nil {
-		t.Fatalf("expecting successful decode of object from %v\n%v", err, string(getResp.Kvs[0].Value))
+		t.Fatalf("expecting successful decode of object from %v\n%v", err, string(getResp))
 	}
 	obj := decoded.(*example.Pod)
 	if obj.ResourceVersion != "" {
@@ -166,7 +167,11 @@ func checkStorageInvariants(ctx context.Context, t *testing.T, etcdClient *clien
 }
 
 func TestCreateWithTTL(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestCreateWithTTL(t, TestBoostrapper(nil))
+}
+
+func RunTestCreateWithTTL(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	input := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key := "/somekey"
@@ -184,7 +189,11 @@ func TestCreateWithTTL(t *testing.T) {
 }
 
 func TestCreateWithKeyExist(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestCreateWithKeyExist(t, TestBoostrapper(nil))
+}
+
+func RunTestCreateWithKeyExist(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key, _ := testPropogateStore(ctx, t, store, obj)
 	out := &example.Pod{}
@@ -195,7 +204,10 @@ func TestCreateWithKeyExist(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestGet(t, TestBoostrapper(nil))
+}
+func RunTestGet(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	// create an object to test
 	key, createdObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 	// update the object once to allow get by exact resource version to be tested
@@ -299,7 +311,11 @@ func TestGet(t *testing.T) {
 }
 
 func TestUnconditionalDelete(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestUnconditionalDelete(t, TestBoostrapper(nil))
+}
+
+func RunTestUnconditionalDelete(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	key, storedObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 
 	tests := []struct {
@@ -335,7 +351,11 @@ func TestUnconditionalDelete(t *testing.T) {
 }
 
 func TestConditionalDelete(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestConditionalDelete(t, TestBoostrapper(nil))
+}
+
+func RunTestConditionalDelete(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	key, storedObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: "A"}})
 
 	tests := []struct {
@@ -394,7 +414,12 @@ func TestConditionalDelete(t *testing.T) {
 //   [DONE] Added TestPreconditionalDeleteWithSuggestion
 
 func TestDeleteWithSuggestion(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestDeleteWithSuggestion(t, TestBoostrapper(nil))
+}
+
+
+func RunTestDeleteWithSuggestion(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -409,7 +434,11 @@ func TestDeleteWithSuggestion(t *testing.T) {
 }
 
 func TestDeleteWithSuggestionAndConflict(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestDeleteWithSuggestionAndConflict(t, TestBoostrapper(nil))
+}
+
+func RunTestDeleteWithSuggestionAndConflict(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -435,7 +464,11 @@ func TestDeleteWithSuggestionAndConflict(t *testing.T) {
 }
 
 func TestDeleteWithSuggestionOfDeletedObject(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestDeleteWithSuggestionOfDeletedObject(t, TestBoostrapper(nil))
+}
+
+func RunTestDeleteWithSuggestionOfDeletedObject(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -453,7 +486,11 @@ func TestDeleteWithSuggestionOfDeletedObject(t *testing.T) {
 }
 
 func TestValidateDeletionWithSuggestion(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestValidateDeletionWithSuggestion(t, TestBoostrapper(nil))
+}
+
+func RunTestValidateDeletionWithSuggestion(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -507,7 +544,12 @@ func TestValidateDeletionWithSuggestion(t *testing.T) {
 }
 
 func TestPreconditionalDeleteWithSuggestion(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestPreconditionalDeleteWithSuggestion(t, TestBoostrapper(nil))
+}
+
+
+func RunTestPreconditionalDeleteWithSuggestion(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -535,7 +577,11 @@ func TestPreconditionalDeleteWithSuggestion(t *testing.T) {
 }
 
 func TestGetToList(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestGetToList(t, TestBoostrapper(nil))
+}
+
+func RunTestGetToList(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	prevKey, prevStoredObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "prev"}})
 
 	prevRV, _ := strconv.Atoi(prevStoredObj.ResourceVersion)
@@ -649,7 +695,11 @@ func TestGetToList(t *testing.T) {
 }
 
 func TestGuaranteedUpdate(t *testing.T) {
-	ctx, store, etcdClient := testSetup(t)
+	RunTestGuaranteedUpdate(t, TestBoostrapper(nil))
+}
+
+func RunTestGuaranteedUpdate(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, client := setup(t, bootstrapper)
 	key := "/testkey"
 
 	tests := []struct {
@@ -791,7 +841,11 @@ func TestGuaranteedUpdate(t *testing.T) {
 }
 
 func TestGuaranteedUpdateWithTTL(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestGuaranteedUpdateWithTTL(t, TestBoostrapper(nil))
+}
+
+func RunTestGuaranteedUpdateWithTTL(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	input := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key := "/somekey"
@@ -814,7 +868,11 @@ func TestGuaranteedUpdateWithTTL(t *testing.T) {
 }
 
 func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestGuaranteedUpdateChecksStoredData(t, TestBoostrapper(nil))
+}
+
+func RunTestGuaranteedUpdateChecksStoredData(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, client := setup(t, bootstrapper)
 
 	input := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key := "/somekey"
@@ -826,16 +884,18 @@ func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := store.client.Put(ctx, key, "test! "+string(data)+" ")
+	revision, err := client.RawPut(ctx, key, defaultTestPrefix+" "+string(data)+" ")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	store.transformer = &prefixTransformer{prefix: []byte(defaultTestPrefix)}
+	store.UpdateTransformer(func(_ value.Transformer) value.Transformer {
+		return &prefixTransformer{prefix: []byte(defaultTestPrefix), stale: false}
+	})
 
 	// this update should write the canonical value to etcd because the new serialization differs
 	// from the stored serialization
-	input.ResourceVersion = strconv.FormatInt(resp.Header.Revision, 10)
+	input.ResourceVersion = strconv.FormatInt(revision, 10)
 	out := &example.Pod{}
 	err = store.GuaranteedUpdate(ctx, key, out, true, nil,
 		func(_ runtime.Object, _ storage.ResponseMeta) (runtime.Object, *uint64, error) {
@@ -844,7 +904,7 @@ func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
-	if out.ResourceVersion == strconv.FormatInt(resp.Header.Revision, 10) {
+	if out.ResourceVersion == strconv.FormatInt(revision, 10) {
 		t.Errorf("guaranteed update should have updated the serialized data, got %#v", out)
 	}
 
@@ -864,7 +924,9 @@ func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
 		t.Errorf("guaranteed update should have short-circuited write, got %#v", out)
 	}
 
-	store.transformer = &prefixTransformer{prefix: []byte(defaultTestPrefix), stale: true}
+	store.UpdateTransformer(func(_ value.Transformer) value.Transformer {
+		return &prefixTransformer{prefix: []byte(defaultTestPrefix), stale: true}
+	})
 
 	// this update should write to etcd because the transformer reported stale
 	err = store.GuaranteedUpdate(ctx, key, out, true, nil,
@@ -880,7 +942,11 @@ func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
 }
 
 func TestGuaranteedUpdateWithConflict(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestGuaranteedUpdateWithConflict(t, TestBoostrapper(nil))
+}
+
+func RunTestGuaranteedUpdateWithConflict(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	key, _ := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 
 	errChan := make(chan error, 1)
@@ -926,7 +992,11 @@ func TestGuaranteedUpdateWithConflict(t *testing.T) {
 }
 
 func TestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestGuaranteedUpdateWithSuggestionAndConflict(t, TestBoostrapper(nil))
+}
+
+func RunTestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 
 	// First, update without a suggestion so originalPod is outdated
@@ -1002,10 +1072,12 @@ func TestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T) {
 }
 
 func TestTransformationFailure(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false, NewDefaultLeaseManagerConfig())
-	ctx := context.Background()
+	RunTestTransformationFailure(t, TestBoostrapper(nil))
+}
+
+
+func RunTestTransformationFailure(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	preset := []struct {
 		key       string
@@ -1033,8 +1105,11 @@ func TestTransformationFailure(t *testing.T) {
 	}
 
 	// create a second resource with an invalid prefix
-	oldTransformer := store.transformer
-	store.transformer = &prefixTransformer{prefix: []byte("otherprefix!")}
+	var oldTransformer *prefixTransformer
+	store.UpdateTransformer(func(transformer value.Transformer) value.Transformer {
+		oldTransformer = transformer.(*prefixTransformer)
+		return &prefixTransformer{prefix: []byte("otherprefix!")}
+	})
 	for i, ps := range preset[1:] {
 		preset[1:][i].storedObj = &example.Pod{}
 		err := store.Create(ctx, ps.key, ps.obj, preset[1:][i].storedObj, 0)
@@ -1042,7 +1117,9 @@ func TestTransformationFailure(t *testing.T) {
 			t.Fatalf("Set failed: %v", err)
 		}
 	}
-	store.transformer = oldTransformer
+	store.UpdateTransformer(func(_ value.Transformer) value.Transformer {
+		return oldTransformer
+	})
 
 	// List should fail
 	var got example.PodList
@@ -1077,12 +1154,13 @@ func TestTransformationFailure(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
-	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RemainingItemCount, true)()
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true, NewDefaultLeaseManagerConfig())
-	disablePagingStore := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false, NewDefaultLeaseManagerConfig())
-	ctx := context.Background()
+	c := NewDefaultLeaseManagerConfig()
+	RunTestList(t, TestBoostrapper(&c))
+}
+
+func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, client := setup(t, bootstrapper)
+	disablePagingStore := additionalStore(t, bootstrapper, client, withoutPaging())
 
 	// Setup storage with the following structure:
 	//  /
@@ -1572,13 +1650,11 @@ func TestList(t *testing.T) {
 }
 
 func TestListContinuation(t *testing.T) {
-	etcdClient := testserver.RunEtcd(t, nil)
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
-	recorder := &clientRecorder{KV: etcdClient.KV}
-	etcdClient.KV = recorder
-	store := newStore(etcdClient, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true, NewDefaultLeaseManagerConfig())
-	ctx := context.Background()
+	RunTestListContinuation(t, TestBoostrapper(nil))
+}
+
+func RunTestListContinuation(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, client := setup(t, bootstrapper)
 
 	// Setup storage with the following structure:
 	//  /
@@ -1642,14 +1718,18 @@ func TestListContinuation(t *testing.T) {
 	if len(out.Items) != 1 || !reflect.DeepEqual(&out.Items[0], preset[0].storedObj) {
 		t.Fatalf("Unexpected first page: %#v", out.Items)
 	}
-	if transformer.reads != 1 {
-		t.Errorf("unexpected reads: %d", transformer.reads)
+	store.UpdateTransformer(func(transformer value.Transformer) value.Transformer {
+		prefixTransformer := transformer.(*prefixTransformer)
+		if prefixTransformer.reads != 1 {
+			t.Errorf("unexpected reads: %d", prefixTransformer.reads)
+		}
+		prefixTransformer.resetReads()
+		return transformer
+	})
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
-	}
-	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	continueFromSecondItem := out.Continue
 
@@ -1666,14 +1746,18 @@ func TestListContinuation(t *testing.T) {
 		t.Logf("continue token was %d %s %v", rv, key, err)
 		t.Fatalf("Unexpected second page: %#v", out.Items)
 	}
-	if transformer.reads != 2 {
-		t.Errorf("unexpected reads: %d", transformer.reads)
+	store.UpdateTransformer(func(transformer value.Transformer) value.Transformer {
+		prefixTransformer := transformer.(*prefixTransformer)
+		if prefixTransformer.reads != 2 {
+			t.Errorf("unexpected reads: %d", prefixTransformer.reads)
+		}
+		prefixTransformer.resetReads()
+		return transformer
+	})
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
-	}
-	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	// limit, should get two more pages
 	out = &example.PodList{}
@@ -1686,14 +1770,18 @@ func TestListContinuation(t *testing.T) {
 	if len(out.Items) != 1 || !reflect.DeepEqual(&out.Items[0], preset[1].storedObj) {
 		t.Fatalf("Unexpected second page: %#v", out.Items)
 	}
-	if transformer.reads != 1 {
-		t.Errorf("unexpected reads: %d", transformer.reads)
+	store.UpdateTransformer(func(transformer value.Transformer) value.Transformer {
+		prefixTransformer := transformer.(*prefixTransformer)
+		if prefixTransformer.reads != 1 {
+			t.Errorf("unexpected reads: %d", prefixTransformer.reads)
+		}
+		prefixTransformer.resetReads()
+		return transformer
+	})
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
-	}
-	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	continueFromThirdItem := out.Continue
 
@@ -1707,38 +1795,28 @@ func TestListContinuation(t *testing.T) {
 	if len(out.Items) != 1 || !reflect.DeepEqual(&out.Items[0], preset[2].storedObj) {
 		t.Fatalf("Unexpected third page: %#v", out.Items)
 	}
-	if transformer.reads != 1 {
-		t.Errorf("unexpected reads: %d", transformer.reads)
+	store.UpdateTransformer(func(transformer value.Transformer) value.Transformer {
+		prefixTransformer := transformer.(*prefixTransformer)
+		if prefixTransformer.reads != 1 {
+			t.Errorf("unexpected reads: %d", prefixTransformer.reads)
+		}
+		prefixTransformer.resetReads()
+		return transformer
+	})
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
-	}
-	transformer.resetReads()
-	recorder.resetReads()
-}
-
-type clientRecorder struct {
-	reads uint64
-	clientv3.KV
-}
-
-func (r *clientRecorder) Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error) {
-	atomic.AddUint64(&r.reads, 1)
-	return r.KV.Get(ctx, key, opts...)
-}
-
-func (r *clientRecorder) resetReads() {
-	r.reads = 0
+	client.ResetReads()
 }
 
 func TestListContinuationWithFilter(t *testing.T) {
-	etcdClient := testserver.RunEtcd(t, nil)
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
-	recorder := &clientRecorder{KV: etcdClient.KV}
-	etcdClient.KV = recorder
-	store := newStore(etcdClient, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true, NewDefaultLeaseManagerConfig())
-	ctx := context.Background()
+	RunTestListContinuationWithFilter(t, TestBoostrapper(nil))
+}
+
+}
+
+func RunTestListContinuationWithFilter(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, client := setup(t, bootstrapper)
 
 	preset := []struct {
 		key       string
@@ -1797,14 +1875,18 @@ func TestListContinuationWithFilter(t *testing.T) {
 	if len(out.Items) != 2 || !reflect.DeepEqual(&out.Items[0], preset[0].storedObj) || !reflect.DeepEqual(&out.Items[1], preset[2].storedObj) {
 		t.Errorf("Unexpected first page, len=%d: %#v", len(out.Items), out.Items)
 	}
-	if transformer.reads != 3 {
-		t.Errorf("unexpected reads: %d", transformer.reads)
+	store.UpdateTransformer(func(transformer value.Transformer) value.Transformer {
+		prefixTransformer := transformer.(*prefixTransformer)
+		if prefixTransformer.reads != 3 {
+			t.Errorf("unexpected reads: %d", prefixTransformer.reads)
+		}
+		prefixTransformer.resetReads()
+		return transformer
+	})
+	if client.Reads() != 2 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
-	if recorder.reads != 2 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
-	}
-	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	// the rest of the test does not make sense if the previous call failed
 	if t.Failed() {
@@ -1826,21 +1908,27 @@ func TestListContinuationWithFilter(t *testing.T) {
 	if len(out.Items) != 1 || !reflect.DeepEqual(&out.Items[0], preset[3].storedObj) {
 		t.Errorf("Unexpected second page, len=%d: %#v", len(out.Items), out.Items)
 	}
-	if transformer.reads != 1 {
-		t.Errorf("unexpected reads: %d", transformer.reads)
+	store.UpdateTransformer(func(transformer value.Transformer) value.Transformer {
+		prefixTransformer := transformer.(*prefixTransformer)
+		if prefixTransformer.reads != 1 {
+			t.Errorf("unexpected reads: %d", prefixTransformer.reads)
+		}
+		prefixTransformer.resetReads()
+		return transformer
+	})
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
-	}
-	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 }
 
 func TestListInconsistentContinuation(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true, NewDefaultLeaseManagerConfig())
-	ctx := context.Background()
+	RunTestListInconsistentContinuation(t, TestBoostrapper(nil))
+}
+
+
+func RunTestListInconsistentContinuation(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, client := setup(t, bootstrapper)
 
 	// Setup storage with the following structure:
 	//  /
@@ -1931,7 +2019,7 @@ func TestListInconsistentContinuation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.KV.Compact(ctx, int64(lastRV), clientv3.WithCompactPhysical()); err != nil {
+	if err := client.RawCompact(ctx, int64(lastRV)); err != nil {
 		t.Fatalf("Unable to compact, %v", err)
 	}
 
@@ -1978,7 +2066,78 @@ func TestListInconsistentContinuation(t *testing.T) {
 	}
 	if out.ResourceVersion != lastRVString {
 		t.Fatalf("Expected list resource version to be %s, got %s", lastRVString, out.ResourceVersion)
+
+type setupOptions struct {
+	codec         runtime.Codec
+	newFunc       func() runtime.Object
+	prefix        string
+	groupResource schema.GroupResource
+	transformer   value.Transformer
+	pagingEnabled bool
+}
+
+type setupOption func(*setupOptions)
+
+func withPrefix(prefix string) setupOption {
+	return func(options *setupOptions) {
+		options.prefix = prefix
 	}
+}
+
+func withoutPaging() setupOption {
+	return func(options *setupOptions) {
+		options.pagingEnabled = false
+	}
+}
+
+func withTransformer(transformer value.Transformer) setupOption {
+	return func(options *setupOptions) {
+		options.transformer = transformer
+	}
+}
+
+func withDefaults() setupOption {
+	return func(options *setupOptions) {
+		options.codec = apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
+		options.newFunc = newPod
+		options.prefix = ""
+		options.groupResource = schema.GroupResource{Resource: "pods"}
+		options.transformer = &prefixTransformer{prefix: []byte(defaultTestPrefix)}
+		options.pagingEnabled = true
+	}
+}
+
+func setup(t *testing.T, bootstrapper storage.TestBootstrapper, opts ...setupOption) (context.Context, storage.InternalTestInterface, storage.InternalTestClient) {
+	setupOpts := setupOptions{}
+	opts = append([]setupOption{withDefaults()}, opts...)
+	for _, opt := range opts {
+		opt(&setupOpts)
+	}
+	return bootstrapper.Setup(t,
+		setupOpts.codec,
+		setupOpts.newFunc,
+		setupOpts.prefix,
+		setupOpts.groupResource,
+		setupOpts.transformer,
+		setupOpts.pagingEnabled,
+	)
+}
+
+func additionalStore(t *testing.T, bootstrapper storage.TestBootstrapper, client storage.InternalTestClient, opts ...setupOption) storage.InternalTestInterface {
+	setupOpts := setupOptions{}
+	opts = append([]setupOption{withDefaults()}, opts...)
+	for _, opt := range opts {
+		opt(&setupOpts)
+	}
+	return bootstrapper.InterfaceForClient(t,
+		client,
+		setupOpts.codec,
+		setupOpts.newFunc,
+		setupOpts.prefix,
+		setupOpts.groupResource,
+		setupOpts.transformer,
+		setupOpts.pagingEnabled,
+	)
 }
 
 func testSetup(t *testing.T) (context.Context, *store, *clientv3.Client) {
@@ -1997,20 +2156,17 @@ func testSetup(t *testing.T) (context.Context, *store, *clientv3.Client) {
 
 // testPropogateStore helps propagates store with objects, automates key generation, and returns
 // keys and stored objects.
-func testPropogateStore(ctx context.Context, t *testing.T, store *store, obj *example.Pod) (string, *example.Pod) {
+func testPropogateStore(ctx context.Context, t *testing.T, store storage.Interface, obj *example.Pod) (string, *example.Pod) {
 	// Setup store with a key and grab the output for returning.
 	key := "/testkey"
 	return key, testPropogateStoreWithKey(ctx, t, store, key, obj)
 }
 
 // testPropogateStoreWithKey helps propagate store with objects, the given object will be stored at the specified key.
-func testPropogateStoreWithKey(ctx context.Context, t *testing.T, store *store, key string, obj *example.Pod) *example.Pod {
+func testPropogateStoreWithKey(ctx context.Context, t *testing.T, store storage.Interface, key string, obj *example.Pod) *example.Pod {
 	// Setup store with the specified key and grab the output for returning.
-	v, err := conversion.EnforcePtr(obj)
-	if err != nil {
-		panic("unable to convert output object to pointer")
-	}
-	err = store.conditionalDelete(ctx, key, &example.Pod{}, v, nil, storage.ValidateAllObjectFunc, nil)
+	thisObj := obj.DeepCopy()
+	err := store.Delete(ctx, key, thisObj, nil, storage.ValidateAllObjectFunc, nil)
 	if err != nil && !storage.IsNotFound(err) {
 		t.Fatalf("Cleanup failed: %v", err)
 	}
@@ -2022,18 +2178,19 @@ func testPropogateStoreWithKey(ctx context.Context, t *testing.T, store *store, 
 }
 
 func TestPrefix(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
+	RunTestListInconsistentContinuation(t, TestBoostrapper(nil))
+}
+
+func RunTestPrefix(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	testcases := map[string]string{
 		"custom/prefix":     "/custom/prefix",
 		"/custom//prefix//": "/custom/prefix",
 		"/registry":         "/registry",
 	}
 	for configuredPrefix, effectivePrefix := range testcases {
-		store := newStore(client, codec, nil, configuredPrefix, schema.GroupResource{Resource: "widgets"}, transformer, true, NewDefaultLeaseManagerConfig())
-		if store.pathPrefix != effectivePrefix {
-			t.Errorf("configured prefix of %s, expected effective prefix of %s, got %s", configuredPrefix, effectivePrefix, store.pathPrefix)
+		_, store, _ := setup(t, bootstrapper, withPrefix(configuredPrefix))
+		if store.PathPrefix() != effectivePrefix {
+			t.Errorf("configured prefix of %s, expected effective prefix of %s, got %s", configuredPrefix, effectivePrefix, store.PathPrefix())
 		}
 	}
 }
@@ -2153,8 +2310,9 @@ func Test_growSlice(t *testing.T) {
 // fancyTransformer creates next object on each call to
 // TransformFromStorage call.
 type fancyTransformer struct {
+	ctx context.Context
 	transformer value.Transformer
-	store       *store
+	store       storage.Interface
 
 	lock  sync.Mutex
 	index int
@@ -2186,18 +2344,21 @@ func (t *fancyTransformer) createObject() error {
 		},
 	}
 	out := &example.Pod{}
-	return t.store.Create(context.TODO(), key, obj, out, 0)
+	return t.store.Create(t.ctx, key, obj, out, 0)
 }
 
 func TestConsistentList(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
+	RunTestConsistentList(t, TestBoostrapper(nil))
+}
 
+
+func RunTestConsistentList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	transformer := &fancyTransformer{
 		transformer: &prefixTransformer{prefix: []byte(defaultTestPrefix)},
 	}
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true, NewDefaultLeaseManagerConfig())
+	ctx, store, _ := setup(t, bootstrapper, withTransformer(transformer))
 	transformer.store = store
+	transformer.ctx = ctx
 
 	for i := 0; i < 5; i++ {
 		if err := transformer.createObject(); err != nil {
@@ -2219,7 +2380,7 @@ func TestConsistentList(t *testing.T) {
 	}
 
 	result1 := example.PodList{}
-	if err := store.List(context.TODO(), "/", storage.ListOptions{Predicate: predicate}, &result1); err != nil {
+	if err := store.List(ctx, "/", storage.ListOptions{Predicate: predicate}, &result1); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
@@ -2231,7 +2392,7 @@ func TestConsistentList(t *testing.T) {
 	}
 
 	result2 := example.PodList{}
-	if err := store.List(context.TODO(), "/", options, &result2); err != nil {
+	if err := store.List(ctx, "/", options, &result2); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
@@ -2243,7 +2404,7 @@ func TestConsistentList(t *testing.T) {
 	options.ResourceVersionMatch = metav1.ResourceVersionMatchNotOlderThan
 
 	result3 := example.PodList{}
-	if err := store.List(context.TODO(), "/", options, &result3); err != nil {
+	if err := store.List(ctx, "/", options, &result3); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
@@ -2251,7 +2412,7 @@ func TestConsistentList(t *testing.T) {
 	options.ResourceVersionMatch = metav1.ResourceVersionMatchExact
 
 	result4 := example.PodList{}
-	if err := store.List(context.TODO(), "/", options, &result4); err != nil {
+	if err := store.List(ctx, "/", options, &result4); err != nil {
 		t.Fatalf("failed to list objects: %v", err)
 	}
 
@@ -2261,7 +2422,11 @@ func TestConsistentList(t *testing.T) {
 }
 
 func TestCount(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestCount(t, TestBoostrapper(nil))
+}
+
+func RunTestCount(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 
 	resourceA := "/foo.bar.io/abc"
 
@@ -2298,13 +2463,11 @@ func TestCount(t *testing.T) {
 }
 
 func TestLeaseMaxObjectCount(t *testing.T) {
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	client := testserver.RunEtcd(t, nil)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true, LeaseManagerConfig{
+	ctx, storeInterface, _ := setup(t, TestBoostrapper(&LeaseManagerConfig{
 		ReuseDurationSeconds: defaultLeaseReuseDurationSeconds,
 		MaxObjectCount:       2,
-	})
-	ctx := context.Background()
+	}))
+	store := storeInterface.(*etcdTestInterface).store
 
 	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink"}}
 	out := &example.Pod{}
