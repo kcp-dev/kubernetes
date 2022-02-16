@@ -1323,7 +1323,9 @@ func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	}
 
 	list := &example.PodList{}
-	store.List(ctx, "/two-level", storage.ListOptions{ResourceVersion: "0", Predicate: storage.Everything}, list)
+	if err := store.List(ctx, "/two-level", storage.ListOptions{ResourceVersion: "0", Predicate: storage.Everything}, list); err != nil {
+		t.Fatalf("error from list: %v", err)
+	}
 	continueRV, _ := strconv.Atoi(list.ResourceVersion)
 	secondContinuation, err := EncodeContinue("/two-level/2", "/two-level/", int64(continueRV))
 	if err != nil {
