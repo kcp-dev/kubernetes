@@ -32,6 +32,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"k8s.io/apiserver/pkg/storage/crdb"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -281,6 +282,7 @@ func newETCD3Storage(c storagebackend.ConfigForResource, newFunc func() runtime.
 	if transformer == nil {
 		transformer = value.IdentityTransformer
 	}
+	crdb.New(nil, c.Codec, newFunc, c.Prefix, c.GroupResource, transformer, c.Paging)
 	return etcd3.New(client, c.Codec, newFunc, c.Prefix, c.GroupResource, transformer, c.Paging, c.LeaseManagerConfig), destroyFunc, nil
 }
 

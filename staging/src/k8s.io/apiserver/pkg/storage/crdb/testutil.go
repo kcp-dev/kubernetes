@@ -1,0 +1,208 @@
+/*
+Copyright 2022 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package crdb
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/cockroachdb/apd"
+	"github.com/cockroachdb/cockroach-go/v2/testserver"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/apiserver/pkg/storage"
+	"k8s.io/apiserver/pkg/storage/value"
+)
+
+func TestBootstrapper() storage.TestBootstrapper {
+	return &crdbTestBootstrapper{}
+}
+
+type crdbTestBootstrapper struct{}
+
+func (e *crdbTestBootstrapper) InterfaceForClient(t *testing.T, client storage.InternalTestClient, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.InternalTestInterface {
+	pool, ok := client.(*crdbTestClient)
+	if !ok {
+		t.Fatalf("got a %T, not crdb test client", client)
+	}
+	store := newStore(pool, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+	return &crdbTestInterface{store: store}
+}
+
+func (e *crdbTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) (context.Context, storage.InternalTestInterface, storage.InternalTestClient) {
+	ts, err := testserver.NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to start crdb: %v", err)
+	}
+	t.Cleanup(func() {
+		ts.Stop()
+	})
+
+	ctx := context.Background()
+	cfg, err := pgxpool.ParseConfig(ts.PGURL().String())
+	if err != nil {
+		t.Fatalf("failed to parse test connection: %v", err)
+	}
+	cfg.ConnConfig.LogLevel = pgx.LogLevelTrace
+	cfg.ConnConfig.Logger = NewLogger(t)
+	client, err := pgxpool.ConnectConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("failed to connect to crdb: %v", err)
+	}
+	recordingClient := &recordingRowQuerier{Pool: client}
+
+	for _, stmt := range tableSchema {
+		if _, err := client.Exec(ctx, stmt); err != nil {
+			t.Fatalf("error initializing the database: %v", err)
+		}
+	}
+	store := newStore(recordingClient, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+
+	clusterName := "admin"
+	ctx = request.WithCluster(ctx, request.Cluster{Name: clusterName})
+	ctx = request.WithRequestInfo(ctx, &request.RequestInfo{
+		APIGroup:   "",
+		APIVersion: "v1",
+		Namespace:  "ns",
+		Resource:   "pods",
+		Name:       "foo",
+	})
+	return ctx, &crdbTestInterface{store: store}, &crdbTestClient{recordingRowQuerier: recordingClient}
+}
+
+type crdbTestClient struct {
+	*recordingRowQuerier
+}
+
+type recordingRowQuerier struct {
+	reads uint64
+	*pgxpool.Pool
+}
+
+func (r *recordingRowQuerier) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+	atomic.AddUint64(&r.reads, 1)
+	return r.Pool.QueryRow(ctx, sql, args...)
+}
+
+func (e *crdbTestClient) Reads() uint64 {
+	return atomic.LoadUint64(&e.reads)
+}
+
+func (e *crdbTestClient) ResetReads() {
+	atomic.StoreUint64(&e.reads, 0)
+}
+
+func (e *crdbTestClient) RawPut(ctx context.Context, key, data string) (revision int64, err error) {
+	return create(ctx, e.Pool, key, []byte(data))
+}
+
+func (e *crdbTestClient) RawGet(ctx context.Context, key string) ([]byte, bool, error) {
+	clusterName := "admin"
+	var v []byte
+	err := e.QueryRow(ctx, `SELECT value FROM k8s WHERE key=$1 AND cluster=$2;`, key, clusterName).Scan(&v)
+	notFound := errors.Is(err, pgx.ErrNoRows)
+	if notFound {
+		err = nil
+	}
+	return v, notFound, err
+}
+
+func (e *crdbTestClient) RawCompact(ctx context.Context, revision int64) error {
+	// TODO: is there something better than this? no obvious way to trigger a compaction, and definitely not for a specific revision.
+	// TODO: maybe restore from backup?
+	// incoming revision will be a ns timestamp, so why don't we fetch the current time and
+	// figure out how long the GC interval would have to be so we would no longer hold the
+	// incoming revision (as of now)
+	var clusterTimestamp apd.Decimal
+	if err := e.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp); err != nil {
+		return err
+	}
+	clusterTimestampNanoseconds, err := clusterTimestamp.Int64()
+	if err != nil {
+		return err
+	}
+	ageSeconds := (clusterTimestampNanoseconds - revision) / 1e9
+	if ageSeconds < 1 {
+		ageSeconds = 1
+	}
+	if _, err := e.Exec(ctx, `ALTER TABLE k8s CONFIGURE ZONE USING gc.ttlseconds = $1;`, ageSeconds); err != nil {
+		return err
+	}
+
+	// in order to wait for the compaction, ask for the revision and wait until it's out of scope
+	return wait.Poll(500 * time.Millisecond, 10 * time.Duration(ageSeconds) * time.Second, func() (done bool, err error) {
+		var key string
+		if err := e.QueryRow(ctx, fmt.Sprintf(`SELECT key FROM k8s AS OF SYSTEM TIME %d LIMIT 1;`, revision)).Scan(&key); err != nil {
+			if isGarbageCollectionError(err) {
+				return true, nil
+			}
+			return false, err
+		}
+		return false, nil
+	})
+}
+
+type crdbTestInterface struct {
+	*store
+}
+
+func (e *crdbTestInterface) PathPrefix() string {
+	return e.pathPrefix
+}
+
+func (e *crdbTestInterface) UpdateTransformer(f func(transformer value.Transformer) value.Transformer) {
+	e.transformer = f(e.transformer)
+}
+
+func (e *crdbTestInterface) Decode(raw []byte) (runtime.Object, error) {
+	return runtime.Decode(e.codec, raw)
+}
+
+// apparently the logging adapter is wrong ... ?
+
+// TestingLogger interface defines the subset of testing.TB methods used by this
+// adapter.
+type TestingLogger interface {
+	Log(args ...interface{})
+	Helper()
+}
+
+type Logger struct {
+	l TestingLogger
+}
+
+func NewLogger(l TestingLogger) *Logger {
+	return &Logger{l: l}
+}
+
+func (l *Logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data map[string]interface{}) {
+	l.l.Helper()
+	logArgs := make([]interface{}, 0, 2+len(data))
+	logArgs = append(logArgs, level, msg)
+	for k, v := range data {
+		logArgs = append(logArgs, fmt.Sprintf("%s=%v", k, v))
+	}
+	l.l.Log(logArgs...)
+}
