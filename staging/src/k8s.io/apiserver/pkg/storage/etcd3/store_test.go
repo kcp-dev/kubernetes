@@ -35,6 +35,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc/grpclog"
+	"k8s.io/apiserver/pkg/storage/crdb"
 
 	"k8s.io/apimachinery/pkg/api/apitesting"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -108,6 +109,10 @@ func TestCreate(t *testing.T) {
 	RunTestCreate(t, TestBoostrapper(nil))
 }
 
+func TestCreateCRDB(t *testing.T) {
+	RunTestCreate(t, crdb.TestBootstrapper())
+}
+
 func RunTestCreate(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, client := setup(t, bootstrapper)
 
@@ -170,6 +175,10 @@ func TestCreateWithTTL(t *testing.T) {
 	RunTestCreateWithTTL(t, TestBoostrapper(nil))
 }
 
+func TestCreateWithTTLCRDB(t *testing.T) {
+	RunTestCreateWithTTL(t, crdb.TestBootstrapper())
+}
+
 func RunTestCreateWithTTL(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 
@@ -192,6 +201,10 @@ func TestCreateWithKeyExist(t *testing.T) {
 	RunTestCreateWithKeyExist(t, TestBoostrapper(nil))
 }
 
+func TestCreateWithKeyExistCRDB(t *testing.T) {
+	RunTestCreateWithKeyExist(t, crdb.TestBootstrapper())
+}
+
 func RunTestCreateWithKeyExist(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
@@ -206,6 +219,11 @@ func RunTestCreateWithKeyExist(t *testing.T, bootstrapper storage.TestBootstrapp
 func TestGet(t *testing.T) {
 	RunTestGet(t, TestBoostrapper(nil))
 }
+
+func TestGetCRDB(t *testing.T) {
+	RunTestGet(t, crdb.TestBootstrapper())
+}
+
 func RunTestGet(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 	// create an object to test
@@ -314,6 +332,10 @@ func TestUnconditionalDelete(t *testing.T) {
 	RunTestUnconditionalDelete(t, TestBoostrapper(nil))
 }
 
+func TestUnconditionalDeleteCRDB(t *testing.T) {
+	RunTestUnconditionalDelete(t, crdb.TestBootstrapper())
+}
+
 func RunTestUnconditionalDelete(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 	key, storedObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
@@ -352,6 +374,10 @@ func RunTestUnconditionalDelete(t *testing.T, bootstrapper storage.TestBootstrap
 
 func TestConditionalDelete(t *testing.T) {
 	RunTestConditionalDelete(t, TestBoostrapper(nil))
+}
+
+func TestConditionalDeleteCRDB(t *testing.T) {
+	RunTestConditionalDelete(t, crdb.TestBootstrapper())
 }
 
 func RunTestConditionalDelete(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -417,6 +443,9 @@ func TestDeleteWithSuggestion(t *testing.T) {
 	RunTestDeleteWithSuggestion(t, TestBoostrapper(nil))
 }
 
+func TestDeleteWithSuggestionCRDB(t *testing.T) {
+	RunTestDeleteWithSuggestion(t, crdb.TestBootstrapper())
+}
 
 func RunTestDeleteWithSuggestion(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
@@ -435,6 +464,10 @@ func RunTestDeleteWithSuggestion(t *testing.T, bootstrapper storage.TestBootstra
 
 func TestDeleteWithSuggestionAndConflict(t *testing.T) {
 	RunTestDeleteWithSuggestionAndConflict(t, TestBoostrapper(nil))
+}
+
+func TestDeleteWithSuggestionAndConflictCRDB(t *testing.T) {
+	RunTestDeleteWithSuggestionAndConflict(t, crdb.TestBootstrapper())
 }
 
 func RunTestDeleteWithSuggestionAndConflict(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -467,6 +500,10 @@ func TestDeleteWithSuggestionOfDeletedObject(t *testing.T) {
 	RunTestDeleteWithSuggestionOfDeletedObject(t, TestBoostrapper(nil))
 }
 
+func TestDeleteWithSuggestionOfDeletedObjectCRDB(t *testing.T) {
+	RunTestDeleteWithSuggestionOfDeletedObject(t, crdb.TestBootstrapper())
+}
+
 func RunTestDeleteWithSuggestionOfDeletedObject(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 
@@ -487,6 +524,10 @@ func RunTestDeleteWithSuggestionOfDeletedObject(t *testing.T, bootstrapper stora
 
 func TestValidateDeletionWithSuggestion(t *testing.T) {
 	RunTestValidateDeletionWithSuggestion(t, TestBoostrapper(nil))
+}
+
+func TestValidateDeletionWithSuggestionCRDB(t *testing.T) {
+	RunTestValidateDeletionWithSuggestion(t, crdb.TestBootstrapper())
 }
 
 func RunTestValidateDeletionWithSuggestion(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -547,6 +588,9 @@ func TestPreconditionalDeleteWithSuggestion(t *testing.T) {
 	RunTestPreconditionalDeleteWithSuggestion(t, TestBoostrapper(nil))
 }
 
+func TestPreconditionalDeleteWithSuggestionCRDB(t *testing.T) {
+	RunTestPreconditionalDeleteWithSuggestion(t, crdb.TestBootstrapper())
+}
 
 func RunTestPreconditionalDeleteWithSuggestion(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
@@ -578,6 +622,10 @@ func RunTestPreconditionalDeleteWithSuggestion(t *testing.T, bootstrapper storag
 
 func TestGetToList(t *testing.T) {
 	RunTestGetToList(t, TestBoostrapper(nil))
+}
+
+func TestGetToListCRDB(t *testing.T) {
+	RunTestGetToList(t, crdb.TestBootstrapper())
 }
 
 func RunTestGetToList(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -696,6 +744,10 @@ func RunTestGetToList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 
 func TestGuaranteedUpdate(t *testing.T) {
 	RunTestGuaranteedUpdate(t, TestBoostrapper(nil))
+}
+
+func TestGuaranteedUpdateCRDB(t *testing.T) {
+	RunTestGuaranteedUpdate(t, crdb.TestBootstrapper())
 }
 
 func RunTestGuaranteedUpdate(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -844,6 +896,11 @@ func TestGuaranteedUpdateWithTTL(t *testing.T) {
 	RunTestGuaranteedUpdateWithTTL(t, TestBoostrapper(nil))
 }
 
+func TestGuaranteedUpdateWithTTLCRDB(t *testing.T) {
+	t.Skip("not clear what TTL is doing in CRDB terms")
+	RunTestGuaranteedUpdateWithTTL(t, crdb.TestBootstrapper())
+}
+
 func RunTestGuaranteedUpdateWithTTL(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 
@@ -869,6 +926,10 @@ func RunTestGuaranteedUpdateWithTTL(t *testing.T, bootstrapper storage.TestBoots
 
 func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
 	RunTestGuaranteedUpdateChecksStoredData(t, TestBoostrapper(nil))
+}
+
+func TestGuaranteedUpdateChecksStoredDataCRDB(t *testing.T) {
+	RunTestGuaranteedUpdateChecksStoredData(t, crdb.TestBootstrapper())
 }
 
 func RunTestGuaranteedUpdateChecksStoredData(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -945,6 +1006,10 @@ func TestGuaranteedUpdateWithConflict(t *testing.T) {
 	RunTestGuaranteedUpdateWithConflict(t, TestBoostrapper(nil))
 }
 
+func TestGuaranteedUpdateWithConflictCRDB(t *testing.T) {
+	RunTestGuaranteedUpdateWithConflict(t, crdb.TestBootstrapper())
+}
+
 func RunTestGuaranteedUpdateWithConflict(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 	key, _ := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
@@ -993,6 +1058,10 @@ func RunTestGuaranteedUpdateWithConflict(t *testing.T, bootstrapper storage.Test
 
 func TestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T) {
 	RunTestGuaranteedUpdateWithSuggestionAndConflict(t, TestBoostrapper(nil))
+}
+
+func TestGuaranteedUpdateWithSuggestionAndConflictCRDB(t *testing.T) {
+	RunTestGuaranteedUpdateWithSuggestionAndConflict(t, crdb.TestBootstrapper())
 }
 
 func RunTestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -1075,6 +1144,9 @@ func TestTransformationFailure(t *testing.T) {
 	RunTestTransformationFailure(t, TestBoostrapper(nil))
 }
 
+func TestTransformationFailureCRDB(t *testing.T) {
+	RunTestTransformationFailure(t, crdb.TestBootstrapper())
+}
 
 func RunTestTransformationFailure(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
@@ -1156,6 +1228,10 @@ func RunTestTransformationFailure(t *testing.T, bootstrapper storage.TestBootstr
 func TestList(t *testing.T) {
 	c := NewDefaultLeaseManagerConfig()
 	RunTestList(t, TestBoostrapper(&c))
+}
+
+func TestListCRDB(t *testing.T) {
+	RunTestList(t, crdb.TestBootstrapper())
 }
 
 func RunTestList(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -1653,6 +1729,10 @@ func TestListContinuation(t *testing.T) {
 	RunTestListContinuation(t, TestBoostrapper(nil))
 }
 
+func TestListContinuationCRDB(t *testing.T) {
+	RunTestListContinuation(t, crdb.TestBootstrapper())
+}
+
 func RunTestListContinuation(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, client := setup(t, bootstrapper)
 
@@ -1813,6 +1893,8 @@ func TestListContinuationWithFilter(t *testing.T) {
 	RunTestListContinuationWithFilter(t, TestBoostrapper(nil))
 }
 
+func TestListContinuationWithFilterCRDB(t *testing.T) {
+	RunTestListContinuationWithFilter(t, crdb.TestBootstrapper())
 }
 
 func RunTestListContinuationWithFilter(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -1926,6 +2008,9 @@ func TestListInconsistentContinuation(t *testing.T) {
 	RunTestListInconsistentContinuation(t, TestBoostrapper(nil))
 }
 
+func TestListInconsistentContinuationCRDB(t *testing.T) {
+	RunTestListInconsistentContinuation(t, crdb.TestBootstrapper())
+}
 
 func RunTestListInconsistentContinuation(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, client := setup(t, bootstrapper)
@@ -2181,6 +2266,10 @@ func TestPrefix(t *testing.T) {
 	RunTestListInconsistentContinuation(t, TestBoostrapper(nil))
 }
 
+func TestPrefixCRDB(t *testing.T) {
+	RunTestPrefix(t, crdb.TestBootstrapper())
+}
+
 func RunTestPrefix(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	testcases := map[string]string{
 		"custom/prefix":     "/custom/prefix",
@@ -2351,6 +2440,9 @@ func TestConsistentList(t *testing.T) {
 	RunTestConsistentList(t, TestBoostrapper(nil))
 }
 
+func TestConsistentListCRDB(t *testing.T) {
+	RunTestConsistentList(t, crdb.TestBootstrapper())
+}
 
 func RunTestConsistentList(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	transformer := &fancyTransformer{
@@ -2423,6 +2515,10 @@ func RunTestConsistentList(t *testing.T, bootstrapper storage.TestBootstrapper) 
 
 func TestCount(t *testing.T) {
 	RunTestCount(t, TestBoostrapper(nil))
+}
+
+func TestCountCRDB(t *testing.T) {
+	RunTestCount(t, crdb.TestBootstrapper())
 }
 
 func RunTestCount(t *testing.T, bootstrapper storage.TestBootstrapper) {
