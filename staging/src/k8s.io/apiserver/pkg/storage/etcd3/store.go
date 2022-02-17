@@ -29,6 +29,7 @@ import (
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"k8s.io/apiserver/pkg/storage/versioner"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -92,11 +93,11 @@ func New(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object,
 }
 
 func newStore(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) *store {
-	versioner := APIObjectVersioner{}
+	objectVersioner := versioner.APIObjectVersioner{}
 	result := &store{
 		client:        c,
 		codec:         codec,
-		versioner:     versioner,
+		versioner:     objectVersioner,
 		transformer:   transformer,
 		pagingEnabled: pagingEnabled,
 		// for compatibility with etcd2 impl.
@@ -105,7 +106,7 @@ func newStore(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Ob
 		pathPrefix:          path.Join("/", prefix),
 		groupResource:       groupResource,
 		groupResourceString: groupResource.String(),
-		watcher:             newWatcher(c, codec, newFunc, versioner, transformer),
+		watcher:             newWatcher(c, codec, newFunc, objectVersioner, transformer),
 		leaseManager:        newDefaultLeaseManager(c, leaseManagerConfig),
 	}
 	return result

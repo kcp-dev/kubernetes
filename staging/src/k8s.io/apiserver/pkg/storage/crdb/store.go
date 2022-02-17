@@ -27,6 +27,7 @@ import (
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/value"
+	"k8s.io/apiserver/pkg/storage/versioner"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 )
@@ -55,11 +56,11 @@ func New(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix stri
 }
 
 func newStore(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) *store {
-	versioner := APIObjectVersioner{}
+	objectVersioner := versioner.APIObjectVersioner{}
 	return &store{
 		client:        c,
 		codec:         codec,
-		versioner:     versioner,
+		versioner:     objectVersioner,
 		transformer:   transformer,
 		pagingEnabled: pagingEnabled,
 		// for compatibility with etcd2 impl.
@@ -68,7 +69,7 @@ func newStore(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix
 		pathPrefix:          path.Join("/", prefix),
 		groupResource:       groupResource,
 		groupResourceString: groupResource.String(),
-		watcher:             newWatcher(c, codec, newFunc, versioner, transformer),
+		watcher:             newWatcher(c, codec, newFunc, objectVersioner, transformer),
 	}
 }
 
