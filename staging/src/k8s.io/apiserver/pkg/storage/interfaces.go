@@ -284,9 +284,17 @@ type ListOptions struct {
 
 // FOR INTERNAL TESTING ONLY
 
+type WatchChan <-chan WatchResponse
+
+type WatchResponse struct {
+	Revision int64
+	Error error
+}
+
 type InternalTestClient interface {
 	RawGet(ctx context.Context, key string) (data []byte, notFound bool, err error)
 	RawPut(ctx context.Context, key, data string) (revision int64, err error)
+	RawWatch(ctx context.Context, key string, revision int64) WatchChan
 	RawCompact(ctx context.Context, revision int64) error
 	Reads() uint64
 	ResetReads()

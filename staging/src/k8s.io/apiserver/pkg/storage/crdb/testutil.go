@@ -18,8 +18,10 @@ package crdb
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -94,6 +96,59 @@ func (e *crdbTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc 
 
 type crdbTestClient struct {
 	*recordingRowQuerier
+}
+
+func (e *crdbTestClient) RawWatch(ctx context.Context, key string, revision int64) storage.WatchChan {
+	watchChan := make(chan storage.WatchResponse, 20)
+	go func() {
+		options := []string{
+			"updated",
+			"mvcc_timestamp",
+			fmt.Sprintf("cursor='%d'", revision+1),
+		}
+		query := fmt.Sprintf(`EXPERIMENTAL CHANGEFEED FOR k8s WITH %s;`, strings.Join(options, ","))
+		rows, err := e.Query(ctx, query)
+		if err != nil {
+			watchChan <- storage.WatchResponse{Error: fmt.Errorf("failed to create changefeed: %w", err)}
+		}
+		defer func() {
+			rows.Close()
+		}()
+		for rows.Next() {
+			if err := rows.Err(); err != nil {
+				watchChan <- storage.WatchResponse{Error: fmt.Errorf("failed to read changefeed row: %w", err)}
+				return
+			}
+
+			values := rows.RawValues()
+			if len(values) != 3 {
+				watchChan <- storage.WatchResponse{Error: fmt.Errorf("expected 3 values in changefeed row, got %d", len(values))}
+				return
+			}
+			// values upacks into (tableName, primaryKey, rowData)
+			// tableName = name
+			// primaryKey = ["array", "of", "values"]
+			// rowData = {...}
+			data := values[2]
+
+			var evt changefeedEvent
+			if err := json.Unmarshal(data, &evt); err != nil {
+				watchChan <- storage.WatchResponse{Error: fmt.Errorf("failed to deserialize changefeed row: %w", err)}
+				return
+			}
+
+			if evt.MVCCTimestamp != nil {
+				resourceVersion, err := toResourceVersion(*evt.MVCCTimestamp)
+				if err != nil {
+					watchChan <- storage.WatchResponse{Error: err}
+					return
+				}
+				watchChan <- storage.WatchResponse{Revision: resourceVersion}
+				continue
+			}
+		}
+	}()
+	return watchChan
 }
 
 type recordingRowQuerier struct {

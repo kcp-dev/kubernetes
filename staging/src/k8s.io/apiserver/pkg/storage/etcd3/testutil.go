@@ -78,6 +78,19 @@ type etcdTestClient struct {
 	client *clientv3.Client
 }
 
+func (e *etcdTestClient) RawWatch(ctx context.Context, key string, revision int64) storage.WatchChan {
+	watchChan := make(chan storage.WatchResponse, 20)
+
+	go func() {
+		etcdChan := e.client.Watch(ctx, key, clientv3.WithPrefix(), clientv3.WithRev(revision + 1))
+		for event := range etcdChan {
+			watchChan <- storage.WatchResponse{Revision: event.Events[0].Kv.ModRevision}
+		}
+	}()
+
+	return watchChan
+}
+
 type recordingClient struct {
 	reads uint64
 	clientv3.KV
