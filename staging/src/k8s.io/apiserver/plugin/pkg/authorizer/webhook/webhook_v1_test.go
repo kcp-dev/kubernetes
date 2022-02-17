@@ -194,11 +194,11 @@ current-context: default
 				return fmt.Errorf("failed to execute test template: %v", err)
 			}
 			// Create a new authorizer
-			sarClient, err := subjectAccessReviewInterfaceFromKubeconfig(p, "v1", testRetryBackoff, nil)
+			sarClient, err := subjectAccessReviewInterfaceFromKubeconfig(p, "v1", "", testRetryBackoff, nil)
 			if err != nil {
 				return fmt.Errorf("error building sar client: %v", err)
 			}
-			_, err = newWithBackoff(sarClient, 0, 0, testRetryBackoff, noopAuthorizerMetrics())
+			_, err = newWithBackoff(sarClient, 0, 0, testRetryBackoff, noopAuthorizerMetrics(), "")
 			return err
 		}()
 		if err != nil && !tt.wantErr {
@@ -333,11 +333,11 @@ func newV1Authorizer(callbackURL string, clientCert, clientKey, ca []byte, cache
 	if err := json.NewEncoder(tempfile).Encode(config); err != nil {
 		return nil, err
 	}
-	sarClient, err := subjectAccessReviewInterfaceFromKubeconfig(p, "v1", testRetryBackoff, nil)
+	sarClient, err := subjectAccessReviewInterfaceFromKubeconfig(p, "v1", "", testRetryBackoff, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error building sar client: %v", err)
 	}
-	return newWithBackoff(sarClient, cacheTime, cacheTime, testRetryBackoff, metrics)
+	return newWithBackoff(sarClient, cacheTime, cacheTime, testRetryBackoff, metrics, "")
 }
 
 func TestV1TLSConfig(t *testing.T) {

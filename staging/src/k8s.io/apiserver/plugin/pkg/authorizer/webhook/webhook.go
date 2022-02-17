@@ -67,11 +67,12 @@ type WebhookAuthorizer struct {
 	retryBackoff        wait.Backoff
 	decisionOnError     authorizer.Decision
 	metrics             AuthorizerMetrics
+	cluster             string
 }
 
 // NewFromInterface creates a WebhookAuthorizer using the given subjectAccessReview client
-func NewFromInterface(subjectAccessReview authorizationv1client.AuthorizationV1Interface, authorizedTTL, unauthorizedTTL time.Duration, retryBackoff wait.Backoff, metrics AuthorizerMetrics) (*WebhookAuthorizer, error) {
-	return newWithBackoff(&subjectAccessReviewV1Client{subjectAccessReview.RESTClient()}, authorizedTTL, unauthorizedTTL, retryBackoff, metrics)
+func NewFromInterface(subjectAccessReview authorizationv1client.AuthorizationV1Interface, authorizedTTL, unauthorizedTTL time.Duration, retryBackoff wait.Backoff, metrics AuthorizerMetrics, cluster string) (*WebhookAuthorizer, error) {
+	return newWithBackoff(&subjectAccessReviewV1Client{subjectAccessReview.RESTClient(), cluster}, authorizedTTL, unauthorizedTTL, retryBackoff, metrics, cluster)
 }
 
 // New creates a new WebhookAuthorizer from the provided kubeconfig file.
@@ -93,19 +94,19 @@ func NewFromInterface(subjectAccessReview authorizationv1client.AuthorizationV1I
 //
 // For additional HTTP configuration, refer to the kubeconfig documentation
 // https://kubernetes.io/docs/user-guide/kubeconfig-file/.
-func New(kubeConfigFile string, version string, authorizedTTL, unauthorizedTTL time.Duration, retryBackoff wait.Backoff, customDial utilnet.DialFunc) (*WebhookAuthorizer, error) {
-	subjectAccessReview, err := subjectAccessReviewInterfaceFromKubeconfig(kubeConfigFile, version, retryBackoff, customDial)
+func New(kubeConfigFile, version, cluster string, authorizedTTL, unauthorizedTTL time.Duration, retryBackoff wait.Backoff, customDial utilnet.DialFunc) (*WebhookAuthorizer, error) {
+	subjectAccessReview, err := subjectAccessReviewInterfaceFromKubeconfig(kubeConfigFile, version, cluster, retryBackoff, customDial)
 	if err != nil {
 		return nil, err
 	}
 	return newWithBackoff(subjectAccessReview, authorizedTTL, unauthorizedTTL, retryBackoff, AuthorizerMetrics{
 		RecordRequestTotal:   noopMetrics{}.RecordRequestTotal,
 		RecordRequestLatency: noopMetrics{}.RecordRequestLatency,
-	})
+	}, cluster)
 }
 
 // newWithBackoff allows tests to skip the sleep.
-func newWithBackoff(subjectAccessReview subjectAccessReviewer, authorizedTTL, unauthorizedTTL time.Duration, retryBackoff wait.Backoff, metrics AuthorizerMetrics) (*WebhookAuthorizer, error) {
+func newWithBackoff(subjectAccessReview subjectAccessReviewer, authorizedTTL, unauthorizedTTL time.Duration, retryBackoff wait.Backoff, metrics AuthorizerMetrics, cluster string) (*WebhookAuthorizer, error) {
 	return &WebhookAuthorizer{
 		subjectAccessReview: subjectAccessReview,
 		responseCache:       cache.NewLRUExpireCache(8192),
@@ -114,6 +115,7 @@ func newWithBackoff(subjectAccessReview subjectAccessReviewer, authorizedTTL, un
 		retryBackoff:        retryBackoff,
 		decisionOnError:     authorizer.DecisionNoOpinion,
 		metrics:             metrics,
+		cluster:             cluster,
 	}, nil
 }
 
@@ -272,7 +274,7 @@ func convertToSARExtra(extra map[string][]string) map[string]authorizationv1.Ext
 // subjectAccessReviewInterfaceFromKubeconfig builds a client from the specified kubeconfig file,
 // and returns a SubjectAccessReviewInterface that uses that client. Note that the client submits SubjectAccessReview
 // requests to the exact path specified in the kubeconfig file, so arbitrary non-API servers can be targeted.
-func subjectAccessReviewInterfaceFromKubeconfig(kubeConfigFile string, version string, retryBackoff wait.Backoff, customDial utilnet.DialFunc) (subjectAccessReviewer, error) {
+func subjectAccessReviewInterfaceFromKubeconfig(kubeConfigFile, version, cluster string, retryBackoff wait.Backoff, customDial utilnet.DialFunc) (subjectAccessReviewer, error) {
 	localScheme := runtime.NewScheme()
 	if err := scheme.AddToScheme(localScheme); err != nil {
 		return nil, err
@@ -288,7 +290,7 @@ func subjectAccessReviewInterfaceFromKubeconfig(kubeConfigFile string, version s
 		if err != nil {
 			return nil, err
 		}
-		return &subjectAccessReviewV1ClientGW{gw.RestClient}, nil
+		return &subjectAccessReviewV1ClientGW{gw.RestClient, cluster}, nil
 
 	case authorizationv1beta1.SchemeGroupVersion.Version:
 		groupVersions := []schema.GroupVersion{authorizationv1beta1.SchemeGroupVersion}
@@ -299,7 +301,7 @@ func subjectAccessReviewInterfaceFromKubeconfig(kubeConfigFile string, version s
 		if err != nil {
 			return nil, err
 		}
-		return &subjectAccessReviewV1beta1ClientGW{gw.RestClient}, nil
+		return &subjectAccessReviewV1beta1ClientGW{gw.RestClient, cluster}, nil
 
 	default:
 		return nil, fmt.Errorf(
@@ -312,13 +314,15 @@ func subjectAccessReviewInterfaceFromKubeconfig(kubeConfigFile string, version s
 }
 
 type subjectAccessReviewV1Client struct {
-	client rest.Interface
+	client  rest.Interface
+	cluster string
 }
 
 func (t *subjectAccessReviewV1Client) Create(ctx context.Context, subjectAccessReview *authorizationv1.SubjectAccessReview, opts metav1.CreateOptions) (result *authorizationv1.SubjectAccessReview, statusCode int, err error) {
 	result = &authorizationv1.SubjectAccessReview{}
 
 	restResult := t.client.Post().
+		Cluster(t.cluster).
 		Resource("subjectaccessreviews").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(subjectAccessReview).
@@ -331,14 +335,15 @@ func (t *subjectAccessReviewV1Client) Create(ctx context.Context, subjectAccessR
 
 // subjectAccessReviewV1ClientGW used by the generic webhook, doesn't specify GVR.
 type subjectAccessReviewV1ClientGW struct {
-	client rest.Interface
+	client  rest.Interface
+	cluster string
 }
 
 func (t *subjectAccessReviewV1ClientGW) Create(ctx context.Context, subjectAccessReview *authorizationv1.SubjectAccessReview, _ metav1.CreateOptions) (*authorizationv1.SubjectAccessReview, int, error) {
 	var statusCode int
 	result := &authorizationv1.SubjectAccessReview{}
 
-	restResult := t.client.Post().Body(subjectAccessReview).Do(ctx)
+	restResult := t.client.Post().Cluster(t.cluster).Body(subjectAccessReview).Do(ctx)
 
 	restResult.StatusCode(&statusCode)
 	err := restResult.Into(result)
@@ -348,7 +353,8 @@ func (t *subjectAccessReviewV1ClientGW) Create(ctx context.Context, subjectAcces
 
 // subjectAccessReviewV1beta1ClientGW used by the generic webhook, doesn't specify GVR.
 type subjectAccessReviewV1beta1ClientGW struct {
-	client rest.Interface
+	client  rest.Interface
+	cluster string
 }
 
 func (t *subjectAccessReviewV1beta1ClientGW) Create(ctx context.Context, subjectAccessReview *authorizationv1.SubjectAccessReview, _ metav1.CreateOptions) (*authorizationv1.SubjectAccessReview, int, error) {
@@ -356,7 +362,7 @@ func (t *subjectAccessReviewV1beta1ClientGW) Create(ctx context.Context, subject
 	v1beta1Review := &authorizationv1beta1.SubjectAccessReview{Spec: v1SpecToV1beta1Spec(&subjectAccessReview.Spec)}
 	v1beta1Result := &authorizationv1beta1.SubjectAccessReview{}
 
-	restResult := t.client.Post().Body(v1beta1Review).Do(ctx)
+	restResult := t.client.Post().Cluster(t.cluster).Body(v1beta1Review).Do(ctx)
 
 	restResult.StatusCode(&statusCode)
 	err := restResult.Into(v1beta1Result)

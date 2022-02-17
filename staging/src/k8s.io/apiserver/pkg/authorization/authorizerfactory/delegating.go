@@ -42,6 +42,9 @@ type DelegatingAuthorizerConfig struct {
 	// This allows us to configure the sleep time at each iteration and the maximum number of retries allowed
 	// before we fail the webhook call in order to limit the fan out that ensues when the system is degraded.
 	WebhookRetryBackoff *wait.Backoff
+
+	// The cluster to execute authorization decisions against (optional).
+	Cluster string
 }
 
 func (c DelegatingAuthorizerConfig) New() (authorizer.Authorizer, error) {
@@ -58,5 +61,6 @@ func (c DelegatingAuthorizerConfig) New() (authorizer.Authorizer, error) {
 			RecordRequestTotal:   RecordRequestTotal,
 			RecordRequestLatency: RecordRequestLatency,
 		},
+		c.Cluster,
 	)
 }
