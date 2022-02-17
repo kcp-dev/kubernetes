@@ -18,6 +18,7 @@ package crdb
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -26,9 +27,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cockroachdb/apd"
+	"github.com/jackc/pgx/v4"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	"k8s.io/apiserver/pkg/storage/value"
@@ -71,7 +75,7 @@ func TestOnlySetFatalOnDecodeError(b bool) {
 }
 
 type watcher struct {
-	client      *clientv3.Client
+	client      pool
 	codec       runtime.Codec
 	newFunc     func() runtime.Object
 	objectType  string
@@ -99,7 +103,7 @@ type watchChan struct {
 
 func newWatcher(client pool, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
 	res := &watcher{
-		client:      nil, // TODO: lol
+		client:      client,
 		codec:       codec,
 		newFunc:     newFunc,
 		versioner:   versioner,
@@ -214,28 +218,104 @@ func (wc *watchChan) ResultChan() <-chan watch.Event {
 // The revision to watch will be set to the revision in response.
 // All events sent will have isCreated=true
 func (wc *watchChan) sync() error {
-	opts := []clientv3.OpOption{}
-	if wc.recursive {
-		opts = append(opts, clientv3.WithPrefix())
+	// TODO: with the enterprise version of CRDB this whole sync() dance becomes
+	// CREATE CHANGEFEED FOR ... WITH cursor=<>,initial_scan
+	requestInfo, ok := request.RequestInfoFrom(wc.ctx)
+	if !ok {
+		return storage.NewInternalError("no request info metadata found")
 	}
-	getResp, err := wc.watcher.client.Get(wc.ctx, wc.key, opts...)
+
+	var clusterTimestamp apd.Decimal
+	var events []*event
+	if err := wc.watcher.client.BeginTxFunc(wc.ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		if !wc.recursive {
+			// we are watching one key only
+			var data []byte
+			var mvccTimestamp apd.Decimal
+			err := tx.QueryRow(wc.ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, wc.key, wc.clusterName).Scan(&data, &mvccTimestamp)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("failed to read key when starting watch: %w", err)
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				objectResourceVersion, err := toResourceVersion(mvccTimestamp)
+				if err != nil {
+					return fmt.Errorf("failed to parse resourceVersion of key when starting watch: %w", err)
+				}
+				events = append(events, parseData(wc.key, data, objectResourceVersion))
+			}
+		} else {
+			// we are watching a list
+			query := fmt.Sprintf(`SELECT key, value, crdb_internal_mvcc_timestamp FROM k8s WHERE key LIKE '%s%%' AND key >= $1 AND api_group=$2 AND api_version=$3 AND api_resource=$4 AND namespace=$5 ORDER BY key;`, wc.key)
+			rows, err := tx.Query(wc.ctx, query, wc.key, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Namespace)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("failed to query rows when starting watch: %w", err)
+			}
+			defer func() {
+				rows.Close()
+			}()
+
+			for rows.Next() {
+				if err := rows.Err(); err != nil {
+					return fmt.Errorf("failed to query row when starting watch: %w", err)
+				}
+
+				var key string
+				var data []byte
+				var mvccTimestamp apd.Decimal
+				if err := rows.Scan(&key, &data, &mvccTimestamp); err != nil {
+					return fmt.Errorf("failed to read row when starting watch: %w", err)
+				}
+
+				objectResourceVersion, err := toResourceVersion(mvccTimestamp)
+				if err != nil {
+					return fmt.Errorf("failed to parse resourceVersion of row when starting watch: %w", err)
+				}
+				events = append(events, parseData(key, data, objectResourceVersion))
+			}
+		}
+
+		timestampErr := tx.QueryRow(wc.ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp)
+		if timestampErr != nil {
+			return fmt.Errorf("failed to read cluster timestamp: %w", timestampErr)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to sync data when starting watch: %v", err)
+	}
+
+	latestResourceVersion, err := toResourceVersion(clusterTimestamp)
 	if err != nil {
 		return err
 	}
-	wc.initialRev = getResp.Header.Revision
-	for _, kv := range getResp.Kvs {
-		wc.sendEvent(parseKV(kv))
+
+	wc.initialRev = latestResourceVersion
+	for _, evt := range events {
+		wc.sendEvent(evt)
 	}
 	return nil
 }
 
 // logWatchChannelErr checks whether the error is about mvcc revision compaction which is regarded as warning
 func logWatchChannelErr(err error) {
-	if !strings.Contains(err.Error(), "mvcc: required revision has been compacted") {
+	if !isGarbageCollectionError(err) {
 		klog.Errorf("watch chan error: %v", err)
 	} else {
 		klog.Warningf("watch chan error: %v", err)
 	}
+}
+
+type changefeedEvent struct {
+	MVCCTimestamp *apd.Decimal `json:"mvcc_timestamp,omitempty"`
+	Updated       *apd.Decimal `json:"Updated,omitempty"`
+	Resolved      *apd.Decimal `json:"resolved,omitempty"`
+
+	After *row `json:"after,omitempty"`
+}
+
+type row struct {
+	Key     string `json:"key,omitempty"`
+	Value   string `json:"value,omitempty"`
+	Cluster string `json:"cluster,omitempty"`
 }
 
 // startWatching does:
@@ -244,35 +324,152 @@ func logWatchChannelErr(err error) {
 func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 	if wc.initialRev == 0 {
 		if err := wc.sync(); err != nil {
-			klog.Errorf("failed to sync with latest state: %v", err)
+			err = fmt.Errorf("failed to sync with latest state: %w", err)
+			klog.Error(err)
 			wc.sendError(err)
 			return
 		}
 	}
-	opts := []clientv3.OpOption{clientv3.WithRev(wc.initialRev + 1), clientv3.WithPrevKV()}
-	if wc.recursive {
-		opts = append(opts, clientv3.WithPrefix())
+	options := []string{
+		"updated",
+		"mvcc_timestamp",
+		fmt.Sprintf("cursor='%d'", wc.initialRev+1),
 	}
 	if wc.progressNotify {
-		opts = append(opts, clientv3.WithProgressNotify())
+		options = append(options, "resolved='1s'") // TODO: this is a server setting in etcd, but a client one for us
 	}
-	wch := wc.watcher.client.Watch(wc.ctx, wc.key, opts...)
-	for wres := range wch {
-		if wres.Err() != nil {
-			err := wres.Err()
-			// If there is an error on server (e.g. compaction), the channel will return it before closed.
+	query := fmt.Sprintf(`EXPERIMENTAL CHANGEFEED FOR k8s WITH %s;`, strings.Join(options, ","))
+	fmt.Println(query)
+	rows, err := wc.watcher.client.Query(wc.ctx, query)
+	if err != nil {
+		// If there is an error on server (e.g. compaction), the channel will return it before closed.
+		err = fmt.Errorf("failed to create changefeed: %w", err)
+		logWatchChannelErr(err)
+		wc.sendError(err)
+		return
+	}
+	defer func() {
+		rows.Close()
+	}()
+	for rows.Next() {
+		if err := rows.Err(); err != nil {
+			err = fmt.Errorf("failed to read changefeed row: %w", err)
 			logWatchChannelErr(err)
 			wc.sendError(err)
 			return
 		}
-		if wres.IsProgressNotify() {
-			wc.sendEvent(progressNotifyEvent(wres.Header.GetRevision()))
+
+		values := rows.RawValues()
+		if len(values) != 3 {
+			err := fmt.Errorf("expected 3 values in changefeed row, got %d", len(values))
+			logWatchChannelErr(err)
+			wc.sendError(err)
+			return
+		}
+		// values upacks into (tableName, primaryKey, rowData)
+		// tableName = name
+		// primaryKey = ["array", "of", "values"]
+		// rowData = {...}
+		primaryKeysRaw, data := values[1], values[2]
+
+		var key, cluster string
+		if len(primaryKeysRaw) != 0 {
+			// this is insanity but not sure what the best way to parse this is ... ?
+			type wrappedPrimaryKey struct {
+				Key []string `json:"key"`
+			}
+			jsonPrimaryKey := fmt.Sprintf(`{"key":%s}`, string(primaryKeysRaw))
+			var wrappedJsonPrimaryKey wrappedPrimaryKey
+			if err := json.Unmarshal([]byte(jsonPrimaryKey), &wrappedJsonPrimaryKey); err != nil {
+				err = fmt.Errorf("failed to deserialize changefeed primary key: %w", err)
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+			primaryKeys := wrappedJsonPrimaryKey.Key
+			if len(primaryKeys) != 2 {
+				// this should be (key, cluster) as defined in the CREATE TABLE
+				err := fmt.Errorf("expected 2 values in changefeed row primary key, got %d", len(primaryKeys))
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+			key, cluster = primaryKeys[0], primaryKeys[1]
+		}
+
+		var evt changefeedEvent
+		if err := json.Unmarshal(data, &evt); err != nil {
+			err = fmt.Errorf("failed to deserialize changefeed row: %w", err)
+			logWatchChannelErr(err)
+			wc.sendError(err)
+			return
+		}
+
+		// sanity check
+		if evt.After != nil {
+			if evt.After.Key != key {
+				err := fmt.Errorf("expected key in primary key (%s) to match key in row (%s)", key, evt.After.Key)
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+			if evt.After.Cluster != cluster {
+				err := fmt.Errorf("expected cluster in primary key (%s) to match cluster in row (%s)", cluster, evt.After.Cluster)
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+		}
+
+		filter := func(incomingKey string) bool {
+			return incomingKey == wc.key
+		}
+		if wc.recursive {
+			filter = func(incomingKey string) bool {
+				return strings.HasPrefix(incomingKey, wc.key)
+			}
+		}
+
+		if evt.Resolved != nil {
+			resourceVersion, err := toResourceVersion(*evt.Resolved)
+			if err != nil {
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+			wc.sendEvent(progressNotifyEvent(resourceVersion))
 			metrics.RecordEtcdBookmark(wc.watcher.objectType)
 			continue
 		}
 
-		for _, e := range wres.Events {
-			parsedEvent, err := parseEvent(e)
+		if !filter(key) {
+			// this watch should not emit this event
+			continue
+		}
+
+		if evt.Updated != nil {
+			resourceVersion, err := toResourceVersion(*evt.Updated)
+			if err != nil {
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+
+			// TODO: this is likely better done with a caching layer or something, but the footprint will be enormous
+			// fetch the key at a previous RV - if it existed, we will have a previous version to show the client
+			// who is watching; if it did not, we know this is a "create" event.
+			// NOTE: for some reason k8s watch sends the current RV for the old object ... ?
+			providedTimestamp := apd.New(int64(resourceVersion) - 1, 0)
+			var previousData []byte
+			err = wc.watcher.client.QueryRow(wc.ctx, fmt.Sprintf(`SELECT value FROM k8s AS OF SYSTEM TIME %s WHERE key=$1 AND cluster=$2;`, providedTimestamp), key, cluster).Scan(&previousData)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				err = fmt.Errorf("failed to read previous key when handling watch event: %w", err)
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+
+			parsedEvent, err := parseEvent(key, &evt, previousData, resourceVersion)
 			if err != nil {
 				logWatchChannelErr(err)
 				wc.sendError(err)

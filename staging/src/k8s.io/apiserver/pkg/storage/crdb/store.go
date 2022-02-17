@@ -32,25 +32,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	tableSchema = []string{
-		`CREATE TABLE IF NOT EXISTS k8s
-			(
-				key VARCHAR(630) NOT NULL,
-				value BLOB NOT NULL,
-				cluster VARCHAR(256) NOT NULL,
-				namespace VARCHAR(256),
-				name VARCHAR(256) NOT NULL,
-				api_group VARCHAR(256) NOT NULL,
-				api_version VARCHAR(256) NOT NULL,
-				api_resource VARCHAR(256) NOT NULL,
-				PRIMARY KEY (key, cluster)
-			);`,
-		// TODO: indices for access patterns
-		//`CREATE INDEX k8s_gvr_index ON k8s (group, version, resource)`,
-	}
-)
-
 func New(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.Interface {
 	return newStore(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
 }
@@ -419,7 +400,7 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 		// we furthermore need to do the AS OF SYSTEM TIME query first:
 		// ERROR: internal error: cannot set fixed timestamp, txn "sql txn" meta={id=6fd70624 pri=0.03834544 epo=0 ts=1645025006.198715497,0 min=1645025006.198715497,0 seq=0} lock=false stat=PENDING rts=1645025006.198715497,0 wto=false gul=1645025006.698715497,0 already performed reads (SQLSTATE XX000)
 		dataReadErr := tx.QueryRow(ctx, fmt.Sprintf(`SELECT value, crdb_internal_mvcc_timestamp FROM k8s %sWHERE key=$1 AND cluster=$2;`, clause), key, cluster.Name).Scan(&data, &mvccTimestamp)
-		timestampReadErr := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp() FROM k8s LIMIT 1;`).Scan(&clusterTimestamp)
+		timestampReadErr := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp)
 		if dataReadErr != nil {
 			return dataReadErr // prefer data read err if we failed both
 		}
@@ -595,7 +576,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			// we furthermore need to do the AS OF SYSTEM TIME query first:
 			// ERROR: internal error: cannot set fixed timestamp, txn "sql txn" meta={id=6fd70624 pri=0.03834544 epo=0 ts=1645025006.198715497,0 min=1645025006.198715497,0 seq=0} lock=false stat=PENDING rts=1645025006.198715497,0 wto=false gul=1645025006.698715497,0 already performed reads (SQLSTATE XX000)
 			dataReadErr := s.client.QueryRow(ctx, fmt.Sprintf(`SELECT COUNT(*), MAX(key) FROM k8s %sWHERE key LIKE '%s%%' AND key >= $1 AND api_group=$2 AND api_version=$3 AND api_resource=$4 AND namespace=$5;`, revisionClause, keyPrefix), key, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Namespace).Scan(&remaining, &finalKey)
-			timestampReadErr := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp() FROM k8s LIMIT 1;`).Scan(&clusterTimestamp)
+			timestampReadErr := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp)
 
 			if dataReadErr != nil {
 				return dataReadErr // prefer data read err if we failed both

@@ -20,8 +20,10 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/server/v3/embed"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/endpoints/request"
@@ -30,7 +32,15 @@ import (
 	"k8s.io/apiserver/pkg/storage/value"
 )
 
-func TestBoostrapper(leaseConfig *LeaseManagerConfig) storage.TestBootstrapper {
+type ConfigOption func(config *embed.Config)
+
+func WithProgressNotifyInterval(interval time.Duration) ConfigOption {
+	return func(config *embed.Config) {
+		config.ExperimentalWatchProgressNotifyInterval = interval
+	}
+}
+
+func TestBoostrapper(leaseConfig *LeaseManagerConfig, options ...ConfigOption) storage.TestBootstrapper {
 	// our default, for brevity:
 	if leaseConfig == nil {
 		leaseConfig = &LeaseManagerConfig{
@@ -38,11 +48,12 @@ func TestBoostrapper(leaseConfig *LeaseManagerConfig) storage.TestBootstrapper {
 			MaxObjectCount:       defaultLeaseMaxObjectCount,
 		}
 	}
-	return &etcdTestBootstrapper{leaseConfig: *leaseConfig}
+	return &etcdTestBootstrapper{leaseConfig: *leaseConfig, options: options}
 }
 
 type etcdTestBootstrapper struct {
 	leaseConfig LeaseManagerConfig
+	options []ConfigOption
 }
 
 func (e *etcdTestBootstrapper) InterfaceForClient(t *testing.T, client storage.InternalTestClient, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.InternalTestInterface {
@@ -55,7 +66,11 @@ func (e *etcdTestBootstrapper) InterfaceForClient(t *testing.T, client storage.I
 }
 
 func (e *etcdTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) (context.Context, storage.InternalTestInterface, storage.InternalTestClient) {
-	client := testserver.RunEtcd(t, nil)
+	clusterConfig := testserver.NewTestConfig(t)
+	for _, opt := range e.options {
+		opt(clusterConfig)
+	}
+	client := testserver.RunEtcd(t, clusterConfig)
 	kv := &recordingClient{KV: client.KV}
 	client.KV = kv
 	store := newStore(client, codec, newFunc, prefix, groupResource, transformer, pagingEnabled, e.leaseConfig)

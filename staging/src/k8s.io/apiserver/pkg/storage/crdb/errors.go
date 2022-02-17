@@ -17,19 +17,18 @@ limitations under the License.
 package crdb
 
 import (
-	"strings"
 	"errors"
+	"strings"
 
 	"github.com/jackc/pgconn"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 
-	etcdrpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
 func interpretWatchError(err error) error {
 	switch {
-	case err == etcdrpc.ErrCompacted:
+	case isGarbageCollectionError(err):
 		return kerrors.NewResourceExpired("The resourceVersion for the provided watch is too old.")
 	}
 	return err

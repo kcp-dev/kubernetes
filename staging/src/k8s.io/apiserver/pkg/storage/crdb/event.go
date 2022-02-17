@@ -17,10 +17,9 @@ limitations under the License.
 package crdb
 
 import (
+	"encoding/hex"
 	"fmt"
-
-	"go.etcd.io/etcd/api/v3/mvccpb"
-	clientv3 "go.etcd.io/etcd/client/v3"
+	"strings"
 )
 
 type event struct {
@@ -33,33 +32,32 @@ type event struct {
 	isProgressNotify bool
 }
 
-// parseKV converts a KeyValue retrieved from an initial sync() listing to a synthetic isCreated event.
-func parseKV(kv *mvccpb.KeyValue) *event {
+// parseData converts a KeyValue retrieved from an initial sync() listing to a synthetic isCreated event.
+func parseData(key string, data []byte, resourceVersion int64) *event {
 	return &event{
-		key:       string(kv.Key),
-		value:     kv.Value,
+		key:       key,
+		value:     data,
 		prevValue: nil,
-		rev:       kv.ModRevision,
+		rev:       resourceVersion,
 		isDeleted: false,
 		isCreated: true,
 	}
 }
 
-func parseEvent(e *clientv3.Event) (*event, error) {
-	if !e.IsCreate() && e.PrevKv == nil {
-		// If the previous value is nil, error. One example of how this is possible is if the previous value has been compacted already.
-		return nil, fmt.Errorf("etcd event received with PrevKv=nil (key=%q, modRevision=%d, type=%s)", string(e.Kv.Key), e.Kv.ModRevision, e.Type.String())
-
-	}
+func parseEvent(key string, e *changefeedEvent, previousData []byte, resourceVersion int64) (*event, error) {
 	ret := &event{
-		key:       string(e.Kv.Key),
-		value:     e.Kv.Value,
-		rev:       e.Kv.ModRevision,
-		isDeleted: e.Type == clientv3.EventTypeDelete,
-		isCreated: e.IsCreate(),
+		key:       key,
+		rev:       resourceVersion,
+		prevValue: previousData,
+		isDeleted: e.After == nil,
+		isCreated: len(previousData) == 0,
 	}
-	if e.PrevKv != nil {
-		ret.prevValue = e.PrevKv.Value
+	if e.After != nil {
+		value, err := hex.DecodeString(strings.TrimPrefix(e.After.Value, "\\x"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode value: %w", err)
+		}
+		ret.value = value
 	}
 	return ret, nil
 }

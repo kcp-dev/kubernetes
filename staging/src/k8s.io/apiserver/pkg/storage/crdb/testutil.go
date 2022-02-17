@@ -75,7 +75,26 @@ func (e *crdbTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc 
 	}
 	recordingClient := &recordingRowQuerier{Pool: client}
 
-	for _, stmt := range tableSchema {
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS k8s
+			(
+				key VARCHAR(630) NOT NULL,
+				value BLOB NOT NULL,
+				cluster VARCHAR(256) NOT NULL,
+				namespace VARCHAR(256),
+				name VARCHAR(256) NOT NULL,
+				api_group VARCHAR(256) NOT NULL,
+				api_version VARCHAR(256) NOT NULL,
+				api_resource VARCHAR(256) NOT NULL,
+				PRIMARY KEY (key, cluster)
+			);`,
+		// enable watches
+		`SET CLUSTER SETTING kv.rangefeed.enabled = true;`,
+		// set the latency floor for events
+		`SET CLUSTER SETTING changefeed.experimental_poll_interval = '0.2s';`,
+		// TODO: indices for access patterns
+		//`CREATE INDEX k8s_gvr_index ON k8s (group, version, resource)`,
+	} {
 		if _, err := client.Exec(ctx, stmt); err != nil {
 			t.Fatalf("error initializing the database: %v", err)
 		}
@@ -207,7 +226,7 @@ func (e *crdbTestClient) RawCompact(ctx context.Context, revision int64) error {
 	}
 
 	// in order to wait for the compaction, ask for the revision and wait until it's out of scope
-	return wait.Poll(500 * time.Millisecond, 10 * time.Duration(ageSeconds) * time.Second, func() (done bool, err error) {
+	return wait.Poll(500*time.Millisecond, 10*time.Duration(ageSeconds)*time.Second, func() (done bool, err error) {
 		var key string
 		if err := e.QueryRow(ctx, fmt.Sprintf(`SELECT key FROM k8s AS OF SYSTEM TIME %d LIMIT 1;`, revision)).Scan(&key); err != nil {
 			if isGarbageCollectionError(err) {
