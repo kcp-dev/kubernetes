@@ -57,6 +57,19 @@ func TestWatchList(t *testing.T) {
 func testWatch(t *testing.T, recursive bool) {
 	runTestWatch(t, TestBoostrapper(nil), recursive)
 }
+
+func TestWatchCRDB(t *testing.T) {
+	testWatchCRDB(t, false)
+}
+
+func TestWatchListCRDB(t *testing.T) {
+	testWatchCRDB(t, true)
+}
+
+func testWatchCRDB(t *testing.T, recursive bool) {
+	runTestWatch(t, crdb.TestBootstrapper(), recursive)
+}
+
 func runTestWatch(t *testing.T, bootstrapper storage.TestBootstrapper, recursive bool) {
 	ctx, store, _ := setup(t, bootstrapper)
 	podFoo := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
@@ -169,6 +182,9 @@ func TestWatchFromZero(t *testing.T) {
 	RunTestWatchFromZero(t, TestBoostrapper(nil))
 }
 
+func TestWatchFromZeroCRDB(t *testing.T) {
+	RunTestWatchFromZero(t, crdb.TestBootstrapper())
+}
 // TestWatchFromZero tests that
 // - watch from 0 should sync up and grab the object added before
 // - watch from 0 is able to return events for objects whose previous version has been compacted
@@ -232,6 +248,11 @@ func RunTestWatchFromZero(t *testing.T, bootstrapper storage.TestBootstrapper) {
 func TestWatchFromNoneZero(t *testing.T) {
 	RunTestWatchFromNoneZero(t, TestBoostrapper(nil))
 }
+
+func TestWatchFromNoneZeroCRDB(t *testing.T) {
+	RunTestWatchFromNoneZero(t, crdb.TestBootstrapper())
+}
+
 // TestWatchFromNoneZero tests that
 // - watch from non-0 should just watch changes after given version
 func RunTestWatchFromNoneZero(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -252,6 +273,10 @@ func RunTestWatchFromNoneZero(t *testing.T, bootstrapper storage.TestBootstrappe
 
 func TestWatchError(t *testing.T) {
 	RunTestWatchError(t, TestBoostrapper(nil))
+}
+
+func TestWatchErrorCRDB(t *testing.T) {
+	RunTestWatchError(t, crdb.TestBootstrapper())
 }
 
 func RunTestWatchError(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -275,6 +300,9 @@ func TestWatchContextCancel(t *testing.T) {
 	RunTestWatchContextCancel(t, TestBoostrapper(nil))
 }
 
+func TestWatchContextCancelCRDB(t *testing.T) {
+	RunTestWatchContextCancel(t, crdb.TestBootstrapper())
+}
 
 func RunTestWatchContextCancel(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
@@ -297,6 +325,7 @@ func RunTestWatchContextCancel(t *testing.T, bootstrapper storage.TestBootstrapp
 	}
 }
 
+// TODO: this is very low-level ... we can just dupe it in our package?
 func TestWatchErrResultNotBlockAfterCancel(t *testing.T) {
 	origCtx, store, _ := testSetup(t)
 	ctx, cancel := context.WithCancel(origCtx)
@@ -321,6 +350,10 @@ func TestWatchErrResultNotBlockAfterCancel(t *testing.T) {
 
 func TestWatchDeleteEventObjectHaveLatestRV(t *testing.T) {
 	RunTestWatchDeleteEventObjectHaveLatestRV(t, TestBoostrapper(nil))
+}
+
+func TestWatchDeleteEventObjectHaveLatestRVCRDB(t *testing.T) {
+	RunTestWatchDeleteEventObjectHaveLatestRV(t, crdb.TestBootstrapper())
 }
 
 func RunTestWatchDeleteEventObjectHaveLatestRV(t *testing.T, bootstrapper storage.TestBootstrapper) {
@@ -362,6 +395,10 @@ func TestWatchInitializationSignal(t *testing.T) {
 	RunTestWatchInitializationSignal(t, TestBoostrapper(nil))
 }
 
+func TestWatchInitializationSignalCRDB(t *testing.T) {
+	RunTestWatchInitializationSignal(t, crdb.TestBootstrapper())
+}
+
 func RunTestWatchInitializationSignal(t *testing.T, bootstrapper storage.TestBootstrapper) {
 	ctx, store, _ := setup(t, bootstrapper)
 
@@ -381,6 +418,10 @@ func RunTestWatchInitializationSignal(t *testing.T, bootstrapper storage.TestBoo
 
 func TestProgressNotify(t *testing.T) {
 	RunTestProgressNotify(t, TestBoostrapper(nil, WithProgressNotifyInterval(time.Second)))
+}
+
+func TestProgressNotifyCRDB(t *testing.T) {
+	RunTestProgressNotify(t, crdb.TestBootstrapper())
 }
 
 func RunTestProgressNotify(t *testing.T, bootstrapper storage.TestBootstrapper) {
