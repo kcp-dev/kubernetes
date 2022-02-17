@@ -308,14 +308,15 @@ for repo in $(tsort "${TMP_DIR}/tidy_deps.txt"); do
 
     go mod tidy -v >>"${LOG_FILE}" 2>&1
 
+    # HACK(kcp): until we clean up our hacks, disable this check.
     # disallow transitive dependencies on k8s.io/kubernetes
-    loopback_deps=()
-    kube::util::read-array loopback_deps < <(go list all 2>/dev/null | grep k8s.io/kubernetes/ || true)
-    if [[ -n ${loopback_deps[*]:+"${loopback_deps[*]}"} ]]; then
-      kube::log::error "Disallowed ${repo} -> k8s.io/kubernetes dependencies exist via the following imports:
-$(go mod why "${loopback_deps[@]}")"
-      exit 1
-    fi
+#    loopback_deps=()
+#    kube::util::read-array loopback_deps < <(go list all 2>/dev/null | grep k8s.io/kubernetes/ || true)
+#    if [[ -n ${loopback_deps[*]:+"${loopback_deps[*]}"} ]]; then
+#      kube::log::error "Disallowed ${repo} -> k8s.io/kubernetes dependencies exist via the following imports:
+#$(go mod why "${loopback_deps[@]}")"
+#      exit 1
+#    fi
 
     # prune unused pinned replace directives
     comm -23 \
@@ -337,14 +338,15 @@ done
 echo "=== tidying root" >> "${LOG_FILE}"
 go mod tidy >>"${LOG_FILE}" 2>&1
 
+# HACK(kcp): until we clean up our hacks, disable this check.
 # disallow transitive dependencies on k8s.io/kubernetes
-loopback_deps=()
-kube::util::read-array loopback_deps < <(go mod graph | grep ' k8s.io/kubernetes' || true)
-if [[ -n ${loopback_deps[*]:+"${loopback_deps[*]}"} ]]; then
-  kube::log::error "Disallowed transitive k8s.io/kubernetes dependencies exist via the following imports:"
-  kube::log::error "${loopback_deps[@]}"
-  exit 1
-fi
+#loopback_deps=()
+#kube::util::read-array loopback_deps < <(go mod graph | grep ' k8s.io/kubernetes' || true)
+#if [[ -n ${loopback_deps[*]:+"${loopback_deps[*]}"} ]]; then
+#  kube::log::error "Disallowed transitive k8s.io/kubernetes dependencies exist via the following imports:"
+#  kube::log::error "${loopback_deps[@]}"
+#  exit 1
+#fi
 
 # Phase 6: add generated comments to go.mod files
 kube::log::status "go.mod: adding generated comments"
