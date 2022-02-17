@@ -402,8 +402,25 @@ func RunTestProgressNotify(t *testing.T, bootstrapper storage.TestBootstrapper) 
 	if err != nil {
 		t.Fatalf("Watch failed: %v", err)
 	}
-	result := &example.Pod{ObjectMeta: metav1.ObjectMeta{ResourceVersion: out.ResourceVersion}}
-	testCheckResult(t, 0, watch.Bookmark, w, result)
+	testCheckResultFunc(t, 0, watch.Bookmark, w, func(object runtime.Object) error {
+		pod, ok := object.(*example.Pod)
+		if !ok {
+			return fmt.Errorf("got %T, not *example.Pod", object)
+		}
+		objectVersioner := versioner.APIObjectVersioner{}
+		actualRV, err := objectVersioner.ParseResourceVersion(pod.ResourceVersion)
+		if err != nil {
+			return err
+		}
+		expectedRV, err := objectVersioner.ParseResourceVersion(out.ResourceVersion)
+		if err != nil {
+			return err
+		}
+		if actualRV < expectedRV {
+			return fmt.Errorf("expected a resourceVersion in the bookmark larger than %d, but got %d", expectedRV, actualRV)
+		}
+		return nil
+	})
 }
 
 type testWatchStruct struct {
@@ -432,14 +449,28 @@ func testCheckEventType(t *testing.T, expectEventType watch.EventType, w watch.I
 }
 
 func testCheckResult(t *testing.T, i int, expectEventType watch.EventType, w watch.Interface, expectObj *example.Pod) {
+	testCheckResultFunc(t, i, expectEventType, w, func(object runtime.Object) error {
+		if diff := cmp.Diff(expectObj, object); diff != "" {
+			return fmt.Errorf("#%d: obj dif: %s", i, diff)
+		}
+		return nil
+	})
+}
+
+func testCheckResultFunc(t *testing.T, i int, expectEventType watch.EventType, w watch.Interface, check func(object runtime.Object) error) {
 	select {
 	case res := <-w.ResultChan():
+		raw, err := json.Marshal(res)
+		if err != nil {
+			t.Errorf("#%d: failed to marshal result: %v", i, err)
+		}
+		t.Log(string(raw))
 		if res.Type != expectEventType {
 			t.Errorf("#%d: event type want=%v, get=%v", i, expectEventType, res.Type)
 			return
 		}
-		if !reflect.DeepEqual(expectObj, res.Object) {
-			t.Errorf("#%d: obj want=\n%#v\nget=\n%#v", i, expectObj, res.Object)
+		if err := check(res.Object); err != nil {
+			t.Errorf("#%d: obj err: %v", i, err)
 		}
 	case <-time.After(wait.ForeverTestTimeout):
 		t.Errorf("#%d: time out after waiting %v on ResultChan", i, wait.ForeverTestTimeout)
