@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/klog/v2"
-
 	rbacapiv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -39,6 +37,8 @@ import (
 	rbacv1client "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/component-helpers/auth/rbac/reconciliation"
+	"k8s.io/klog/v2"
+
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/registry/rbac/clusterrole"
@@ -163,7 +163,7 @@ func (p *PolicyData) EnsureRBACPolicy() genericapiserver.PostStartHookFunc {
 				utilruntime.HandleError(fmt.Errorf("unable to initialize client set: %v", err))
 				return false, nil
 			}
-			client := clientClusterGetter.Cluster("admin")
+			client := clientClusterGetter.Cluster("system:admin")
 			return ensureRBACPolicy(p, client)
 		})
 		// if we're never able to make it through initialization, kill the API server

@@ -67,7 +67,7 @@ const Include = "kube-control-plane"
 const (
 	etcdRetryLimit    = 60
 	etcdRetryInterval = 1 * time.Second
-	RootClusterName   = "admin"
+	LocalAdminCluster = "system:admin"
 )
 
 // Run runs the specified APIServer.  This should never exit.
