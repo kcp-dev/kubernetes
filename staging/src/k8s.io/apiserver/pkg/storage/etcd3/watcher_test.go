@@ -59,14 +59,17 @@ func testWatch(t *testing.T, recursive bool) {
 	podBar := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "bar"}}
 
 	tests := []struct {
+		name string
 		key        string
 		pred       storage.SelectionPredicate
 		watchTests []*testWatchStruct
-	}{{ // create a key
+	}{{
+		name: "create a key",
 		key:        "/somekey-1",
 		watchTests: []*testWatchStruct{{podFoo, true, watch.Added}},
 		pred:       storage.Everything,
-	}, { // create a key but obj gets filtered. Then update it with unfiltered obj
+	}, {
+		name: "create a key but obj gets filtered. Then update it with unfiltered obj",
 		key:        "/somekey-3",
 		watchTests: []*testWatchStruct{{podFoo, false, ""}, {podBar, true, watch.Added}},
 		pred: storage.SelectionPredicate{
@@ -77,11 +80,13 @@ func testWatch(t *testing.T, recursive bool) {
 				return nil, fields.Set{"metadata.name": pod.Name}, nil
 			},
 		},
-	}, { // update
+	}, {
+		name: "update",
 		key:        "/somekey-4",
 		watchTests: []*testWatchStruct{{podFoo, true, watch.Added}, {podBar, true, watch.Modified}},
 		pred:       storage.Everything,
-	}, { // delete because of being filtered
+	}, {
+		name: "delete because of being filtered",
 		key:        "/somekey-5",
 		watchTests: []*testWatchStruct{{podFoo, true, watch.Added}, {podBar, true, watch.Deleted}},
 		pred: storage.SelectionPredicate{
@@ -94,41 +99,57 @@ func testWatch(t *testing.T, recursive bool) {
 		},
 	}}
 	for i, tt := range tests {
-		w, err := store.watch(ctx, tt.key, storage.ListOptions{ResourceVersion: "0", Predicate: tt.pred}, recursive)
-		if err != nil {
-			t.Fatalf("Watch failed: %v", err)
-		}
-		var prevObj *example.Pod
-		for _, watchTest := range tt.watchTests {
-			out := &example.Pod{}
-			key := tt.key
+		t.Run(tt.name, func(t *testing.T) {
+			var w watch.Interface
+			var err error
 			if recursive {
-				key = key + "/item"
+				w, err = store.WatchList(ctx, tt.key, storage.ListOptions{ResourceVersion: "0", Predicate: tt.pred})
+			} else {
+				w, err = store.Watch(ctx, tt.key, storage.ListOptions{ResourceVersion: "0", Predicate: tt.pred})
 			}
-			err := store.GuaranteedUpdate(ctx, key, out, true, nil, storage.SimpleUpdate(
-				func(runtime.Object) (runtime.Object, error) {
-					return watchTest.obj, nil
-				}), nil)
 			if err != nil {
-				t.Fatalf("GuaranteedUpdate failed: %v", err)
+				t.Fatalf("Watch failed: %v", err)
 			}
-			if watchTest.expectEvent {
-				expectObj := out
-				if watchTest.watchType == watch.Deleted {
-					expectObj = prevObj
-					expectObj.ResourceVersion = out.ResourceVersion
+			var prevObj *example.Pod
+			for _, watchTest := range tt.watchTests {
+				out := &example.Pod{}
+				key := tt.key
+				if recursive {
+					key = key + "/item"
 				}
-				testCheckResult(t, i, watchTest.watchType, w, expectObj)
+				err := store.GuaranteedUpdate(ctx, key, out, true, nil, storage.SimpleUpdate(
+					func(runtime.Object) (runtime.Object, error) {
+						return watchTest.obj, nil
+					}), nil)
+				if err != nil {
+					t.Fatalf("GuaranteedUpdate failed: %v", err)
+				}
+				if watchTest.expectEvent {
+					expectObj := out
+					if watchTest.watchType == watch.Deleted {
+						expectObj = prevObj
+						expectObj.ResourceVersion = out.ResourceVersion
+					}
+					testCheckResult(t, i, watchTest.watchType, w, expectObj)
+				}
+				prevObj = out
 			}
-			prevObj = out
-		}
-		w.Stop()
-		testCheckStop(t, i, w)
+			w.Stop()
+			testCheckStop(t, i, w)
+		})
 	}
 }
 
 func TestDeleteTriggerWatch(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+	RunTestDeleteTriggerWatch(t, TestBoostrapper(nil))
+}
+
+func TestDeleteTriggerWatchCRDB(t *testing.T) {
+	RunTestDeleteTriggerWatch(t, crdb.TestBootstrapper())
+}
+
+func RunTestDeleteTriggerWatch(t *testing.T, bootstrapper storage.TestBootstrapper) {
+	ctx, store, _ := setup(t, bootstrapper)
 	key, storedObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 	w, err := store.Watch(ctx, key, storage.ListOptions{ResourceVersion: storedObj.ResourceVersion, Predicate: storage.Everything})
 	if err != nil {
