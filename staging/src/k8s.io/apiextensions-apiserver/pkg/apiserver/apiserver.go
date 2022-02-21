@@ -49,7 +49,6 @@ import (
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/util/webhook"
-	restclient "k8s.io/client-go/rest"
 )
 
 var (
@@ -89,8 +88,8 @@ type ExtraConfig struct {
 	// AuthResolverWrapper is used in CR webhook converters
 	AuthResolverWrapper webhook.AuthenticationInfoResolverWrapper
 
-	NewClientFunc          func(config *restclient.Config) (clientset.Interface, error)
-	NewInformerFactoryFunc func(client clientset.Interface, resyncPeriod time.Duration) externalinformers.SharedInformerFactory
+	Client    clientset.Interface
+	Informers externalinformers.SharedInformerFactory
 }
 
 type Config struct {
@@ -137,18 +136,6 @@ func (cfg *Config) Complete() CompletedConfig {
 		}
 	}
 
-	if c.ExtraConfig.NewClientFunc == nil {
-		c.ExtraConfig.NewClientFunc = func(config *restclient.Config) (clientset.Interface, error) {
-			return clientset.NewForConfig(config)
-		}
-	}
-
-	if c.ExtraConfig.NewInformerFactoryFunc == nil {
-		c.ExtraConfig.NewInformerFactoryFunc = func(client clientset.Interface, resyncPeriod time.Duration) externalinformers.SharedInformerFactory {
-			return externalinformers.NewSharedInformerFactory(client, resyncPeriod)
-		}
-	}
-
 	return CompletedConfig{&c}
 }
 
@@ -189,13 +176,20 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		return nil, err
 	}
 
-	crdClient, err := c.ExtraConfig.NewClientFunc(s.GenericAPIServer.LoopbackClientConfig)
-	if err != nil {
-		// it's really bad that this is leaking here, but until we can fix the test (which I'm pretty sure isn't even testing what it wants to test),
-		// we need to be able to move forward
-		return nil, fmt.Errorf("failed to create clientset: %v", err)
+	crdClient := c.ExtraConfig.Client
+	if crdClient == nil {
+		crdClient, err = clientset.NewForConfig(s.GenericAPIServer.LoopbackClientConfig)
+		if err != nil {
+			// it's really bad that this is leaking here, but until we can fix the test (which I'm pretty sure isn't even testing what it wants to test),
+			// we need to be able to move forward
+			return nil, fmt.Errorf("failed to create clientset: %v", err)
+		}
 	}
-	s.Informers = c.ExtraConfig.NewInformerFactoryFunc(crdClient, 5*time.Minute)
+
+	s.Informers = c.ExtraConfig.Informers
+	if s.Informers == nil {
+		s.Informers = externalinformers.NewSharedInformerFactory(crdClient, 5*time.Minute)
+	}
 
 	delegateHandler := delegationTarget.UnprotectedHandler()
 	if delegateHandler == nil {
