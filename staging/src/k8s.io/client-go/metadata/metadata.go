@@ -47,6 +47,33 @@ func init() {
 	metav1.AddToGroupVersion(deleteScheme, versionV1)
 }
 
+type ClusterInterface interface {
+	Cluster(name string) Interface
+}
+
+type Cluster struct {
+	client *rest.RESTClient
+}
+
+// Cluster sets the cluster for a Client.
+func (c *Cluster) Cluster(name string) Interface {
+	return &Client{
+		client:  c.client,
+		cluster: name,
+	}
+}
+
+// NewClusterForConfig creates a new Cluster for the given config.
+// If config's RateLimiter is not set and QPS and Burst are acceptable,
+// NewClusterForConfig will generate a rate-limiter in configShallowCopy.
+func NewClusterForConfig(config *rest.Config) (*Cluster, error) {
+	c, err := NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	return &Cluster{client: c.client}, nil
+}
+
 // Client allows callers to retrieve the object metadata for any
 // Kubernetes-compatible API endpoint. The client uses the
 // meta.k8s.io/v1 PartialObjectMetadata resource to more efficiently
@@ -54,7 +81,8 @@ func init() {
 // (Kubernetes 1.14 and before) will retrieve the object and then
 // convert the metadata.
 type Client struct {
-	client *rest.RESTClient
+	client  *rest.RESTClient
+	cluster string
 }
 
 var _ Interface = &Client{}
@@ -88,7 +116,7 @@ func NewForConfigOrDie(c *rest.Config) Interface {
 // an error.
 // NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
 // where httpClient was generated with rest.HTTPClientFor(c).
-func NewForConfig(inConfig *rest.Config) (Interface, error) {
+func NewForConfig(inConfig *rest.Config) (*Client, error) {
 	config := ConfigFor(inConfig)
 
 	httpClient, err := rest.HTTPClientFor(config)
@@ -100,7 +128,7 @@ func NewForConfig(inConfig *rest.Config) (Interface, error) {
 
 // NewForConfigAndClient creates a new metadata client for the given config and http client.
 // Note the http client provided takes precedence over the configured transport values.
-func NewForConfigAndClient(inConfig *rest.Config, h *http.Client) (Interface, error) {
+func NewForConfigAndClient(inConfig *rest.Config, h *http.Client) (*Client, error) {
 	config := ConfigFor(inConfig)
 	// for serializing the options
 	config.GroupVersion = &schema.GroupVersion{}
@@ -169,6 +197,7 @@ func (c *client) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions
 
 	result := c.client.client.
 		Delete().
+		Cluster(c.client.cluster).
 		AbsPath(c.makeURLSegments("")...).
 		SetHeader("Content-Type", runtime.ContentTypeJSON).
 		Body(deleteOptionsByte).
@@ -182,7 +211,7 @@ func (c *client) Get(ctx context.Context, name string, opts metav1.GetOptions, s
 	if len(name) == 0 {
 		return nil, fmt.Errorf("name is required")
 	}
-	result := c.client.client.Get().AbsPath(append(c.makeURLSegments(name), subresources...)...).
+	result := c.client.client.Get().Cluster(c.client.cluster).AbsPath(append(c.makeURLSegments(name), subresources...)...).
 		SetHeader("Accept", "application/vnd.kubernetes.protobuf;as=PartialObjectMetadata;g=meta.k8s.io;v=v1,application/json;as=PartialObjectMetadata;g=meta.k8s.io;v=v1,application/json").
 		SpecificallyVersionedParams(&opts, dynamicParameterCodec, versionV1).
 		Do(ctx)
@@ -218,7 +247,7 @@ func (c *client) Get(ctx context.Context, name string, opts metav1.GetOptions, s
 
 // List returns all resources within the specified scope (namespace or cluster).
 func (c *client) List(ctx context.Context, opts metav1.ListOptions) (*metav1.PartialObjectMetadataList, error) {
-	result := c.client.client.Get().AbsPath(c.makeURLSegments("")...).
+	result := c.client.client.Get().Cluster(c.client.cluster).AbsPath(c.makeURLSegments("")...).
 		SetHeader("Accept", "application/vnd.kubernetes.protobuf;as=PartialObjectMetadataList;g=meta.k8s.io;v=v1,application/json;as=PartialObjectMetadataList;g=meta.k8s.io;v=v1,application/json").
 		SpecificallyVersionedParams(&opts, dynamicParameterCodec, versionV1).
 		Do(ctx)
@@ -257,6 +286,7 @@ func (c *client) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Inte
 	}
 	opts.Watch = true
 	return c.client.client.Get().
+		Cluster(c.client.cluster).
 		AbsPath(c.makeURLSegments("")...).
 		SetHeader("Accept", "application/vnd.kubernetes.protobuf;as=PartialObjectMetadata;g=meta.k8s.io;v=v1,application/json;as=PartialObjectMetadata;g=meta.k8s.io;v=v1,application/json").
 		SpecificallyVersionedParams(&opts, dynamicParameterCodec, versionV1).
@@ -271,6 +301,7 @@ func (c *client) Patch(ctx context.Context, name string, pt types.PatchType, dat
 	}
 	result := c.client.client.
 		Patch(pt).
+		Cluster(c.client.cluster).
 		AbsPath(append(c.makeURLSegments(name), subresources...)...).
 		Body(data).
 		SetHeader("Accept", "application/vnd.kubernetes.protobuf;as=PartialObjectMetadata;g=meta.k8s.io;v=v1,application/json;as=PartialObjectMetadata;g=meta.k8s.io;v=v1,application/json").
