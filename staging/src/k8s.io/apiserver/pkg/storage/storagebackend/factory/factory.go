@@ -17,6 +17,7 @@ limitations under the License.
 package factory
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,6 +33,8 @@ func Create(c storagebackend.ConfigForResource, newFunc func() runtime.Object) (
 	switch c.Type {
 	case storagebackend.StorageTypeETCD2:
 		return nil, nil, fmt.Errorf("%s is no longer a supported storage backend", c.Type)
+	case storagebackend.StorageTypeCRDB:
+		return newCRDBStorage(context.Background(), c, newFunc)
 	case storagebackend.StorageTypeUnset, storagebackend.StorageTypeETCD3:
 		return newETCD3Storage(c, newFunc)
 	default:
@@ -44,6 +47,8 @@ func CreateHealthCheck(c storagebackend.Config) (func() error, error) {
 	switch c.Type {
 	case storagebackend.StorageTypeETCD2:
 		return nil, fmt.Errorf("%s is no longer a supported storage backend", c.Type)
+	case storagebackend.StorageTypeCRDB:
+		return newCRDBHealthCheck(context.Background(), c)
 	case storagebackend.StorageTypeUnset, storagebackend.StorageTypeETCD3:
 		return newETCD3HealthCheck(c)
 	default:
