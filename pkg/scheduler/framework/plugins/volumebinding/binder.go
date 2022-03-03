@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apiserver/pkg/storage/etcd3"
+	"k8s.io/apiserver/pkg/storage/versioner"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	storageinformers "k8s.io/client-go/informers/storage/v1"
@@ -540,7 +540,7 @@ func (b *volumeBinder) bindAPIUpdate(pod *v1.Pod, bindings []*BindingInfo, claim
 }
 
 var (
-	versioner = etcd3.APIObjectVersioner{}
+	apiVersioner = versioner.APIObjectVersioner{}
 )
 
 // checkBindings runs through all the PVCs in the Pod and checks:
@@ -598,7 +598,7 @@ func (b *volumeBinder) checkBindings(pod *v1.Pod, bindings []*BindingInfo, claim
 
 		// Because we updated PV in apiserver, skip if API object is older
 		// and wait for new API object propagated from apiserver.
-		if versioner.CompareResourceVersion(binding.pv, pv) > 0 {
+		if apiVersioner.CompareResourceVersion(binding.pv, pv) > 0 {
 			return false, nil
 		}
 
@@ -631,7 +631,7 @@ func (b *volumeBinder) checkBindings(pod *v1.Pod, bindings []*BindingInfo, claim
 
 		// Because we updated PVC in apiserver, skip if API object is older
 		// and wait for new API object propagated from apiserver.
-		if versioner.CompareResourceVersion(claim, pvc) > 0 {
+		if apiVersioner.CompareResourceVersion(claim, pvc) > 0 {
 			return false, nil
 		}
 
