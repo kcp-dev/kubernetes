@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	apiservertesting "k8s.io/kubernetes/cmd/kube-apiserver/app/testing"
+	"k8s.io/kubernetes/test/integration"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
@@ -253,6 +254,7 @@ func TestCustomResourceValidators(t *testing.T) {
 		})
 	})
 	t.Run("CRD writes MUST fail for a non-structural schema containing x-kubernetes-validations", func(t *testing.T) {
+		t.Skip(integration.ReasonRawClient)
 		// The only way for a non-structural schema to exist is for it to already be persisted in etcd as a non-structural CRD.
 		nonStructuralCRD, err := fixtures.CreateCRDUsingRemovedAPI(server.EtcdClient, server.EtcdStoragePrefix, nonStructuralCrdWithValidations(), apiExtensionClient, dynamicClient)
 		if err != nil {

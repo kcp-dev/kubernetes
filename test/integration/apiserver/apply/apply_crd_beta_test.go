@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/kubernetes/test/integration"
 
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -40,6 +41,7 @@ import (
 // TestApplyCRDNoSchema tests that CRDs and CRs can both be applied to with a PATCH request with the apply content type
 // when there is no validation field provided.
 func TestApplyCRDNoSchema(t *testing.T) {
+	t.Skip(integration.ReasonRawClient)
 	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, genericfeatures.ServerSideApply, true)()
 
 	server, err := apiservertesting.StartTestServer(t, apiservertesting.NewDefaultTestServerOptions(), nil, framework.SharedEtcd())

@@ -54,12 +54,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
-	dynamic "k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
 	kubeapiservertesting "k8s.io/kubernetes/cmd/kube-apiserver/app/testing"
 	apisv1beta1 "k8s.io/kubernetes/pkg/apis/admissionregistration/v1beta1"
+	"k8s.io/kubernetes/test/integration"
 	"k8s.io/kubernetes/test/integration/etcd"
 	"k8s.io/kubernetes/test/integration/framework"
 )
@@ -446,6 +447,7 @@ func TestWebhookAdmissionWithoutWatchCache(t *testing.T) {
 
 // testWebhookAdmission tests communication between API server and webhook process.
 func testWebhookAdmission(t *testing.T, watchCache bool) {
+	t.Skip(integration.ReasonRawClient)
 	// holder communicates expectations to webhooks, and results from webhooks
 	holder := &holder{
 		t:                 t,

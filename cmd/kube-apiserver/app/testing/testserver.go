@@ -28,10 +28,7 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-	"go.etcd.io/etcd/client/pkg/v3/transport"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"google.golang.org/grpc"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -288,27 +285,27 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 		return result, fmt.Errorf("failed to wait for default namespace to be created: %v", err)
 	}
 
-	tlsInfo := transport.TLSInfo{
-		CertFile:      storageConfig.Transport.CertFile,
-		KeyFile:       storageConfig.Transport.KeyFile,
-		TrustedCAFile: storageConfig.Transport.TrustedCAFile,
-	}
-	tlsConfig, err := tlsInfo.ClientConfig()
-	if err != nil {
-		return result, err
-	}
-	etcdConfig := clientv3.Config{
-		Endpoints:   storageConfig.Transport.ServerList,
-		DialTimeout: 20 * time.Second,
-		DialOptions: []grpc.DialOption{
-			grpc.WithBlock(), // block until the underlying connection is up
-		},
-		TLS: tlsConfig,
-	}
-	etcdClient, err := clientv3.New(etcdConfig)
-	if err != nil {
-		return result, err
-	}
+	//tlsInfo := transport.TLSInfo{
+	//	CertFile:      storageConfig.Transport.CertFile,
+	//	KeyFile:       storageConfig.Transport.KeyFile,
+	//	TrustedCAFile: storageConfig.Transport.TrustedCAFile,
+	//}
+	//tlsConfig, err := tlsInfo.ClientConfig()
+	//if err != nil {
+	//	return result, err
+	//}
+	//etcdConfig := clientv3.Config{
+	//	Endpoints:   storageConfig.Transport.ServerList,
+	//	DialTimeout: 20 * time.Second,
+	//	DialOptions: []grpc.DialOption{
+	//		grpc.WithBlock(), // block until the underlying connection is up
+	//	},
+	//	TLS: tlsConfig,
+	//}
+	//etcdClient, err := clientv3.New(etcdConfig)
+	//if err != nil {
+	//	return result, err
+	//}
 
 	// from here the caller must call tearDown
 	result.ClientConfig = restclient.CopyConfig(server.GenericAPIServer.LoopbackClientConfig)
@@ -316,7 +313,7 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 	result.ClientConfig.Burst = 10000
 	result.ServerOpts = s
 	result.TearDownFn = tearDown
-	result.EtcdClient = etcdClient
+	//result.EtcdClient = etcdClient
 	result.EtcdStoragePrefix = storageConfig.Prefix
 
 	return result, nil

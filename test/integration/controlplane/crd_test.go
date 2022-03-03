@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"k8s.io/apiextensions-apiserver/test/integration/fixtures"
+	"k8s.io/kubernetes/test/integration"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
@@ -168,6 +169,7 @@ func TestCRD(t *testing.T) {
 }
 
 func TestCRDOpenAPI(t *testing.T) {
+	t.Skip(integration.ReasonRawClient)
 	result := kubeapiservertesting.StartTestServerOrDie(t, nil, nil, framework.SharedEtcd())
 	defer result.TearDownFn()
 	kubeclient, err := kubernetes.NewForConfig(result.ClientConfig)
