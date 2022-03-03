@@ -201,6 +201,7 @@ type priorityLevelState struct {
 
 // NewTestableController is extra flexible to facilitate testing
 func newTestableController(config TestableConfig) *configController {
+	return nil
 	cfgCtlr := &configController{
 		name:                   config.Name,
 		clock:                  config.Clock,

@@ -76,7 +76,7 @@ func NewServerRunOptions() *ServerRunOptions {
 		ShutdownDelayDuration:       defaults.ShutdownDelayDuration,
 		JSONPatchMaxCopyBytes:       defaults.JSONPatchMaxCopyBytes,
 		MaxRequestBodyBytes:         defaults.MaxRequestBodyBytes,
-		EnablePriorityAndFairness:   true,
+		EnablePriorityAndFairness:   false,
 		ShutdownSendRetryAfter:      false,
 	}
 }

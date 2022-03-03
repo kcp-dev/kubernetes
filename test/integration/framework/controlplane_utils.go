@@ -331,6 +331,12 @@ func NewControlPlaneConfigWithOptions(opts *ControlPlaneConfigOptions) *controlp
 		panic(err)
 	}
 
+	// TODO: https://github.com/kcp-dev/kcp/issues/506
+	genericConfig.FlowControl = nil
+	if err := utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", genericfeatures.APIPriorityAndFairness)); err != nil {
+		panic(err)
+	}
+
 	return &controlplane.Config{
 		GenericConfig: genericConfig,
 		ExtraConfig: controlplane.ExtraConfig{

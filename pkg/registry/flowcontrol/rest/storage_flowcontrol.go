@@ -107,7 +107,9 @@ func (p RESTStorageProvider) GroupName() string {
 
 // PostStartHook returns the hook func that launches the config provider
 func (p RESTStorageProvider) PostStartHook() (string, genericapiserver.PostStartHookFunc, error) {
-	return PostStartHookName, ensureAPFBootstrapConfiguration, nil
+	return PostStartHookName, func(context genericapiserver.PostStartHookContext) error {
+		return nil
+	}, nil
 }
 
 func ensureAPFBootstrapConfiguration(hookContext genericapiserver.PostStartHookContext) error {
