@@ -80,7 +80,12 @@ func (s *store) Versioner() storage.Versioner {
 func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object, ttl uint64) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		return storage.NewInternalError("no cluster metadata found")
+		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
+		cluster = &request.Cluster{
+			Name:     "admin",
+			Parents:  nil,
+			Wildcard: false,
+		}
 	}
 	key = path.Join(s.pathPrefix, key)
 
@@ -156,7 +161,12 @@ func (s *store) Delete(ctx context.Context, key string, out runtime.Object, prec
 func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		return storage.NewInternalError("no cluster metadata found")
+		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
+		cluster = &request.Cluster{
+			Name:     "admin",
+			Parents:  nil,
+			Wildcard: false,
+		}
 	}
 
 	getCurrentState := func() (*objState, error) {
@@ -312,7 +322,12 @@ func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions,
 func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, out runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		return storage.NewInternalError("no cluster metadata found")
+		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
+		cluster = &request.Cluster{
+			Name:     "admin",
+			Parents:  nil,
+			Wildcard: false,
+		}
 	}
 	key = path.Join(s.pathPrefix, key)
 
@@ -357,7 +372,12 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		return storage.NewInternalError("no cluster metadata found")
+		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
+		cluster = &request.Cluster{
+			Name:     "admin",
+			Parents:  nil,
+			Wildcard: false,
+		}
 	}
 	key = path.Join(s.pathPrefix, key)
 
@@ -443,7 +463,8 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		return storage.NewInternalError("no cluster metadata found")
+		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
+		cluster = &request.Cluster{Name: "admin"}
 	}
 	requestInfo, ok := request.RequestInfoFrom(ctx)
 	if !ok {
@@ -719,7 +740,12 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Object, ignoreNotFound bool, preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		return storage.NewInternalError("no cluster metadata found")
+		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
+		cluster = &request.Cluster{
+			Name:     "admin",
+			Parents:  nil,
+			Wildcard: false,
+		}
 	}
 	requestInfo, ok := request.RequestInfoFrom(ctx)
 	if !ok {
