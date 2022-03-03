@@ -540,7 +540,8 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 	var hybridLogicalTimestamp apd.Decimal
 	var clusterTimestamp apd.Decimal
 	found := true
-	if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	// TODO: we're hacking the pgx.TxOptions here for `AS OF SYSTEM TIME` ... but there's no other support for it?
+	if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{DeferrableMode: pgx.TxDeferrableMode(clause)}, func(tx pgx.Tx) error {
 		// we need to read the cluster timestamp even if the data read fails with a NotFound
 		if err := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp); err != nil {
 			return err
@@ -761,8 +762,8 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		// as always, the resourceVersion parameter the client passes in is compared to the
 		// latest possible system clock, not the last write to the data, so we need to use a
 		// transaction here to read that ...
-		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			// TODO: perhaps just for tests, we need WHERE key LIKE prefix% since those tests expect real prefixing ... but that is not ideal for production
+		// TODO: we're hacking the pgx.TxOptions here for `AS OF SYSTEM TIME` ... but there's no other support for it?
+		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{DeferrableMode: pgx.TxDeferrableMode(revisionClause)}, func(tx pgx.Tx) error {
 			// we need to read the cluster timestamp even if the data read fails with a NotFound
 			if err := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp); err != nil {
 				return err
