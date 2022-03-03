@@ -190,9 +190,9 @@ type recordingRowQuerier struct {
 	*pgxpool.Pool
 }
 
-func (r *recordingRowQuerier) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (r *recordingRowQuerier) BeginTxFunc(ctx context.Context, txOptions pgx.TxOptions, f func(pgx.Tx) error) error {
 	atomic.AddUint64(&r.reads, 1)
-	return r.Pool.QueryRow(ctx, sql, args...)
+	return r.Pool.BeginTxFunc(ctx, txOptions, f)
 }
 
 func (e *crdbTestClient) Reads() uint64 {

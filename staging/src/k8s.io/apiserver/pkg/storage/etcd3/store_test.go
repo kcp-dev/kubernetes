@@ -1844,6 +1844,7 @@ func RunTestListContinuation(t *testing.T, bootstrapper storage.TestBootstrapper
 		}
 	}
 
+	client.ResetReads()
 	// test continuations
 	out := &example.PodList{}
 	pred := func(limit int64, continueValue string) storage.SelectionPredicate {
@@ -2000,6 +2001,7 @@ func RunTestListContinuationWithFilter(t *testing.T, bootstrapper storage.TestBo
 		}
 	}
 
+	client.ResetReads()
 	// the first list call should try to get 2 items from etcd (and only those items should be returned)
 	// the field selector should result in it reading 3 items via the transformer
 	// the chunking should result in 2 etcd Gets
