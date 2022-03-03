@@ -1103,7 +1103,23 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 }
 
 func (s *store) Count(key string) (int64, error) {
-	panic("this is hard and requires that we understand k8s/etcd prefixing mechanisms .. who actually uses this?!")
+	key = path.Join(s.pathPrefix, key)
+
+	// We need to make sure the key ended with "/" so that we only get children "directories".
+	// e.g. if we have key "/a", "/a/b", "/ab", getting keys with prefix "/a" will return all three,
+	// while with prefix "/a/" will return only "/a/b" which is the correct answer.
+	if !strings.HasSuffix(key, "/") {
+		key += "/"
+	}
+
+	var count int64
+	if err := s.client.QueryRow(context.Background(), fmt.Sprintf(`SELECT COUNT(*) FROM k8s WHERE key LIKE '%s%%';`, key)).Scan(&count); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, storage.NewKeyNotFoundError(key, 0)
+		}
+		return 0, storage.NewInternalError(err.Error())
+	}
+	return count, nil
 }
 
 // below copied from etcd

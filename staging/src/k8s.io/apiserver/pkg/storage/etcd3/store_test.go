@@ -2607,7 +2607,6 @@ func TestCount(t *testing.T) {
 }
 
 func TestCountCRDB(t *testing.T) {
-	t.Skip("do we bother implementing this?")
 	RunTestCount(t, crdb.TestBootstrapper())
 }
 
