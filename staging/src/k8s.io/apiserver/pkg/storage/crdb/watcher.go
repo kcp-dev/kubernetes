@@ -98,7 +98,7 @@ type watchChan struct {
 	errChan           chan error
 
 	// HACK: testing watch across multiple prefixes
-	clusterName string
+	cluster *request.Cluster
 }
 
 func newWatcher(client pool, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
@@ -124,11 +124,11 @@ func newWatcher(client pool, codec runtime.Codec, newFunc func() runtime.Object,
 // If recursive is false, it watches on given key.
 // If recursive is true, it watches any children and directories under the key, excluding the root key itself.
 // pred must be non-nil. Only if pred matches the change, it will be returned.
-func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive bool, clusterName string, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
+func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive bool, cluster *request.Cluster, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
 	if recursive && !strings.HasSuffix(key, "/") {
 		key += "/"
 	}
-	wc := w.createWatchChan(ctx, key, rev, recursive, clusterName, progressNotify, pred)
+	wc := w.createWatchChan(ctx, key, rev, recursive, cluster, progressNotify, pred)
 	go wc.run()
 
 	// For etcd watch we don't have an easy way to answer whether the watch
@@ -141,7 +141,7 @@ func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive bo
 	return wc, nil
 }
 
-func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive bool, clusterName string, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
+func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive bool, cluster *request.Cluster, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
 	wc := &watchChan{
 		watcher:           w,
 		key:               key,
@@ -154,7 +154,7 @@ func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, re
 		errChan:           make(chan error, 1),
 
 		// HACK: assume structure of key is <prefix><cluster>/...
-		clusterName: clusterName,
+		cluster: cluster,
 	}
 	if pred.Empty() {
 		// The filter doesn't filter out any object.
@@ -229,6 +229,9 @@ func (wc *watchChan) sync() error {
 	var events []*event
 	if err := wc.watcher.client.BeginTxFunc(wc.ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		if !wc.recursive {
+			if wc.cluster == nil || wc.cluster.Wildcard || wc.cluster.Name == "" {
+				return fmt.Errorf("invalid cluster, need a single selected name: %#v", wc.cluster)
+			}
 			// we are watching one key only
 			var data []byte
 			var hybridLogicalTimestamp apd.Decimal
@@ -445,15 +448,6 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 			}
 		}
 
-		filter := func(incomingKey string) bool {
-			return incomingKey == wc.key
-		}
-		if wc.recursive {
-			filter = func(incomingKey string) bool {
-				return strings.HasPrefix(incomingKey, wc.key)
-			}
-		}
-
 		if evt.Resolved != nil {
 			resourceVersion, err := toResourceVersion(evt.Resolved)
 			if err != nil {
@@ -466,7 +460,20 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 			continue
 		}
 
-		if !filter(key) {
+		keyFilter := func(incomingKey string) bool {
+			if wc.recursive {
+				return strings.HasPrefix(incomingKey, wc.key)
+			}
+			return incomingKey == wc.key
+		}
+		clusterFilter := func(incomingCluster string) bool {
+			if wc.cluster != nil && !wc.cluster.Wildcard && wc.cluster.Name != "" {
+				return incomingCluster == wc.cluster.Name
+			}
+			return true
+		}
+
+		if !keyFilter(key) || !clusterFilter(cluster) {
 			// this watch should not emit this event
 			continue
 		}
@@ -684,8 +691,8 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
-		clusterName := wc.clusterName
-		if clusterName == "*" {
+		clusterName := wc.cluster.Name
+		if wc.cluster.Wildcard {
 			sub := strings.TrimPrefix(e.key, wc.key)
 			if i := strings.Index(sub, "/"); i != -1 {
 				sub = sub[:i]
@@ -727,8 +734,8 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
-		clusterName := wc.clusterName
-		if clusterName == "*" {
+		clusterName := wc.cluster.Name
+		if wc.cluster.Wildcard {
 			sub := strings.TrimPrefix(e.key, wc.key)
 			if i := strings.Index(sub, "/"); i != -1 {
 				sub = sub[:i]

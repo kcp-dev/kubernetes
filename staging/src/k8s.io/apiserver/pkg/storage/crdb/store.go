@@ -428,17 +428,16 @@ func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions,
 	}
 	key = path.Join(s.pathPrefix, key)
 
-	// HACK: would need to be an argument to storage (or a change to how decoding works for key structure)
-	cluster, err := request.ValidClusterFrom(ctx)
-	if err != nil {
-		return nil, storage.NewInternalError(fmt.Sprintf("Invalid cluster for key %s : %v", key, err))
-	}
-	clusterName := cluster.Name
-	if cluster.Wildcard {
-		clusterName = "*"
+	cluster := request.ClusterFrom(ctx)
+	if cluster == nil {
+		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
+		cluster = &request.Cluster{
+			Name:     "admin",
+			Wildcard: false,
+		}
 	}
 
-	return s.watcher.Watch(ctx, key, int64(rev), recursive, clusterName, opts.ProgressNotify, opts.Predicate)
+	return s.watcher.Watch(ctx, key, int64(rev), recursive, cluster, opts.ProgressNotify, opts.Predicate)
 }
 
 func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, out runtime.Object) error {
