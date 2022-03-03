@@ -1208,7 +1208,7 @@ func TestAPICRDProtobuf(t *testing.T) {
 	}
 	fooCRD, err = fixtures.CreateNewV1CustomResourceDefinition(fooCRD, apiExtensionClient, dynamicClient)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("could not create new CRD: %v", err)
 	}
 	crdGVR := schema.GroupVersionResource{Group: fooCRD.Spec.Group, Version: fooCRD.Spec.Versions[0].Name, Resource: "foos"}
 	crclient := dynamicClient.Resource(crdGVR).Namespace(testNamespace)
@@ -1425,6 +1425,12 @@ func TestTransform(t *testing.T) {
 	}
 	crdGVR := schema.GroupVersionResource{Group: fooCRD.Spec.Group, Version: fooCRD.Spec.Versions[0].Name, Resource: "foos"}
 	crclient := dynamicClient.Resource(crdGVR).Namespace(testNamespace)
+
+	previousList, err := crclient.List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("failed to list CRs before test: %v", err)
+	}
+	previousRV := previousList.GetResourceVersion()
 
 	testcases := []struct {
 		name          string
@@ -1966,21 +1972,29 @@ func TestTransform(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			rv, _ := strconv.Atoi(obj.GetResourceVersion())
-			if rv < 1 {
-				rv = 1
+			rv := obj.GetResourceVersion()
+			if rv == "" {
+				rv = "0"
+			} else {
+				rv = previousRV
 			}
 
+			ctx, cancel := context.WithTimeout(context.Background(), 10 * time.Second)
+			t.Cleanup(func() {
+				cancel()
+			})
+			t.Log("Beginning stream:")
 			w, err := client.Get().
 				Resource(resource).NamespaceIfScoped(obj.GetNamespace(), len(obj.GetNamespace()) > 0).
 				SetHeader("Accept", tc.accept).
 				VersionedParams(&metav1.ListOptions{
-					ResourceVersion: strconv.Itoa(rv - 1),
+					ResourceVersion: rv,
 					Watch:           true,
 					FieldSelector:   fields.OneTermEqualSelector("metadata.name", obj.GetName()).String(),
 				}, metav1.ParameterCodec).
 				Param("includeObject", string(tc.includeObject)).
-				Stream(context.TODO())
+				Stream(ctx)
+			t.Log("Began stream:")
 			if (tc.wantErr != nil) != (err != nil) {
 				t.Fatalf("unexpected error: %v", err)
 			}
