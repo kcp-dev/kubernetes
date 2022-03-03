@@ -301,7 +301,7 @@ func NewControlPlaneConfigWithOptions(opts *ControlPlaneConfigOptions) *controlp
 		etcdOptions = opts.EtcdOptions
 	}
 
-	storageConfig := kubeapiserver.NewStorageFactoryConfig()
+	storageConfig := kubeapiserver.LegacyStorageFactoryConfig()
 	storageConfig.APIResourceConfig = serverstorage.NewResourceConfig()
 	completedStorageConfig, err := storageConfig.Complete(etcdOptions)
 	if err != nil {
