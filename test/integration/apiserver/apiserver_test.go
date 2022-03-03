@@ -806,16 +806,18 @@ func TestNameInFieldSelector(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		opts := metav1.ListOptions{
-			FieldSelector: tc.selector,
-		}
-		secrets, err := clientSet.CoreV1().Secrets(tc.namespace).List(context.TODO(), opts)
-		if err != nil {
-			t.Errorf("%s: Unexpected error: %v", tc.selector, err)
-		}
-		if len(secrets.Items) != tc.expectedSecrets {
-			t.Errorf("%s: Unexpected number of secrets: %d, expected: %d", tc.selector, len(secrets.Items), tc.expectedSecrets)
-		}
+		t.Run(tc.selector, func(t *testing.T) {
+			opts := metav1.ListOptions{
+				FieldSelector: tc.selector,
+			}
+			secrets, err := clientSet.CoreV1().Secrets(tc.namespace).List(context.TODO(), opts)
+			if err != nil {
+				t.Errorf("%s: Unexpected error: %v", tc.selector, err)
+			}
+			if len(secrets.Items) != tc.expectedSecrets {
+				t.Errorf("%s: Unexpected number of secrets: %d, expected: %d", tc.selector, len(secrets.Items), tc.expectedSecrets)
+			}
+		})
 	}
 }
 
