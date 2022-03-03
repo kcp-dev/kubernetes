@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"k8s.io/client-go/tools/clusters"
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
@@ -263,6 +264,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	crdName := requestInfo.Resource + "." + requestInfo.APIGroup
+	crdName = clusters.ToClusterAwareKey("admin", crdName) // can't import the root name, cyclical
 	crd, err := r.crdLister.GetWithContext(ctx, crdName)
 	if apierrors.IsNotFound(err) {
 		r.delegate.ServeHTTP(w, req)
