@@ -231,13 +231,13 @@ func (wc *watchChan) sync() error {
 		if !wc.recursive {
 			// we are watching one key only
 			var data []byte
-			var mvccTimestamp apd.Decimal
-			err := tx.QueryRow(wc.ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, wc.key, wc.clusterName).Scan(&data, &mvccTimestamp)
+			var hybridLogicalTimestamp apd.Decimal
+			err := tx.QueryRow(wc.ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, wc.key, wc.cluster.Name).Scan(&data, &hybridLogicalTimestamp)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return fmt.Errorf("failed to read key when starting watch: %w", err)
 			}
 			if !errors.Is(err, pgx.ErrNoRows) {
-				objectResourceVersion, err := toResourceVersion(mvccTimestamp)
+				objectResourceVersion, err := toResourceVersion(&hybridLogicalTimestamp)
 				if err != nil {
 					return fmt.Errorf("failed to parse resourceVersion of key when starting watch: %w", err)
 				}
@@ -263,12 +263,12 @@ func (wc *watchChan) sync() error {
 
 				var key string
 				var data []byte
-				var mvccTimestamp apd.Decimal
-				if err := rows.Scan(&key, &data, &mvccTimestamp); err != nil {
+				var hybridLogicalTimestamp apd.Decimal
+				if err := rows.Scan(&key, &data, &hybridLogicalTimestamp); err != nil {
 					return fmt.Errorf("failed to read row when starting watch: %w", err)
 				}
 
-				objectResourceVersion, err := toResourceVersion(mvccTimestamp)
+				objectResourceVersion, err := toResourceVersion(&hybridLogicalTimestamp)
 				if err != nil {
 					return fmt.Errorf("failed to parse resourceVersion of row when starting watch: %w", err)
 				}
@@ -285,7 +285,7 @@ func (wc *watchChan) sync() error {
 		return fmt.Errorf("failed to sync data when starting watch: %v", err)
 	}
 
-	latestResourceVersion, err := toResourceVersion(clusterTimestamp)
+	latestResourceVersion, err := toResourceVersion(&clusterTimestamp)
 	if err != nil {
 		return err
 	}
@@ -332,16 +332,38 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 			return
 		}
 	}
+	providedTimestamp, err := toHybridLogicalClock(wc.initialRev)
+	if err != nil {
+		err = fmt.Errorf("failed to parse initial revision: %w", err)
+		klog.Error(err)
+		wc.sendError(err)
+		return
+	}
+	var initialWatchTimestamp apd.Decimal
+	condition, err := apd.BaseContext.Add(&initialWatchTimestamp, providedTimestamp, apd.New(1, 0))
+	if err != nil {
+		err = fmt.Errorf("failed to determine initial watch revision: %v", err)
+		klog.Error(err)
+		wc.sendError(err)
+		return
+	}
+	if _, err := condition.GoError(apd.DefaultTraps); err != nil {
+		err = fmt.Errorf("failed to determine initial watch revision: %v", err)
+		klog.Error(err)
+		wc.sendError(err)
+		return
+	}
 	options := []string{
 		"updated",
 		"mvcc_timestamp",
-		fmt.Sprintf("cursor='%d'", wc.initialRev+1),
+		fmt.Sprintf("cursor='%s'", initialWatchTimestamp.String()),
 	}
 	if wc.progressNotify {
 		options = append(options, "resolved='1s'") // TODO: this is a server setting in etcd, but a client one for us
 	}
 	query := fmt.Sprintf(`EXPERIMENTAL CHANGEFEED FOR k8s WITH %s;`, strings.Join(options, ","))
-	fmt.Println(query)
+	// TODO: the SQL logger only prints the command when it finishes, so we never see it ...
+	klog.InfoS("Exec", "sql", query)
 	rows, err := wc.watcher.client.Query(wc.ctx, query)
 	if err != nil {
 		// If there is an error on server (e.g. compaction), the channel will return it before closed.
@@ -433,7 +455,7 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 		}
 
 		if evt.Resolved != nil {
-			resourceVersion, err := toResourceVersion(*evt.Resolved)
+			resourceVersion, err := toResourceVersion(evt.Resolved)
 			if err != nil {
 				logWatchChannelErr(err)
 				wc.sendError(err)
@@ -450,7 +472,7 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 		}
 
 		if evt.Updated != nil {
-			resourceVersion, err := toResourceVersion(*evt.Updated)
+			resourceVersion, err := toResourceVersion(evt.Updated)
 			if err != nil {
 				logWatchChannelErr(err)
 				wc.sendError(err)
@@ -461,9 +483,30 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 			// fetch the key at a previous RV - if it existed, we will have a previous version to show the client
 			// who is watching; if it did not, we know this is a "create" event.
 			// NOTE: for some reason k8s watch sends the current RV for the old object ... ?
-			providedTimestamp := apd.New(int64(resourceVersion) - 1, 0)
+			objectTimestamp, err := toHybridLogicalClock(resourceVersion)
+			if err != nil {
+				err = fmt.Errorf("failed to determine hybrid logical clock when handling watch event: %w", err)
+				logWatchChannelErr(err)
+				wc.sendError(err)
+				return
+			}
+			var previousTimestamp apd.Decimal
+			condition, err := apd.BaseContext.Sub(&previousTimestamp, objectTimestamp, apd.New(1, 0))
+			if err != nil {
+				err = fmt.Errorf("failed to determine previous object revision: %v", err)
+				klog.Error(err)
+				wc.sendError(err)
+				return
+			}
+			if _, err := condition.GoError(apd.DefaultTraps); err != nil {
+				err = fmt.Errorf("failed to determine previous object revision: %v", err)
+				klog.Error(err)
+				wc.sendError(err)
+				return
+			}
+
 			var previousData []byte
-			err = wc.watcher.client.QueryRow(wc.ctx, fmt.Sprintf(`SELECT value FROM k8s AS OF SYSTEM TIME %s WHERE key=$1 AND cluster=$2;`, providedTimestamp), key, cluster).Scan(&previousData)
+			err = wc.watcher.client.QueryRow(wc.ctx, fmt.Sprintf(`SELECT value FROM k8s AS OF SYSTEM TIME %s WHERE key=$1 AND cluster=$2;`, previousTimestamp.String()), key, cluster).Scan(&previousData)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				err = fmt.Errorf("failed to read previous key when handling watch event: %w", err)
 				logWatchChannelErr(err)

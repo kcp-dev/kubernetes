@@ -120,10 +120,25 @@ type crdbTestClient struct {
 func (e *crdbTestClient) RawWatch(ctx context.Context, key string, revision int64) storage.WatchChan {
 	watchChan := make(chan storage.WatchResponse, 20)
 	go func() {
+		providedTimestamp, err := toHybridLogicalClock(revision)
+		if err != nil {
+			watchChan <- storage.WatchResponse{Error: fmt.Errorf("failed to parse initial revision: %w", err)}
+			return
+		}
+		var initialWatchTimestamp apd.Decimal
+		condition, err := apd.BaseContext.Add(&initialWatchTimestamp, providedTimestamp, apd.New(1, 0))
+		if err != nil {
+			watchChan <- storage.WatchResponse{Error: fmt.Errorf("failed to determine initial watch revision: %v", err)}
+			return
+		}
+		if _, err := condition.GoError(apd.DefaultTraps); err != nil {
+			watchChan <- storage.WatchResponse{Error: fmt.Errorf("failed to determine initial watch revision: %v", err)}
+			return
+		}
 		options := []string{
 			"updated",
 			"mvcc_timestamp",
-			fmt.Sprintf("cursor='%d'", revision+1),
+			fmt.Sprintf("cursor='%s'", providedTimestamp),
 		}
 		query := fmt.Sprintf(`EXPERIMENTAL CHANGEFEED FOR k8s WITH %s;`, strings.Join(options, ","))
 		rows, err := e.Query(ctx, query)
@@ -157,7 +172,7 @@ func (e *crdbTestClient) RawWatch(ctx context.Context, key string, revision int6
 			}
 
 			if evt.MVCCTimestamp != nil {
-				resourceVersion, err := toResourceVersion(*evt.MVCCTimestamp)
+				resourceVersion, err := toResourceVersion(evt.MVCCTimestamp)
 				if err != nil {
 					watchChan <- storage.WatchResponse{Error: err}
 					return
@@ -206,29 +221,45 @@ func (e *crdbTestClient) RawGet(ctx context.Context, key string) ([]byte, bool, 
 func (e *crdbTestClient) RawCompact(ctx context.Context, revision int64) error {
 	// TODO: is there something better than this? no obvious way to trigger a compaction, and definitely not for a specific revision.
 	// TODO: maybe restore from backup?
+	hybridLogcialTimestamp, err := toHybridLogicalClock(revision)
+	if err != nil {
+		return fmt.Errorf("failed to determine hybrid logical clock when handling compaction event: %w", err)
+	}
+	revisionTimestampNanoseconds, err := hybridLogcialTimestamp.Int64()
+	if err != nil && !strings.Contains(err.Error(), "has fractional part") {
+		// having a fractional part means we have a logical clock, but that only disambiguates
+		// between ns, so it's ok to ignore that error
+		return err
+	}
+	revisionTimestamp := time.Unix(0, revisionTimestampNanoseconds)
 	// incoming revision will be a ns timestamp, so why don't we fetch the current time and
 	// figure out how long the GC interval would have to be so we would no longer hold the
 	// incoming revision (as of now)
-	var clusterTimestamp apd.Decimal
-	if err := e.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp); err != nil {
+	var clusterHybridLogicalTimestamp apd.Decimal
+	if err := e.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterHybridLogicalTimestamp); err != nil {
 		return err
 	}
-	clusterTimestampNanoseconds, err := clusterTimestamp.Int64()
-	if err != nil {
+	clusterTimestampNanoseconds, err := clusterHybridLogicalTimestamp.Int64()
+	if err != nil && !strings.Contains(err.Error(), "has fractional part") {
+		// having a fractional part means we have a logical clock, but that only disambiguates
+		// between ns, so it's ok to ignore that error
 		return err
 	}
-	ageSeconds := (clusterTimestampNanoseconds - revision) / 1e9
-	if ageSeconds < 1 {
-		ageSeconds = 1
+	clusterTimestamp := time.Unix(0, clusterTimestampNanoseconds)
+
+	age := clusterTimestamp.Sub(revisionTimestamp)
+	fmt.Printf("COMPACTION: %s - %s = %s\n", clusterTimestamp, revisionTimestamp, age)
+	if age < time.Second {
+		age = time.Second
 	}
-	if _, err := e.Exec(ctx, `ALTER TABLE k8s CONFIGURE ZONE USING gc.ttlseconds = $1;`, ageSeconds); err != nil {
+	if _, err := e.Exec(ctx, `ALTER TABLE k8s CONFIGURE ZONE USING gc.ttlseconds = $1;`, age.Seconds()); err != nil {
 		return err
 	}
 
 	// in order to wait for the compaction, ask for the revision and wait until it's out of scope
-	return wait.Poll(500*time.Millisecond, 10*time.Duration(ageSeconds)*time.Second, func() (done bool, err error) {
+	return wait.Poll(500*time.Millisecond, 10*age, func() (done bool, err error) {
 		var key string
-		if err := e.QueryRow(ctx, fmt.Sprintf(`SELECT key FROM k8s AS OF SYSTEM TIME %d LIMIT 1;`, revision)).Scan(&key); err != nil {
+		if err := e.QueryRow(ctx, fmt.Sprintf(`SELECT key FROM k8s AS OF SYSTEM TIME %s LIMIT 1;`, hybridLogcialTimestamp)).Scan(&key); err != nil {
 			if isGarbageCollectionError(err) {
 				return true, nil
 			}

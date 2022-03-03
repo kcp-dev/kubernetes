@@ -1,3 +1,19 @@
+/*
+Copyright 2016 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package crdb
 
 import (
@@ -123,7 +139,7 @@ func create(ctx context.Context, client pool, key string, data []byte) (int64, e
 
 	// we can't use INSERT ... RETURNING crdb_internal_mvcc_timestamp
 	// so we need to use a transaction here to ensure we do not race
-	var mvccTimestamp apd.Decimal
+	var hybridLogicalTimestamp apd.Decimal
 	if err := client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var execErr error
 		if haveRequestInfo {
@@ -149,11 +165,105 @@ func create(ctx context.Context, client pool, key string, data []byte) (int64, e
 		return 0, storage.NewInternalError(err.Error())
 	}
 
-	return toResourceVersion(mvccTimestamp)
+	return toResourceVersion(&hybridLogicalTimestamp)
 }
 
-func toResourceVersion(mvccTimestamp apd.Decimal) (int64, error) {
-	return mvccTimestamp.Int64() // TODO: this effectively truncates the logical part of the HLC - what's the implication?
+const (
+	// datum is a time before anyone would have ever used this code, such that we can subtract it from
+	// the timestamps in the CockroachDB Hybrid-Logical Clock to reduce the overall amount of data that
+	// needs to be encoded, allowing us to pack more bits of the logical part of the clock into the
+	// resourceVersion. This is equivalent to the date: 2022-01-01 00:00:00 +0000 UTC
+	datum = int64(1640995200000000000)
+	// numBits is the number of bits which we will use to pack logical clock values into. This operation
+	// is only valid as long as the current time is small enough that the difference between it and the
+	// datum leaves this many unused bits inside an int64. For 4 bits, this is valid until:
+	// 2040-04-07 23:59:12.303423488 +0000 UTC
+	numBits = 4
+	// totalBits is the number of bits we have to work with before our int64 overflows
+	totalBits = 63
+)
+
+// toResourceVersion converts a CockroachDB Hybrid-Logical Clock (expressed as a fixed-precision decimal)
+// to an etcd-style logical clock (expressed as a signed 64-bit integer). The CRDB HLC is composed of two
+// parts: a 64-bit unsigned integer that is the nanosecond timestamp in Unix time, and a 32-bit unsigned
+// integer formatted into 10 digits past the decimal of a logical counter to deduplicate events happening
+// in the same nanosecond. For example: 1646149211071227687.0000000001
+//
+// Notably, the etcd API and many consumers of k8s expect to parse a *signed* 64-bit integer for the
+// logical clock and resourceVersion, respectively, even though these values may never be <1. Therefore,
+// the nanosecond timestamp takes up almost all the available space in uint64.
+//
+// We know that nobody will use this program before 2022 (as it's already past Jan 1st), so we choose to
+// exploit this to minimize the amount of data we need to store in the timestamp and maximize how much we
+// can pack into the signed 64-bit integer expected from a resourceVersion. If we subtract the datum
+// specified above, we have four bits of free space until 2040. CRDB developers said that they have not
+// seen a logical clock higher than 4 in the wild, anecdotally, and we have not been able to simulate a
+// higher level of contention either, even with a single-node cluster writing data only to memory.
+//
+// Therefore, while there is a finite window of time for which packing bits into this number is appropriate,
+// it seems robust enough to proceed. Such packing also incurs no data loss, allowing round-tripping.
+func toResourceVersion(hybridLogicalTimestamp *apd.Decimal) (int64, error) {
+	fmt.Printf("    store.go:201: Consuming HLC %s\n", hybridLogicalTimestamp.String())
+	var integral, fractional apd.Decimal
+	hybridLogicalTimestamp.Modf(&integral, &fractional)
+
+	timestamp, err := integral.Int64()
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert timestamp to integer: %v", err) // should never happen
+	}
+	timestamp -= datum
+	if timestamp >= 1<<(totalBits-numBits) {
+		return 0, fmt.Errorf("nanosecond timestamp in HLC too large to shift: %s (is it past 2040?)", hybridLogicalTimestamp.String())
+	}
+	timestamp = timestamp << numBits
+
+	if fractional.IsZero() {
+		// there is no logical portion to this clock
+		return timestamp, nil
+	}
+
+	var logicalTimestamp apd.Decimal
+	multiplier := apd.New(1, 10)
+	condition, err := apd.BaseContext.Mul(&logicalTimestamp, &fractional, multiplier)
+	if err != nil {
+		return 0, fmt.Errorf("failed to determine value of logical clock: %v", err)
+	}
+	if _, err := condition.GoError(apd.DefaultTraps); err != nil {
+		return 0, fmt.Errorf("failed to determine value of logical clock: %v", err)
+	}
+
+	counter, err := logicalTimestamp.Int64()
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert logical timestamp to counter: %v", err)
+	}
+
+	if counter >= 1<<numBits {
+		return 0, fmt.Errorf("logical clock in HLC too large to shift into timestamp: %s", hybridLogicalTimestamp.String())
+	}
+
+	return timestamp + counter, nil
+}
+
+// toHybridLogicalClock is the inverse of toResourceVersion
+func toHybridLogicalClock(resourceVersion int64) (*apd.Decimal, error) {
+	timestamp := resourceVersion >> numBits + datum
+	logical := apd.New(timestamp, 0)
+
+	counter := resourceVersion & ((1 << numBits) - 1) // mask out the lower bits
+	if counter == 0 {
+		return logical, nil
+	}
+	fractional := apd.New(counter, -10)
+
+	var hybridLogicalTimestamp apd.Decimal
+	condition, err := apd.BaseContext.Add(&hybridLogicalTimestamp, logical, fractional)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine value of hybrid logical clock: %v", err)
+	}
+	if _, err := condition.GoError(apd.DefaultTraps); err != nil {
+		return nil, fmt.Errorf("failed to determine value of hybrid logical clock: %v", err)
+	}
+	return &hybridLogicalTimestamp, nil
 }
 
 func (s *store) Delete(ctx context.Context, key string, out runtime.Object, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
@@ -177,16 +287,16 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 	}
 
 	getCurrentState := func() (*objState, error) {
-		var mvccTimestamp apd.Decimal
+		var hybridLogicalTimestamp apd.Decimal
 		var blob []byte
-		err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &mvccTimestamp)
+		err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &hybridLogicalTimestamp)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, storage.NewKeyNotFoundError(key, 0)
 			}
 			return nil, storage.NewInternalError(err.Error())
 		}
-		resourceVersion, rvErr := toResourceVersion(mvccTimestamp)
+		resourceVersion, rvErr := toResourceVersion(&hybridLogicalTimestamp)
 		if rvErr != nil {
 			return nil, rvErr
 		}
@@ -260,11 +370,16 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 			continue
 		}
 
+		previousHybridLogicalTimestamp, err := toHybridLogicalClock(origState.rev)
+		if err != nil {
+			return storage.NewInternalError(err.Error())
+		}
+
 		var retry bool
-		var mvccTimestamp apd.Decimal
+		var hybridLogicalTimestamp apd.Decimal
 		var blob []byte
 		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			tag, err := tx.Exec(ctx, `DELETE FROM k8s WHERE key=$1 AND cluster=$2 AND crdb_internal_mvcc_timestamp=$3;`, key, cluster.Name, origState.rev)
+			tag, err := tx.Exec(ctx, `DELETE FROM k8s WHERE key=$1 AND cluster=$2 AND crdb_internal_mvcc_timestamp=$3;`, key, cluster.Name, previousHybridLogicalTimestamp)
 			if err != nil {
 				return err
 			}
@@ -273,7 +388,7 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 				// we didn't delete anything, either because the value we used for our precondition was too old,
 				// or because someone raced with us to delete the thing - so, check to see if there's some updated
 				// value we can use for preconditions next time around
-				return tx.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &mvccTimestamp)
+				return tx.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &hybridLogicalTimestamp)
 			}
 			return nil
 		}); err != nil {
@@ -283,7 +398,7 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 			return storage.NewInternalError(err.Error())
 		}
 		if retry {
-			resourceVersion, rvErr := toResourceVersion(mvccTimestamp)
+			resourceVersion, rvErr := toResourceVersion(&hybridLogicalTimestamp)
 			if rvErr != nil {
 				return rvErr
 			}
@@ -342,9 +457,9 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 	// you are only ever going to get something that is no older than the resourceVersion, and the
 	// check is done against the logical time *of the read*, not of the last write to the data...
 	var data []byte
-	var mvccTimestamp apd.Decimal
+	var hybridLogicalTimestamp apd.Decimal
 	var clusterTimestamp apd.Decimal
-	if err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp, cluster_logical_timestamp() FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&data, &mvccTimestamp, &clusterTimestamp); err != nil {
+	if err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp, cluster_logical_timestamp() FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&data, &hybridLogicalTimestamp, &clusterTimestamp); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if opts.IgnoreNotFound {
 				return runtime.SetZeroValue(out)
@@ -355,7 +470,7 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 		}
 	}
 
-	latestResourceVersion, err := toResourceVersion(clusterTimestamp)
+	latestResourceVersion, err := toResourceVersion(&clusterTimestamp)
 	if err != nil {
 		return err
 	}
@@ -364,7 +479,7 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 		return err
 	}
 
-	objectResourceVersion, err := toResourceVersion(mvccTimestamp)
+	objectResourceVersion, err := toResourceVersion(&hybridLogicalTimestamp)
 	if err != nil {
 		return err
 	}
@@ -407,10 +522,13 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 		if err != nil {
 			return err
 		}
-		providedTimestamp := apd.New(int64(resourceVersion), 0)
+		providedTimestamp, err := toHybridLogicalClock(int64(resourceVersion))
+		if err != nil {
+			return err
+		}
 		// TODO: can we do something better here for the time? using a var makes:
 		// ERROR: AS OF SYSTEM TIME: only constant expressions, with_min_timestamp, with_max_staleness, or follower_read_timestamp are allowed (SQLSTATE XXUUU)
-		clause = fmt.Sprintf(`AS OF SYSTEM TIME %s `, providedTimestamp)
+		clause = fmt.Sprintf(`AS OF SYSTEM TIME %s `, providedTimestamp.String())
 	}
 
 	// NOTE: the k8s GETOLIST semantics are weird - when passing a resourceVersion in a GET parameter,
@@ -419,19 +537,15 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 	// so we can't just SELECT ... crdb_internal_mvcc_timestamp, cluster_logical_timestamp() ... AS OF SYSTEM TIME
 	// as we need the *current* cluster_logical_timestamp()
 	var data []byte
-	var mvccTimestamp apd.Decimal
+	var hybridLogicalTimestamp apd.Decimal
 	var clusterTimestamp apd.Decimal
 	found := true
 	if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		// we need to read the cluster timestamp even if the data read fails with a NotFound
-		// we furthermore need to do the AS OF SYSTEM TIME query first:
-		// ERROR: internal error: cannot set fixed timestamp, txn "sql txn" meta={id=6fd70624 pri=0.03834544 epo=0 ts=1645025006.198715497,0 min=1645025006.198715497,0 seq=0} lock=false stat=PENDING rts=1645025006.198715497,0 wto=false gul=1645025006.698715497,0 already performed reads (SQLSTATE XX000)
-		dataReadErr := tx.QueryRow(ctx, fmt.Sprintf(`SELECT value, crdb_internal_mvcc_timestamp FROM k8s %sWHERE key=$1 AND cluster=$2;`, clause), key, cluster.Name).Scan(&data, &mvccTimestamp)
-		timestampReadErr := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp)
-		if dataReadErr != nil {
-			return dataReadErr // prefer data read err if we failed both
+		if err := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp); err != nil {
+			return err
 		}
-		return timestampReadErr // otherwise, return in order
+		return tx.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&data, &hybridLogicalTimestamp)
 	}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			found = false // this is *not* an error for this call
@@ -440,7 +554,7 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 		}
 	}
 
-	latestResourceVersion, err := toResourceVersion(clusterTimestamp)
+	latestResourceVersion, err := toResourceVersion(&clusterTimestamp)
 	if err != nil {
 		return err
 	}
@@ -450,7 +564,7 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 	}
 
 	if found {
-		objectResourceVersion, err := toResourceVersion(mvccTimestamp)
+		objectResourceVersion, err := toResourceVersion(&hybridLogicalTimestamp)
 		if err != nil {
 			return err
 		}
@@ -632,10 +746,13 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 	var remaining int64
 	for {
 		if withRev != 0 {
-			providedTimestamp := apd.New(withRev, 0)
+			providedTimestamp, err := toHybridLogicalClock(withRev)
+			if err != nil {
+				return err
+			}
 			// TODO: can we do something better here for the time? using a var makes:
 			// ERROR: AS OF SYSTEM TIME: only constant expressions, with_min_timestamp, with_max_staleness, or follower_read_timestamp are allowed (SQLSTATE XXUUU)
-			revisionClause = fmt.Sprintf(`AS OF SYSTEM TIME %s `, providedTimestamp)
+			revisionClause = fmt.Sprintf(`AS OF SYSTEM TIME %s `, providedTimestamp.String())
 		}
 
 		var sliceFull bool
@@ -694,8 +811,8 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 				remaining -= 1
 
 				var data []byte
-				var mvccTimestamp apd.Decimal
-				if err := rows.Scan(&lastKey, &data, &mvccTimestamp); err != nil {
+				var hybridLogicalTimestamp apd.Decimal
+				if err := rows.Scan(&lastKey, &data, &hybridLogicalTimestamp); err != nil {
 					return err
 				}
 
@@ -710,7 +827,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 					}
 				}
 
-				objectResourceVersion, err := toResourceVersion(mvccTimestamp)
+				objectResourceVersion, err := toResourceVersion(&hybridLogicalTimestamp)
 				if err != nil {
 					return err
 				}
@@ -735,7 +852,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			break
 		}
 
-		latestResourceVersion, err := toResourceVersion(clusterTimestamp)
+		latestResourceVersion, err := toResourceVersion(&clusterTimestamp)
 		if err != nil {
 			return err
 		}
@@ -812,13 +929,13 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 	transformContext := authenticatedDataString(key)
 
 	getCurrentState := func() (*objState, error) {
-		var mvccTimestamp apd.Decimal
+		var hybridLogicalTimestamp apd.Decimal
 		var blob []byte
-		err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &mvccTimestamp)
+		err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &hybridLogicalTimestamp)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.NewInternalError(err.Error())
 		}
-		resourceVersion, rvErr := toResourceVersion(mvccTimestamp)
+		resourceVersion, rvErr := toResourceVersion(&hybridLogicalTimestamp)
 		if rvErr != nil {
 			return nil, rvErr
 		}
@@ -845,12 +962,22 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 			}
 
 			// It's possible we were working with stale data
+			// Remember the revision of the potentially stale data and the resulting update error
+			cachedRev := origState.rev
+			cachedPreconditionErr := err
+
 			// Actually fetch
 			origState, err = getCurrentState()
 			if err != nil {
 				return err
 			}
 			origStateIsCurrent = true
+
+			// it turns out our cached data was not stale, return the error
+			if cachedRev == origState.rev {
+				return cachedPreconditionErr
+			}
+
 			// Retry
 			continue
 		}
@@ -913,8 +1040,13 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 			return storage.NewInternalError(err.Error())
 		}
 
+		previousHybridLogicalTimestamp, err := toHybridLogicalClock(origState.rev)
+		if err != nil {
+			return storage.NewInternalError(err.Error())
+		}
+
 		var retry bool
-		var mvccTimestamp apd.Decimal
+		var hybridLogicalTimestamp apd.Decimal
 		var blob []byte
 		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			var tag pgconn.CommandTag
@@ -944,17 +1076,17 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 				// we didn't update anything, either because the value we used for our precondition was too old,
 				// or because someone raced with us to delete the thing - so, check to see if there's some updated
 				// value we can use for preconditions next time around
-				return tx.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &mvccTimestamp)
+				return tx.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &hybridLogicalTimestamp)
 			}
 			// read the updated timestamp so we know the new resourceVersion
-			return tx.QueryRow(ctx, `SELECT crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&mvccTimestamp)
+			return tx.QueryRow(ctx, `SELECT crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&hybridLogicalTimestamp)
 		}); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return storage.NewKeyNotFoundError(key, origState.rev)
 			}
 			return storage.NewInternalError(err.Error())
 		}
-		updatedResourceVersion, rvErr := toResourceVersion(mvccTimestamp)
+		updatedResourceVersion, rvErr := toResourceVersion(&hybridLogicalTimestamp)
 		if rvErr != nil {
 			return rvErr
 		}
