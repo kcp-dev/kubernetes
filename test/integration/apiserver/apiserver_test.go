@@ -414,7 +414,7 @@ func TestListOptions(t *testing.T) {
 			}
 
 			// compact some of the revision history in etcd so we can test "too old" resource versions
-			_, kvClient, err := integration.GetEtcdClients(etcdOptions.StorageConfig.Transport)
+			_, client, err := integration.GetCRDBClients(etcdOptions.StorageConfig.Transport)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -422,7 +422,7 @@ func TestListOptions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = kvClient.Compact(context.Background(), int64(revision))
+			err = client.RawCompact(context.Background(), int64(revision))
 			if err != nil {
 				t.Fatal(err)
 			}
