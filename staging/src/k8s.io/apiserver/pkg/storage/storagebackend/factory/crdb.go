@@ -24,9 +24,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	"k8s.io/apiserver/pkg/storage/crdb"
+	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -38,17 +40,15 @@ import (
 )
 
 func newCRDBHealthCheck(ctx context.Context, c storagebackend.Config) (func() error, error) {
-	// constructing the etcd v3 client blocks and times out if etcd is not available.
-	// retry in a loop in the background until we successfully create the client, storing the client or error encountered
-
 	clientValue := &atomic.Value{}
 
 	clientErrMsg := &atomic.Value{}
-	clientErrMsg.Store("etcd client connection not yet established")
+	clientErrMsg.Store("crdb client connection not yet established")
 
-	go wait.PollUntil(time.Second, func() (bool, error) {
+	go wait.PollImmediateUntil(time.Second, func() (bool, error) {
 		client, err := newCRDBClient(ctx, c.Transport)
 		if err != nil {
+			klog.Errorf("failed to get crdb client: %v", err)
 			clientErrMsg.Store(err.Error())
 			return false, nil
 		}
@@ -69,9 +69,11 @@ func newCRDBHealthCheck(ctx context.Context, c storagebackend.Config) (func() er
 		ctx, cancel := context.WithTimeout(context.Background(), healthcheckTimeout)
 		defer cancel()
 		// TODO: use health cluster api https://www.cockroachlabs.com/docs/api/cluster/v2#operation/health
-		var err error
-		fmt.Println(ctx, client)
-		return fmt.Errorf("error getting data from etcd: %v", err)
+		err := client.Ping(ctx)
+		if err == nil {
+			return nil
+		}
+		return fmt.Errorf("error getting data from crdb: %v", err)
 	}, nil
 }
 
@@ -90,7 +92,7 @@ func newCRDBClient(ctx context.Context, c storagebackend.TransportConfig) (*pgxp
 	if len(c.CertFile) == 0 && len(c.KeyFile) == 0 && len(c.TrustedCAFile) == 0 {
 		tlsConfig = nil
 	}
-	networkContext := egressselector.Etcd.AsNetworkContext()
+	networkContext := egressselector.CRDB.AsNetworkContext()
 	var egressDialer utilnet.DialFunc
 	if c.EgressLookup != nil {
 		egressDialer, err = c.EgressLookup(networkContext)
@@ -107,22 +109,76 @@ func newCRDBClient(ctx context.Context, c storagebackend.TransportConfig) (*pgxp
 	if egressDialer != nil {
 		cfg.ConnConfig.DialFunc = pgconn.DialFunc(egressDialer)
 	}
+	cfg.ConnConfig.LogLevel = pgx.LogLevelTrace
+	cfg.ConnConfig.Logger = NewLogger()
 	return pgxpool.ConnectConfig(ctx, cfg)
 }
 
-func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, newFunc func() runtime.Object) (storage.Interface, DestroyFunc, error) {
-	stopCompactor, err := startCompactorOnce(c.Transport, c.CompactionInterval)
-	if err != nil {
-		return nil, nil, err
-	}
+type Logger struct{}
 
+func NewLogger() *Logger {
+	return &Logger{}
+}
+
+func (l *Logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data map[string]interface{}) {
+	var fields []interface{}
+	for k, v := range data {
+		fields = append(fields, k)
+		fields = append(fields, v)
+	}
+	fields = append(fields, "PGX_LOG_LEVEL")
+	fields = append(fields, level)
+	switch level {
+	case pgx.LogLevelTrace:
+		klog.V(4).InfoS(msg, fields...)
+	case pgx.LogLevelDebug:
+		klog.V(3).InfoS(msg, fields...)
+	case pgx.LogLevelInfo:
+		klog.V(2).InfoS(msg, fields...)
+	case pgx.LogLevelWarn:
+		klog.ErrorS(nil, msg, fields...)
+	case pgx.LogLevelError:
+		klog.ErrorS(nil, msg, fields...)
+	default:
+		klog.ErrorS(nil, msg, fields...)
+	}
+}
+
+func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, newFunc func() runtime.Object) (storage.Interface, DestroyFunc, error) {
 	client, err := newCRDBClient(ctx, c.Transport)
 	if err != nil {
-		stopCompactor()
 		return nil, nil, err
 	}
 
-	// no way to monitor size: https://github.com/cockroachdb/cockroach/issues/20712
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS k8s
+			(
+				key VARCHAR(512) NOT NULL,
+				value BLOB NOT NULL,
+				cluster VARCHAR(128) NOT NULL,
+				namespace VARCHAR(63),
+				name VARCHAR(63),
+				api_group VARCHAR(63),
+				api_version VARCHAR(63),
+				api_resource VARCHAR(63),
+				PRIMARY KEY (key, cluster)
+			);`,
+		// enable watches
+		`SET CLUSTER SETTING kv.rangefeed.enabled = true;`,
+		// set the latency floor for events
+		`SET CLUSTER SETTING changefeed.experimental_poll_interval = '0.2s';`,
+	} {
+		if _, err := client.Exec(ctx, stmt); err != nil {
+			return nil, nil, fmt.Errorf("error initializing the database: %w", err)
+		}
+	}
+
+	// NOTE: CRDB does not do client-driven compaction
+	if _, err := client.Exec(ctx, `ALTER TABLE k8s CONFIGURE ZONE USING gc.ttlseconds = $1;`, c.CompactionInterval.Seconds()); err != nil {
+		return nil, nil, fmt.Errorf("failed to configure compaction interval: %w", err)
+	}
+
+	// TODO: no way to monitor size: https://github.com/cockroachdb/cockroach/issues/20712
 
 	var once sync.Once
 	destroyFunc := func() {
@@ -130,7 +186,6 @@ func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, new
 		// Hence, we only destroy once.
 		// TODO: fix duplicated storage destroy calls higher level
 		once.Do(func() {
-			stopCompactor()
 			client.Close()
 		})
 	}

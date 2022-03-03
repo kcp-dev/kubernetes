@@ -65,7 +65,7 @@ users:
 	fakeKubeConfig.Close()
 
 	s, err := servertesting.StartTestServer(t, nil, append([]string{
-		"--etcd-prefix", uuid.New().String(),
+		"--etcd-prefix", uuid.New().String()[:2],
 		"--etcd-servers", strings.Join(IntegrationEtcdServers(), ","),
 		"--authentication-skip-lookup",
 		"--authentication-kubeconfig", fakeKubeConfig.Name(),
