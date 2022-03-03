@@ -13,6 +13,6 @@ const (
 	// ReasonEtcdSpecific describes tests that are specific to etcd
 	ReasonEtcdSpecific = "specific to an etcd backend"
 
-	// ReasonOpenAPIV2 describes tests that are specific to OpenAPI features we disable
-	ReasonOpenAPIV2 = "OpenAPI v2 is disabled" // TODO: is this true?
+	// ReasonOpenAPI describes tests that are specific to OpenAPI features we disable
+	ReasonOpenAPI = "OpenAPI is disabled" // TODO: is this true?
 )

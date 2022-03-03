@@ -34,11 +34,12 @@ import (
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/dynamic"
-	kubernetes "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kube-openapi/pkg/spec3"
 	apiservertesting "k8s.io/kubernetes/cmd/kube-apiserver/app/testing"
+	"k8s.io/kubernetes/test/integration"
 	"k8s.io/kubernetes/test/integration/framework"
 	"sigs.k8s.io/yaml"
 )
@@ -99,6 +100,7 @@ func TestOpenAPIV3SpecRoundTrip(t *testing.T) {
 }
 
 func TestAddRemoveGroupVersion(t *testing.T) {
+	t.Skip(integration.ReasonOpenAPI)
 	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, genericfeatures.OpenAPIV3, true)()
 	server, err := apiservertesting.StartTestServer(t, apiservertesting.NewDefaultTestServerOptions(), nil, framework.SharedEtcd())
 	if err != nil {
@@ -153,7 +155,7 @@ func TestAddRemoveGroupVersion(t *testing.T) {
 		}
 	}
 	if foundPath == false {
-		t.Fatal("Expected group version mygroup.example.com to be present after CRD applied")
+		t.Fatalf("Expected group version mygroup.example.com to be present after CRD applied, only had %v", paths)
 	}
 
 	// Check the spec for the newly published group version

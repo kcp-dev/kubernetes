@@ -29,10 +29,12 @@ import (
 	"k8s.io/kube-openapi/pkg/common"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 	generated "k8s.io/kubernetes/pkg/generated/openapi"
+	"k8s.io/kubernetes/test/integration"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
 func TestEnablingOpenAPIEnumTypes(t *testing.T) {
+	t.Skip(integration.ReasonOpenAPI)
 	const typeToAddEnum = "k8s.io/api/core/v1.ContainerPort"
 	const typeToCheckEnum = "io.k8s.api.core.v1.ContainerPort"
 
@@ -101,7 +103,7 @@ func TestEnablingOpenAPIEnumTypes(t *testing.T) {
 			}
 			err = json.NewDecoder(resp.Body).Decode(&body)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("failed to decode response body: %#v: %v", resp, err)
 			}
 			protocol, ok := body.Definitions[typeToCheckEnum].Properties["protocol"]
 			if !ok {
