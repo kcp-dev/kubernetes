@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -109,8 +110,10 @@ func StartTestServer(t *testing.T, stopCh <-chan struct{}, setup TestServerSetup
 	kubeAPIServerOptions.SecureServing.BindAddress = netutils.ParseIPSloppy("127.0.0.1")
 	kubeAPIServerOptions.SecureServing.ServerCert.CertDirectory = certDir
 	kubeAPIServerOptions.ServiceAccountSigningKeyFile = saSigningKeyFile.Name()
-	kubeAPIServerOptions.Etcd.StorageConfig.Prefix = path.Join("/", uuid.New().String(), "registry")
 	kubeAPIServerOptions.GenericServerRunOptions.EnablePriorityAndFairness = false
+	kubeAPIServerOptions.Etcd.StorageConfig.Prefix = path.Join("/", uuid.New().String()[:2], "registry")
+	kubeAPIServerOptions.Etcd.StorageConfig.Type = storagebackend.StorageTypeCRDB
+	kubeAPIServerOptions.Etcd.EnableWatchCache = false
 	kubeAPIServerOptions.Etcd.StorageConfig.Transport.ServerList = []string{GetEtcdURL()}
 	kubeAPIServerOptions.ServiceClusterIPRanges = defaultServiceClusterIPRange.String()
 	kubeAPIServerOptions.Authentication.RequestHeader.UsernameHeaders = []string{"X-Remote-User"}

@@ -19,6 +19,7 @@ package framework
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	authauthenticator "k8s.io/apiserver/pkg/authentication/authenticator"
@@ -284,7 +284,8 @@ func DefaultEtcdOptions() *options.EtcdOptions {
 	// This causes the integration tests to exercise the etcd
 	// prefix code, so please don't change without ensuring
 	// sufficient coverage in other ways.
-	etcdOptions := options.NewEtcdOptions(storagebackend.NewDefaultConfig(uuid.New().String(), nil))
+	etcdOptions := options.NewEtcdOptions(storagebackend.NewDefaultConfig(uuid.New().String()[:2], nil))
+	etcdOptions.StorageConfig.Type = storagebackend.StorageTypeCRDB
 	etcdOptions.StorageConfig.Transport.ServerList = []string{GetEtcdURL()}
 	return etcdOptions
 }
@@ -300,6 +301,7 @@ func NewControlPlaneConfigWithOptions(opts *ControlPlaneConfigOptions) *controlp
 	if opts.EtcdOptions != nil {
 		etcdOptions = opts.EtcdOptions
 	}
+	etcdOptions.EnableWatchCache = false
 
 	storageConfig := kubeapiserver.LegacyStorageFactoryConfig()
 	storageConfig.APIResourceConfig = serverstorage.NewResourceConfig()
@@ -368,7 +370,8 @@ func RunAnAPIServerUsingServer(controlPlaneConfig *controlplane.Config, s *httpt
 
 // SharedEtcd creates a storage config for a shared etcd instance, with a unique prefix.
 func SharedEtcd() *storagebackend.Config {
-	cfg := storagebackend.NewDefaultConfig(path.Join(uuid.New().String(), "registry"), nil)
+	cfg := storagebackend.NewDefaultConfig(path.Join(uuid.New().String()[:2], "registry"), nil)
+	cfg.Type = storagebackend.StorageTypeCRDB
 	cfg.Transport.ServerList = []string{GetEtcdURL()}
 	return cfg
 }

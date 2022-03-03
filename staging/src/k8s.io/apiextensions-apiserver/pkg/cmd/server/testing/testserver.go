@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-
 	"k8s.io/apiextensions-apiserver/pkg/cmd/server/options"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/registry/generic/registry"
@@ -35,6 +34,7 @@ import (
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
+	"k8s.io/kubernetes/test/integration/framework"
 )
 
 // TearDownFunc is to be called to tear down a test server.
@@ -129,6 +129,12 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 		s.RecommendedOptions.Etcd.StorageConfig = *storageConfig
 	}
 	s.APIEnablement.RuntimeConfig.Set("api/all=true")
+	
+	customFlags = append(customFlags,
+		"--watch-cache=false",
+		"--storage-backend=crdb",
+		"--feature-gates=APIPriorityAndFairness=false",
+	)
 
 	fs.Parse(customFlags)
 
@@ -146,6 +152,7 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 	if err != nil {
 		return result, fmt.Errorf("failed to create config from options: %v", err)
 	}
+	config.GenericConfig.OpenAPIConfig = framework.DefaultOpenAPIConfig()
 	server, err := config.Complete().New(genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return result, fmt.Errorf("failed to create server: %v", err)

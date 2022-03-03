@@ -182,7 +182,15 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 
 	s.ServiceClusterIPRanges = "10.0.0.0/16"
 	s.Etcd.StorageConfig = *storageConfig
+	s.Etcd.EnableWatchCache = false
+	s.GenericServerRunOptions.EnablePriorityAndFairness = false
 	s.APIEnablement.RuntimeConfig.Set("api/all=true")
+
+	customFlags = append(customFlags,
+		"--watch-cache=false",
+		"--storage-backend=crdb",
+		"--feature-gates=APIPriorityAndFairness=false",
+	)
 
 	if err := fs.Parse(customFlags); err != nil {
 		return result, err
