@@ -220,8 +220,8 @@ func (wc *watchChan) ResultChan() <-chan watch.Event {
 func (wc *watchChan) sync() error {
 	// TODO: with the enterprise version of CRDB this whole sync() dance becomes
 	// CREATE CHANGEFEED FOR ... WITH cursor=<>,initial_scan
-	requestInfo, ok := request.RequestInfoFrom(wc.ctx)
-	if !ok {
+	requestInfo, haveRequestInfo := request.RequestInfoFrom(wc.ctx)
+	if !haveRequestInfo {
 		return storage.NewInternalError("no request info metadata found")
 	}
 
@@ -245,8 +245,10 @@ func (wc *watchChan) sync() error {
 			}
 		} else {
 			// we are watching a list
-			query := fmt.Sprintf(`SELECT key, value, crdb_internal_mvcc_timestamp FROM k8s WHERE key LIKE '%s%%' AND key >= $1 AND api_group=$2 AND api_version=$3 AND api_resource=$4 AND namespace=$5 ORDER BY key;`, wc.key)
-			rows, err := tx.Query(wc.ctx, query, wc.key, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Namespace)
+			clauses, args := whereClause(2, wc.cluster, requestInfo)
+			args = append([]interface{}{wc.key}, args...)
+			query := fmt.Sprintf(`SELECT key, value, crdb_internal_mvcc_timestamp FROM k8s WHERE key LIKE '%s%%' AND key >= $1%s ORDER BY key;`, wc.key, clauses)
+			rows, err := tx.Query(wc.ctx, query, args...)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return fmt.Errorf("failed to query rows when starting watch: %w", err)
 			}

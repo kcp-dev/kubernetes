@@ -116,19 +116,26 @@ func create(ctx context.Context, client pool, key string, data []byte) (int64, e
 	if cluster == nil {
 		return 0, storage.NewInternalError("no cluster metadata found")
 	}
-	requestInfo, ok := request.RequestInfoFrom(ctx)
-	if !ok {
-		return 0, storage.NewInternalError("no request info metadata found")
+	requestInfo, haveRequestInfo := request.RequestInfoFrom(ctx)
+	if !haveRequestInfo {
+		klog.Errorf(storage.NewInternalError("no request info metadata found").Error())
 	}
 
 	// we can't use INSERT ... RETURNING crdb_internal_mvcc_timestamp
 	// so we need to use a transaction here to ensure we do not race
 	var mvccTimestamp apd.Decimal
 	if err := client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `INSERT INTO k8s (key, value, cluster, namespace, name, api_group, api_version, api_resource) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`, key, data, cluster.Name, requestInfo.Namespace, requestInfo.Name, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource); err != nil {
-			return err
+		var execErr error
+		if haveRequestInfo {
+			_, execErr = tx.Exec(ctx, `INSERT INTO k8s (key, value, cluster, namespace, name, api_group, api_version, api_resource) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`, key, data, cluster.Name, requestInfo.Namespace, requestInfo.Name, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource)
+		} else {
+			_, execErr = tx.Exec(ctx, `INSERT INTO k8s (key, value, cluster) VALUES ($1, $2, $3);`, key, data, cluster.Name)
 		}
-		if err := tx.QueryRow(ctx, `SELECT crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&mvccTimestamp); err != nil {
+		if execErr != nil {
+			return execErr
+		}
+
+		if err := tx.QueryRow(ctx, `SELECT crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&hybridLogicalTimestamp); err != nil {
 			return err
 		}
 		return nil
@@ -460,15 +467,61 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 	return s.versioner.UpdateList(listObj, uint64(latestResourceVersion), "", nil)
 }
 
+const and = " AND "
+
+// whereClause is meant to append `WHERE a=b AND c=d` style clauses to a sql query with positional placeholders for the args
+func whereClause(offset int, cluster *request.Cluster, info *request.RequestInfo) (clause string, args []interface{}) {
+	var clauses []string
+	if offset == 0 {
+		offset++
+	}
+	if cluster != nil && cluster.Name != "" && !cluster.Wildcard {
+		clauses = append(clauses, fmt.Sprintf("cluster=$%d", offset))
+		args = append(args, cluster.Name)
+		offset++
+	}
+	// TODO: request.RequestInfo only seems to contain name on field selectors, not creates...
+	//if info != nil && info.Name != "" {
+	//	clauses = append(clauses, fmt.Sprintf("name=$%d", offset))
+	//	args = append(args, info.Name)
+	//	offset++
+	//}
+	if info != nil && info.Namespace != metav1.NamespaceAll {
+		clauses = append(clauses, fmt.Sprintf("namespace=$%d", offset))
+		args = append(args, info.Namespace)
+		offset++
+	}
+	if info != nil && info.APIVersion != "" {
+		clauses = append(clauses, fmt.Sprintf("api_version=$%d", offset))
+		args = append(args, info.APIVersion)
+		offset++
+	}
+	if info != nil && info.APIGroup != "" {
+		clauses = append(clauses, fmt.Sprintf("api_group=$%d", offset))
+		args = append(args, info.APIGroup)
+		offset++
+	}
+	if info != nil && info.Resource != "" {
+		clauses = append(clauses, fmt.Sprintf("api_resource=$%d", offset))
+		args = append(args, info.Resource)
+		offset++
+	}
+	var prefix string
+	if len(clauses) > 0 {
+		prefix = and
+	}
+	return prefix + strings.Join(clauses, and), args
+}
+
 func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
 		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{Name: "admin"}
 	}
-	requestInfo, ok := request.RequestInfoFrom(ctx)
-	if !ok {
-		return storage.NewInternalError("no request info metadata found")
+	requestInfo, haveRequestInfo := request.RequestInfoFrom(ctx)
+	if !haveRequestInfo {
+		klog.Errorf(storage.NewInternalError("no request info metadata found").Error())
 	}
 
 	listPtr, err := meta.GetItemsPtr(listObj)
@@ -594,20 +647,19 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			// TODO: perhaps just for tests, we need WHERE key LIKE prefix% since those tests expect real prefixing ... but that is not ideal for production
 			// we need to read the cluster timestamp even if the data read fails with a NotFound
-			// we furthermore need to do the AS OF SYSTEM TIME query first:
-			// ERROR: internal error: cannot set fixed timestamp, txn "sql txn" meta={id=6fd70624 pri=0.03834544 epo=0 ts=1645025006.198715497,0 min=1645025006.198715497,0 seq=0} lock=false stat=PENDING rts=1645025006.198715497,0 wto=false gul=1645025006.698715497,0 already performed reads (SQLSTATE XX000)
-			dataReadErr := s.client.QueryRow(ctx, fmt.Sprintf(`SELECT COUNT(*), MAX(key) FROM k8s %sWHERE key LIKE '%s%%' AND key >= $1 AND api_group=$2 AND api_version=$3 AND api_resource=$4 AND namespace=$5;`, revisionClause, keyPrefix), key, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Namespace).Scan(&remaining, &finalKey)
-			timestampReadErr := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp)
-
-			if dataReadErr != nil {
-				return dataReadErr // prefer data read err if we failed both
-			}
-			if timestampReadErr != nil {
-				return timestampReadErr // otherwise, return in order
+			if err := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp); err != nil {
+				return err
 			}
 
-			query := fmt.Sprintf(`SELECT key, value, crdb_internal_mvcc_timestamp FROM k8s %sWHERE key LIKE '%s%%' AND key >= $1 AND api_group=$2 AND api_version=$3 AND api_resource=$4 AND namespace=$5 ORDER BY key%s;`, revisionClause, keyPrefix, limitClause)
-			rows, err := s.client.Query(ctx, query, key, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Namespace)
+			// TODO: perhaps just for tests, we need WHERE key LIKE prefix% since those tests expect real prefixing ... but that is not ideal for production
+			clauses, args := whereClause(2, cluster, requestInfo)
+			args = append([]interface{}{key}, args...)
+			if err := tx.QueryRow(ctx, fmt.Sprintf(`SELECT COUNT(*), MAX(key) FROM k8s WHERE key LIKE '%s%%' AND key >= $1%s;`, keyPrefix, clauses), args...).Scan(&remaining, &finalKey); err != nil {
+				return err
+			}
+
+			query := fmt.Sprintf(`SELECT key, value, crdb_internal_mvcc_timestamp FROM k8s WHERE key LIKE '%s%%' AND key >= $1%s ORDER BY key%s;`, keyPrefix, clauses, limitClause)
+			rows, err := tx.Query(ctx, query, args...)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return err
 			}
@@ -747,9 +799,9 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 			Wildcard: false,
 		}
 	}
-	requestInfo, ok := request.RequestInfoFrom(ctx)
-	if !ok {
-		return storage.NewInternalError("no request info metadata found")
+	requestInfo, haveRequestInfo := request.RequestInfoFrom(ctx)
+	if !haveRequestInfo {
+		klog.Errorf(storage.NewInternalError("no request info metadata found").Error())
 	}
 	key = path.Join(s.pathPrefix, key)
 
@@ -865,14 +917,27 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		var mvccTimestamp apd.Decimal
 		var blob []byte
 		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			tag, err := tx.Exec(ctx, `INSERT INTO k8s (key, value, cluster, namespace, name, api_group, api_version, api_resource) 
+			var tag pgconn.CommandTag
+			var execErr error
+			if haveRequestInfo {
+				tag, execErr = tx.Exec(ctx, `INSERT INTO k8s (key, value, cluster, namespace, name, api_group, api_version, api_resource) 
 											VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
 											ON CONFLICT (key, cluster) 
-											DO UPDATE SET value=excluded.value WHERE crdb_internal_mvcc_timestamp=$9;`,
-				key, newData, cluster.Name, requestInfo.Namespace, requestInfo.Name, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, origState.rev,
-			)
-			if err != nil {
-				return err
+											DO UPDATE SET value=excluded.value
+											WHERE crdb_internal_mvcc_timestamp=$9;`,
+					key, newData, cluster.Name, requestInfo.Namespace, requestInfo.Name, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, previousHybridLogicalTimestamp,
+				)
+			} else {
+				tag, execErr = tx.Exec(ctx, `INSERT INTO k8s (key, value, cluster) 
+											VALUES ($1, $2, $3) 
+											ON CONFLICT (key, cluster) 
+											DO UPDATE SET value=excluded.value
+											WHERE crdb_internal_mvcc_timestamp=$4;`,
+					key, newData, cluster.Name, previousHybridLogicalTimestamp,
+				)
+			}
+			if execErr != nil {
+				return execErr
 			}
 			if tag.RowsAffected() == 0 {
 				retry = true
