@@ -78,14 +78,14 @@ func (e *crdbTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc 
 	for _, stmt := range []string{
 		`CREATE TABLE IF NOT EXISTS k8s
 			(
-				key VARCHAR(630) NOT NULL,
+				key VARCHAR(512) NOT NULL,
 				value BLOB NOT NULL,
-				cluster VARCHAR(256) NOT NULL,
-				namespace VARCHAR(256),
-				name VARCHAR(256) NOT NULL,
-				api_group VARCHAR(256) NOT NULL,
-				api_version VARCHAR(256) NOT NULL,
-				api_resource VARCHAR(256) NOT NULL,
+				cluster VARCHAR(128) NOT NULL,
+				namespace VARCHAR(63),
+				name VARCHAR(63),
+				api_group VARCHAR(63),
+				api_version VARCHAR(63),
+				api_resource VARCHAR(63),
 				PRIMARY KEY (key, cluster)
 			);`,
 		// enable watches
@@ -111,6 +111,11 @@ func (e *crdbTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc 
 		Name:       "foo",
 	})
 	return ctx, &crdbTestInterface{store: store}, &crdbTestClient{recordingRowQuerier: recordingClient}
+}
+
+func NewRawClient(pool *pgxpool.Pool) storage.InternalTestClient {
+	recordingClient := &recordingRowQuerier{Pool: pool}
+	return &crdbTestClient{recordingRowQuerier: recordingClient}
 }
 
 type crdbTestClient struct {
