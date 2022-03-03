@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 	goruntime "runtime"
 	"runtime/debug"
 	"sort"
@@ -31,6 +32,9 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -317,6 +321,19 @@ type AuthorizationInfo struct {
 	Authorizer authorizer.Authorizer
 }
 
+var (
+	reClusterName = regexp.MustCompile(`^([a-z0-9][a-z0-9-]{0,30}[a-z0-9]:)?[a-z0-9][a-z0-9-]{0,30}[a-z0-9]$`)
+
+	errorScheme = runtime.NewScheme()
+	errorCodecs = serializer.NewCodecFactory(errorScheme)
+)
+
+func init() {
+	errorScheme.AddUnversionedTypes(metav1.Unversioned,
+		&metav1.Status{},
+	)
+}
+
 // NewConfig returns a Config struct with the default values
 func NewConfig(codecs serializer.CodecFactory) *Config {
 	defaultHealthChecks := []healthz.HealthChecker{healthz.PingHealthz, healthz.LogHealthz}
@@ -326,7 +343,7 @@ func NewConfig(codecs serializer.CodecFactory) *Config {
 	}
 	lifecycleSignals := newLifecycleSignals()
 
-	return &Config{
+	c := &Config{
 		Serializer:                  codecs,
 		BuildHandlerChainFunc:       DefaultBuildHandlerChain,
 		HandlerChainWaitGroup:       new(utilwaitgroup.SafeWaitGroup),
@@ -370,6 +387,68 @@ func NewConfig(codecs serializer.CodecFactory) *Config {
 		APIServerID:           id,
 		StorageVersionManager: storageversion.NewDefaultManager(),
 	}
+
+	var originalHandler = c.BuildHandlerChainFunc
+	c.BuildHandlerChainFunc = func(handler http.Handler, c *Config) http.Handler {
+		h := originalHandler(handler, c)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			var clusterName string
+			if path := req.URL.Path; strings.HasPrefix(path, "/clusters/") {
+				path = strings.TrimPrefix(path, "/clusters/")
+				i := strings.Index(path, "/")
+				if i == -1 {
+					responsewriters.ErrorNegotiated(
+						apierrors.NewBadRequest(fmt.Sprintf("unable to parse cluster: no `/` found in path %s", path)),
+						errorCodecs, schema.GroupVersion{},
+						w, req)
+					return
+				}
+				clusterName, path = path[:i], path[i:]
+				req.URL.Path = path
+				for i := 0; i < 2 && len(req.URL.RawPath) > 1; i++ {
+					slash := strings.Index(req.URL.RawPath[1:], "/")
+					if slash == -1 {
+						responsewriters.ErrorNegotiated(
+							apierrors.NewInternalError(fmt.Errorf("unable to parse cluster when shortening raw path, have clusterName=%q, rawPath=%q", clusterName, req.URL.RawPath)),
+							errorCodecs, schema.GroupVersion{},
+							w, req)
+						return
+					}
+					req.URL.RawPath = req.URL.RawPath[slash:]
+				}
+			} else {
+				clusterName = req.Header.Get("X-Kubernetes-Cluster")
+			}
+			var cluster apirequest.Cluster
+			switch clusterName {
+			case "*":
+				// HACK: just a workaround for testing
+				cluster.Wildcard = true
+				fallthrough
+			case "":
+				cluster.Name = "admin"
+			default:
+				if !reClusterName.MatchString(clusterName) {
+					responsewriters.ErrorNegotiated(
+						apierrors.NewBadRequest(fmt.Sprintf("invalid cluster: %q does not match the regex", clusterName)),
+						errorCodecs, schema.GroupVersion{},
+						w, req)
+					return
+				}
+				cluster.Name = clusterName
+			}
+			ctx := apirequest.WithCluster(req.Context(), cluster)
+			h.ServeHTTP(w, req.WithContext(ctx))
+		})
+	}
+
+	// TODO: https://github.com/kcp-dev/kcp/issues/506
+	c.FlowControl = nil
+	if err := utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", genericfeatures.APIPriorityAndFairness)); err != nil {
+		panic(err)
+	}
+
+	return c
 }
 
 // NewRecommendedConfig returns a RecommendedConfig struct with the default values
