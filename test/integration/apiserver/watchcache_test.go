@@ -31,6 +31,7 @@ import (
 	restclient "k8s.io/client-go/rest"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/controlplane/reconcilers"
+	"k8s.io/kubernetes/test/integration"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
@@ -86,6 +87,7 @@ func multiEtcdSetup(t testing.TB) (clientset.Interface, framework.CloseFunc) {
 }
 
 func TestWatchCacheUpdatedByEtcd(t *testing.T) {
+	t.Skip(integration.ReasonEtcdSpecific)
 	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.EfficientWatchResumption, true)()
 
 	c, closeFn := multiEtcdSetup(t)
