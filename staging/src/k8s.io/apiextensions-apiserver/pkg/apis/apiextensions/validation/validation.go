@@ -52,6 +52,14 @@ var (
 func ValidateCustomResourceDefinition(obj *apiextensions.CustomResourceDefinition) field.ErrorList {
 	nameValidationFn := func(name string, prefix bool) []string {
 		ret := genericvalidation.NameIsDNSSubdomain(name, prefix)
+
+		// KCP: loosen naming restriction for CRDs created by the apibindings controller.
+		// TODO(ncdc): a user could potentially set this annotation in one of their own normal CRDs. Is there any
+		// mechanism that is restricted to the system so users can't bypass the standard plural.group requirement?
+		if _, bound := obj.Annotations["apis.kcp.dev/bound-crd"]; bound {
+			return ret
+		}
+
 		group := obj.Spec.Group
 		if group == "" {
 			group = "core"
