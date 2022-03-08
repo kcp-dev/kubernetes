@@ -27,10 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
 	"k8s.io/klog/v2"
@@ -127,7 +129,12 @@ func (c *Publisher) configMapDeleted(obj interface{}) {
 	if cm.Name != RootCACertConfigMapName {
 		return
 	}
-	c.queue.Add(cm.Namespace)
+
+	key := getNamespaceKey(cm)
+	if key == "" {
+		return
+	}
+	c.queue.Add(key)
 }
 
 func (c *Publisher) configMapUpdated(_, newObj interface{}) {
@@ -139,12 +146,23 @@ func (c *Publisher) configMapUpdated(_, newObj interface{}) {
 	if cm.Name != RootCACertConfigMapName {
 		return
 	}
-	c.queue.Add(cm.Namespace)
+
+	key := getNamespaceKey(cm)
+	if key == "" {
+		return
+	}
+	c.queue.Add(key)
 }
 
 func (c *Publisher) namespaceAdded(obj interface{}) {
 	namespace := obj.(*v1.Namespace)
-	c.queue.Add(namespace.Name)
+
+	key, err := cache.MetaNamespaceKeyFunc(namespace)
+	if err != nil {
+		utilruntime.HandleError(err)
+	}
+
+	c.queue.Add(key)
 }
 
 func (c *Publisher) namespaceUpdated(oldObj interface{}, newObj interface{}) {
@@ -152,7 +170,13 @@ func (c *Publisher) namespaceUpdated(oldObj interface{}, newObj interface{}) {
 	if newNamespace.Status.Phase != v1.NamespaceActive {
 		return
 	}
-	c.queue.Add(newNamespace.Name)
+
+	key, err := cache.MetaNamespaceKeyFunc(newNamespace)
+	if err != nil {
+		utilruntime.HandleError(err)
+	}
+
+	c.queue.Add(key)
 }
 
 func (c *Publisher) runWorker() {
@@ -179,17 +203,23 @@ func (c *Publisher) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Publisher) syncNamespace(ns string) (err error) {
+func (c *Publisher) syncNamespace(key string) (err error) {
 	startTime := time.Now()
 	defer func() {
 		recordMetrics(startTime, err)
-		klog.V(4).Infof("Finished syncing namespace %q (%v)", ns, time.Since(startTime))
+		klog.V(4).Infof("Finished syncing namespace %q (%v)", key, time.Since(startTime))
 	}()
 
-	cm, err := c.cmLister.ConfigMaps(ns).Get(RootCACertConfigMapName)
+	// Get the clusterName and name from the key.
+	_, clusterAwareName, err := cache.SplitMetaNamespaceKey(key)
+	clusterName, name := clusters.SplitClusterAwareKey(clusterAwareName)
+
+	clusterAwareConfigMapName := clusters.ToClusterAwareKey(clusterName, RootCACertConfigMapName)
+	cm, err := c.cmLister.ConfigMaps(name).Get(clusterAwareConfigMapName)
+
 	switch {
 	case apierrors.IsNotFound(err):
-		_, err = c.client.CoreV1().ConfigMaps(ns).Create(context.TODO(), &v1.ConfigMap{
+		_, err = c.client.CoreV1().ConfigMaps(name).Create(genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: clusterName}), &v1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        RootCACertConfigMapName,
 				Annotations: map[string]string{DescriptionAnnotation: Description},
@@ -224,7 +254,7 @@ func (c *Publisher) syncNamespace(ns string) (err error) {
 	}
 	cm.Annotations[DescriptionAnnotation] = Description
 
-	_, err = c.client.CoreV1().ConfigMaps(ns).Update(context.TODO(), cm, metav1.UpdateOptions{})
+	_, err = c.client.CoreV1().ConfigMaps(name).Update(genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: clusterName}), cm, metav1.UpdateOptions{})
 	return err
 }
 
@@ -241,4 +271,13 @@ func convertToCM(obj interface{}) (*v1.ConfigMap, error) {
 		}
 	}
 	return cm, nil
+}
+
+func getNamespaceKey(configmap *v1.ConfigMap) string {
+	clusterName := configmap.GetClusterName()
+	if len(clusterName) == 0 {
+		return ""
+	}
+
+	return clusters.ToClusterAwareKey(clusterName, configmap.GetNamespace())
 }
