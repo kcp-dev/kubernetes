@@ -159,9 +159,9 @@ func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, new
 			(
 				key VARCHAR(512) NOT NULL,
 				value BLOB NOT NULL,
-				cluster VARCHAR(128) NOT NULL,
+				cluster VARCHAR(256) NOT NULL,
 				namespace VARCHAR(63),
-				name VARCHAR(63),
+				name VARCHAR(127),
 				api_group VARCHAR(63),
 				api_version VARCHAR(63),
 				api_resource VARCHAR(63),
