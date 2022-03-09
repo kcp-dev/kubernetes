@@ -214,6 +214,8 @@ func (g *listerGenerator) Imports(c *generator.Context) (imports []string) {
 	imports = append(imports, "k8s.io/apimachinery/pkg/labels")
 	// for Indexer
 	imports = append(imports, "k8s.io/client-go/tools/cache")
+	// for Logical Clusters
+	imports = append(imports, "k8s.io/client-go/tools/clusters")
 
 	imports = append(imports, "context")
 
@@ -340,7 +342,12 @@ func (s *$.type|private$Lister) $.type|publicPlural$(namespace string) $.type|pu
 var typeLister_NonNamespacedGetWithContext = `
 // GetWithContext retrieves the $.type|public$ from the index for a given name.
 func (s *$.type|private$Lister) GetWithContext(ctx context.Context, name string) (*$.type|raw$, error) {
-  obj, exists, err := s.indexer.GetByKey(name)
+  clusterName, objectName := clusters.SplitClusterAwareKey(name)
+  if clusterName == "" {
+    clusterName = "admin"
+  }
+  key := clusters.ToClusterAwareKey(clusterName, objectName)
+  obj, exists, err := s.indexer.GetByKey(key)
   if err != nil {
     return nil, err
   }
@@ -401,7 +408,12 @@ func (s $.type|private$NamespaceLister) List(selector labels.Selector) (ret []*$
 var namespaceLister_GetWithContext = `
 // GetWithContext retrieves the $.type|public$ from the indexer for a given namespace and name.
 func (s $.type|private$NamespaceLister) GetWithContext(ctx context.Context, name string) (*$.type|raw$, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareFullKey(clusterName, s.namespace, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

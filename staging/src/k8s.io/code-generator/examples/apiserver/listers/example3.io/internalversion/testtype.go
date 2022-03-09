@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	example3io "k8s.io/code-generator/examples/apiserver/apis/example3.io"
 )
 
@@ -108,7 +109,12 @@ func (s testTypeNamespaceLister) Get(name string) (*example3io.TestType, error) 
 
 // GetWithContext retrieves the TestType from the indexer for a given namespace and name.
 func (s testTypeNamespaceLister) GetWithContext(ctx context.Context, name string) (*example3io.TestType, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareFullKey(clusterName, s.namespace, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

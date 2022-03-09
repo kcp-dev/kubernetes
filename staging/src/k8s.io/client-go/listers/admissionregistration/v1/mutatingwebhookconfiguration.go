@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // MutatingWebhookConfigurationLister helps list MutatingWebhookConfigurations.
@@ -75,7 +76,12 @@ func (s *mutatingWebhookConfigurationLister) Get(name string) (*v1.MutatingWebho
 
 // GetWithContext retrieves the MutatingWebhookConfiguration from the index for a given name.
 func (s *mutatingWebhookConfigurationLister) GetWithContext(ctx context.Context, name string) (*v1.MutatingWebhookConfiguration, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareKey(clusterName, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

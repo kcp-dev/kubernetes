@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // CronJobLister helps list CronJobs.
@@ -108,7 +109,12 @@ func (s cronJobNamespaceLister) Get(name string) (*v1beta1.CronJob, error) {
 
 // GetWithContext retrieves the CronJob from the indexer for a given namespace and name.
 func (s cronJobNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.CronJob, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareFullKey(clusterName, s.namespace, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

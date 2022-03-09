@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // ClusterRoleLister helps list ClusterRoles.
@@ -75,7 +76,12 @@ func (s *clusterRoleLister) Get(name string) (*v1alpha1.ClusterRole, error) {
 
 // GetWithContext retrieves the ClusterRole from the index for a given name.
 func (s *clusterRoleLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.ClusterRole, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareKey(clusterName, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

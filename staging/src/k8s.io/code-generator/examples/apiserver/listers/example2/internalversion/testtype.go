@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	example2 "k8s.io/code-generator/examples/apiserver/apis/example2"
 )
 
@@ -75,7 +76,12 @@ func (s *testTypeLister) Get(name string) (*example2.TestType, error) {
 
 // GetWithContext retrieves the TestType from the index for a given name.
 func (s *testTypeLister) GetWithContext(ctx context.Context, name string) (*example2.TestType, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareKey(clusterName, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

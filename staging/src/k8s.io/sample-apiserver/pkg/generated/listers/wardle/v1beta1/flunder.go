@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	v1beta1 "k8s.io/sample-apiserver/pkg/apis/wardle/v1beta1"
 )
 
@@ -108,7 +109,12 @@ func (s flunderNamespaceLister) Get(name string) (*v1beta1.Flunder, error) {
 
 // GetWithContext retrieves the Flunder from the indexer for a given namespace and name.
 func (s flunderNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.Flunder, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareFullKey(clusterName, s.namespace, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

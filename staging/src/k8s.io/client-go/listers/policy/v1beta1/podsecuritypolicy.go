@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // PodSecurityPolicyLister helps list PodSecurityPolicies.
@@ -75,7 +76,12 @@ func (s *podSecurityPolicyLister) Get(name string) (*v1beta1.PodSecurityPolicy, 
 
 // GetWithContext retrieves the PodSecurityPolicy from the index for a given name.
 func (s *podSecurityPolicyLister) GetWithContext(ctx context.Context, name string) (*v1beta1.PodSecurityPolicy, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareKey(clusterName, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

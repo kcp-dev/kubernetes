@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // ValidatingWebhookConfigurationLister helps list ValidatingWebhookConfigurations.
@@ -75,7 +76,12 @@ func (s *validatingWebhookConfigurationLister) Get(name string) (*v1beta1.Valida
 
 // GetWithContext retrieves the ValidatingWebhookConfiguration from the index for a given name.
 func (s *validatingWebhookConfigurationLister) GetWithContext(ctx context.Context, name string) (*v1beta1.ValidatingWebhookConfiguration, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareKey(clusterName, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // IngressLister helps list Ingresses.
@@ -108,7 +109,12 @@ func (s ingressNamespaceLister) Get(name string) (*v1.Ingress, error) {
 
 // GetWithContext retrieves the Ingress from the indexer for a given namespace and name.
 func (s ingressNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Ingress, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareFullKey(clusterName, s.namespace, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

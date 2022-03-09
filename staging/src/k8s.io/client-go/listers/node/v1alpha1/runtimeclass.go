@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // RuntimeClassLister helps list RuntimeClasses.
@@ -75,7 +76,12 @@ func (s *runtimeClassLister) Get(name string) (*v1alpha1.RuntimeClass, error) {
 
 // GetWithContext retrieves the RuntimeClass from the index for a given name.
 func (s *runtimeClassLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.RuntimeClass, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareKey(clusterName, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

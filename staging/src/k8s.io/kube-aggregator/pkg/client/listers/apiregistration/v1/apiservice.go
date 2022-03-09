@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	v1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 )
 
@@ -75,7 +76,12 @@ func (s *aPIServiceLister) Get(name string) (*v1.APIService, error) {
 
 // GetWithContext retrieves the APIService from the index for a given name.
 func (s *aPIServiceLister) GetWithContext(ctx context.Context, name string) (*v1.APIService, error) {
-	obj, exists, err := s.indexer.GetByKey(name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareKey(clusterName, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}

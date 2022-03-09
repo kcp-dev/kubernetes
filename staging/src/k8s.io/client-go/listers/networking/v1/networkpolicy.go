@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 )
 
 // NetworkPolicyLister helps list NetworkPolicies.
@@ -108,7 +109,12 @@ func (s networkPolicyNamespaceLister) Get(name string) (*v1.NetworkPolicy, error
 
 // GetWithContext retrieves the NetworkPolicy from the indexer for a given namespace and name.
 func (s networkPolicyNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.NetworkPolicy, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+	clusterName, objectName := clusters.SplitClusterAwareKey(name)
+	if clusterName == "" {
+		clusterName = "admin"
+	}
+	key := clusters.ToClusterAwareFullKey(clusterName, s.namespace, objectName)
+	obj, exists, err := s.indexer.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}
