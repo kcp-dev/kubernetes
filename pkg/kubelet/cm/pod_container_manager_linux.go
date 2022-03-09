@@ -63,7 +63,8 @@ var _ PodContainerManager = &podContainerManagerImpl{}
 // Exists checks if the pod's cgroup already exists
 func (m *podContainerManagerImpl) Exists(pod *v1.Pod) bool {
 	podContainerName, _ := m.GetPodContainerName(pod)
-	return m.cgroupManager.Exists(podContainerName)
+	exists, _ := m.cgroupManager.Exists(podContainerName)
+	return exists
 }
 
 // EnsureExists takes a pod as argument and makes sure that

@@ -254,20 +254,21 @@ func updateSystemdCgroupInfo(cgroupConfig *libcontainerconfigs.Cgroup, cgroupNam
 }
 
 // Exists checks if all subsystem cgroups already exist
-func (m *cgroupManagerImpl) Exists(name CgroupName) bool {
+func (m *cgroupManagerImpl) Exists(name CgroupName) (bool, string) {
 	if libcontainercgroups.IsCgroup2UnifiedMode() {
 		cgroupPath := m.buildCgroupUnifiedPath(name)
 		neededControllers := getSupportedUnifiedControllers()
 		enabledControllers, err := readUnifiedControllers(cgroupPath)
 		if err != nil {
-			return false
+			klog.V(1).InfoS("Could not read unified controllers for the cgroup", "cgroupName", name, "error", err)
+			return false, fmt.Sprintf("Could not read unified controllers for the cgroup %q:%v", name, err)
 		}
 		difference := neededControllers.Difference(enabledControllers)
 		if difference.Len() > 0 {
-			klog.V(4).InfoS("The cgroup has some missing controllers", "cgroupName", name, "controllers", difference)
-			return false
+			klog.V(1).InfoS("The cgroup has some missing controllers", "cgroupName", name, "controllers", difference)
+			return false,fmt.Sprintf("The cgroup %q has some missing controllers: %s", name, difference)
 		}
-		return true
+		return true, ""
 	}
 
 	// Get map of all cgroup paths on the system for the particular cgroup
@@ -297,11 +298,11 @@ func (m *cgroupManagerImpl) Exists(name CgroupName) bool {
 	}
 
 	if len(missingPaths) > 0 {
-		klog.V(4).InfoS("The cgroup has some missing paths", "cgroupName", name, "paths", missingPaths)
-		return false
+		klog.V(1).InfoS("The cgroup has some missing paths", "cgroupName", name, "paths", missingPaths)
+		return false, fmt.Sprintf("The cgroup %q has some missing paths: %s", name, missingPaths)
 	}
 
-	return true
+	return true, ""
 }
 
 // Destroy destroys the specified cgroup

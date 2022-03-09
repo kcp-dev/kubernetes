@@ -67,7 +67,7 @@ type CgroupManager interface {
 	// Update cgroup configuration.
 	Update(*CgroupConfig) error
 	// Exists checks if the cgroup already exists
-	Exists(name CgroupName) bool
+	Exists(name CgroupName) (bool, string)
 	// Name returns the literal cgroupfs name on the host after any driver specific conversions.
 	// We would expect systemd implementation to make appropriate name conversion.
 	// For example, if we pass {"foo", "bar"}

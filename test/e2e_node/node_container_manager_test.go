@@ -119,7 +119,7 @@ const (
 )
 
 func createIfNotExists(cm cm.CgroupManager, cgroupConfig *cm.CgroupConfig) error {
-	if !cm.Exists(cgroupConfig.Name) {
+	if exists, _ := cm.Exists(cgroupConfig.Name); !exists {
 		if err := cm.Create(cgroupConfig); err != nil {
 			return err
 		}
@@ -239,8 +239,8 @@ func runTest(f *framework.Framework) error {
 
 	expectedNAPodCgroup := cm.ParseCgroupfsToCgroupName(currentConfig.CgroupRoot)
 	expectedNAPodCgroup = cm.NewCgroupName(expectedNAPodCgroup, "kubepods")
-	if !cgroupManager.Exists(expectedNAPodCgroup) {
-		return fmt.Errorf("Expected Node Allocatable Cgroup %q does not exist", expectedNAPodCgroup)
+	if exists, why := cgroupManager.Exists(expectedNAPodCgroup); !exists {
+		return fmt.Errorf("Expected Node Allocatable Cgroup %q does not exist: %s", expectedNAPodCgroup, why)
 	}
 
 	memoryLimitFile := "memory.limit_in_bytes"
