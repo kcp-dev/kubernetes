@@ -245,6 +245,8 @@ type Networking struct {
 
 // Etcd contains elements describing Etcd configuration.
 type Etcd struct {
+	// Crdb determines if we should use CRDB as a stand-in for etcd3
+	Crdb bool
 
 	// Local provides configuration knobs for configuring the local etcd instance
 	// Local and External are mutually exclusive

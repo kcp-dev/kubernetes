@@ -486,7 +486,7 @@ func getAltNames(cfg *kubeadmapi.InitConfiguration, certName string) (*certutil.
 
 	// create AltNames with defaults DNSNames/IPs
 	altNames := &certutil.AltNames{
-		DNSNames: []string{cfg.NodeRegistration.Name, "localhost"},
+		DNSNames: []string{cfg.NodeRegistration.Name, "localhost", "node"},
 		IPs:      []net.IP{advertiseAddress, net.IPv4(127, 0, 0, 1), net.IPv6loopback},
 	}
 

@@ -66,5 +66,8 @@ func runCheckEtcdPhase(c workflow.RunData) error {
 		return err
 	}
 
+	if cfg.Etcd.Crdb {
+		return etcdphase.CheckLocalCrdbClusterStatus(client, data.CertificateWriteDir())
+	}
 	return etcdphase.CheckLocalEtcdClusterStatus(client, data.CertificateWriteDir())
 }

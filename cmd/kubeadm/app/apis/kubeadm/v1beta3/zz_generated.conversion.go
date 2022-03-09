@@ -440,6 +440,7 @@ func Convert_kubeadm_Discovery_To_v1beta3_Discovery(in *kubeadm.Discovery, out *
 }
 
 func autoConvert_v1beta3_Etcd_To_kubeadm_Etcd(in *Etcd, out *kubeadm.Etcd, s conversion.Scope) error {
+	out.Crdb = in.Crdb
 	out.Local = (*kubeadm.LocalEtcd)(unsafe.Pointer(in.Local))
 	out.External = (*kubeadm.ExternalEtcd)(unsafe.Pointer(in.External))
 	return nil
@@ -451,6 +452,7 @@ func Convert_v1beta3_Etcd_To_kubeadm_Etcd(in *Etcd, out *kubeadm.Etcd, s convers
 }
 
 func autoConvert_kubeadm_Etcd_To_v1beta3_Etcd(in *kubeadm.Etcd, out *Etcd, s conversion.Scope) error {
+	out.Crdb = in.Crdb
 	out.Local = (*LocalEtcd)(unsafe.Pointer(in.Local))
 	out.External = (*ExternalEtcd)(unsafe.Pointer(in.External))
 	return nil

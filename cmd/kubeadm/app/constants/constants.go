@@ -85,11 +85,11 @@ const (
 	EtcdCAKeyName = "etcd/ca.key"
 
 	// EtcdServerCertAndKeyBaseName defines etcd's server certificate and key base name
-	EtcdServerCertAndKeyBaseName = "etcd/server"
+	EtcdServerCertAndKeyBaseName = "etcd/node"
 	// EtcdServerCertName defines etcd's server certificate name
-	EtcdServerCertName = "etcd/server.crt"
+	EtcdServerCertName = "etcd/node.crt"
 	// EtcdServerKeyName defines etcd's server key name
-	EtcdServerKeyName = "etcd/server.key"
+	EtcdServerKeyName = "etcd/node.key"
 
 	// EtcdListenClientPort defines the port etcd listen on for client traffic
 	EtcdListenClientPort = 2379
@@ -122,7 +122,7 @@ const (
 	// APIServerEtcdClientKeyName defines apiserver's etcd client key name
 	APIServerEtcdClientKeyName = "apiserver-etcd-client.key"
 	// APIServerEtcdClientCertCommonName defines apiserver's etcd client certificate common name (CN)
-	APIServerEtcdClientCertCommonName = "kube-apiserver-etcd-client"
+	APIServerEtcdClientCertCommonName = "root" // TODO: figure out how to bootstrap the CRDB users (along with init...?)
 
 	// ServiceAccountKeyBaseName defines SA key base name
 	ServiceAccountKeyBaseName = "sa"

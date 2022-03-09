@@ -64,6 +64,9 @@ func GetDNSImage(cfg *kubeadmapi.ClusterConfiguration) string {
 
 // GetEtcdImage generates and returns the image for etcd
 func GetEtcdImage(cfg *kubeadmapi.ClusterConfiguration) string {
+	if cfg.Etcd.Crdb {
+		return GetGenericImage("cockroachdb", "cockroach", "v21.2.5")
+	}
 	// Etcd uses default image repository by default
 	etcdImageRepository := cfg.ImageRepository
 	// unless an override is specified

@@ -19,6 +19,7 @@ package controlplane
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,8 +29,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	utilsnet "k8s.io/utils/net"
-
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	"k8s.io/kubernetes/cmd/kubeadm/app/features"
@@ -188,6 +187,12 @@ func getAPIServerCommand(cfg *kubeadmapi.ClusterConfiguration, localAPIEndpoint 
 
 	command := []string{"kube-apiserver"}
 
+	if cfg.Etcd.Crdb {
+		defaultArguments["storage-backend"] = "crdb"
+		defaultArguments["watch-cache"] = "false"
+		defaultArguments["feature-gates"] = "APIPriorityAndFairness=false"
+	}
+
 	// If the user set endpoints for an external etcd cluster
 	if cfg.Etcd.External != nil {
 		defaultArguments["etcd-servers"] = strings.Join(cfg.Etcd.External.Endpoints, ",")
@@ -203,11 +208,28 @@ func getAPIServerCommand(cfg *kubeadmapi.ClusterConfiguration, localAPIEndpoint 
 	} else {
 		// Default to etcd static pod on localhost
 		// localhost IP family should be the same that the AdvertiseAddress
-		etcdLocalhostAddress := "127.0.0.1"
-		if utilsnet.IsIPv6String(localAPIEndpoint.AdvertiseAddress) {
-			etcdLocalhostAddress = "::1"
+		//etcdLocalhostAddress := "127.0.0.1"
+		//if utilsnet.IsIPv6String(localAPIEndpoint.AdvertiseAddress) {
+		//	etcdLocalhostAddress = "::1"
+		//}
+
+		host := net.JoinHostPort(localAPIEndpoint.AdvertiseAddress, strconv.Itoa(kubeadmconstants.EtcdListenClientPort))
+		var server string
+		if cfg.Etcd.Crdb {
+			u := url.URL{
+				Scheme:      "postgresql",
+				User:        url.User(kubeadmconstants.APIServerEtcdClientCertCommonName),
+				Host:        host,
+				Path:        "defaultdb",
+			}
+			v := u.Query()
+			v.Set("sslmode", "verify-full")
+			u.RawQuery = v.Encode()
+			server = u.String()
+		} else {
+			server = fmt.Sprintf("https://%s", host)
 		}
-		defaultArguments["etcd-servers"] = fmt.Sprintf("https://%s", net.JoinHostPort(etcdLocalhostAddress, strconv.Itoa(kubeadmconstants.EtcdListenClientPort)))
+		defaultArguments["etcd-servers"] = server
 		defaultArguments["etcd-cafile"] = filepath.Join(cfg.CertificatesDir, kubeadmconstants.EtcdCACertName)
 		defaultArguments["etcd-certfile"] = filepath.Join(cfg.CertificatesDir, kubeadmconstants.APIServerEtcdClientCertName)
 		defaultArguments["etcd-keyfile"] = filepath.Join(cfg.CertificatesDir, kubeadmconstants.APIServerEtcdClientKeyName)
