@@ -160,6 +160,7 @@ func (c *Publisher) namespaceAdded(obj interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(namespace)
 	if err != nil {
 		utilruntime.HandleError(err)
+		return
 	}
 
 	c.queue.Add(key)
@@ -174,6 +175,7 @@ func (c *Publisher) namespaceUpdated(oldObj interface{}, newObj interface{}) {
 	key, err := cache.MetaNamespaceKeyFunc(newNamespace)
 	if err != nil {
 		utilruntime.HandleError(err)
+		return
 	}
 
 	c.queue.Add(key)
