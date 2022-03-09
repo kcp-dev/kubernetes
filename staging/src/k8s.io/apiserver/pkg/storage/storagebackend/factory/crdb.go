@@ -144,14 +144,18 @@ func (l *Logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data m
 	}
 }
 
+var once = sync.Once{}
+
 func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, newFunc func() runtime.Object) (storage.Interface, DestroyFunc, error) {
 	client, err := newCRDBClient(ctx, c.Transport)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	for _, stmt := range []string{
-		`CREATE TABLE IF NOT EXISTS k8s
+	var initErr error
+	once.Do(func() {
+		for _, stmt := range []string{
+			`CREATE TABLE IF NOT EXISTS k8s
 			(
 				key VARCHAR(512) NOT NULL,
 				value BLOB NOT NULL,
@@ -163,19 +167,24 @@ func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, new
 				api_resource VARCHAR(63),
 				PRIMARY KEY (key, cluster)
 			);`,
-		// enable watches
-		`SET CLUSTER SETTING kv.rangefeed.enabled = true;`,
-		// set the latency floor for events
-		`SET CLUSTER SETTING changefeed.experimental_poll_interval = '0.2s';`,
-	} {
-		if _, err := client.Exec(ctx, stmt); err != nil {
-			return nil, nil, fmt.Errorf("error initializing the database: %w", err)
+			// enable watches
+			`SET CLUSTER SETTING kv.rangefeed.enabled = true;`,
+			// set the latency floor for events
+			`SET CLUSTER SETTING changefeed.experimental_poll_interval = '0.2s';`,
+		} {
+			if _, err := client.Exec(ctx, stmt); err != nil {
+				initErr = fmt.Errorf("error initializing the database: %w", err)
+			}
 		}
-	}
 
-	// NOTE: CRDB does not do client-driven compaction
-	if _, err := client.Exec(ctx, `ALTER TABLE k8s CONFIGURE ZONE USING gc.ttlseconds = $1;`, c.CompactionInterval.Seconds()); err != nil {
-		return nil, nil, fmt.Errorf("failed to configure compaction interval: %w", err)
+		// TODO: something might be broken here?
+		//// NOTE: CRDB does not do client-driven compaction
+		//if _, err := client.Exec(ctx, `ALTER TABLE k8s CONFIGURE ZONE USING gc.ttlseconds = $1;`, c.CompactionInterval.Seconds()); err != nil {
+		//	initErr = fmt.Errorf("failed to configure compaction interval: %w", err)
+		//}
+	})
+	if initErr != nil {
+		return nil, nil, initErr
 	}
 
 	// TODO: no way to monitor size: https://github.com/cockroachdb/cockroach/issues/20712
