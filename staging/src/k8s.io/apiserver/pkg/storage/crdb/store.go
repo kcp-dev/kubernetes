@@ -96,7 +96,6 @@ func (s *store) Versioner() storage.Versioner {
 func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object, ttl uint64) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{
 			Name:     "admin",
 			Parents:  nil,
@@ -133,9 +132,6 @@ func create(ctx context.Context, client pool, key string, data []byte) (int64, e
 		return 0, storage.NewInternalError("no cluster metadata found")
 	}
 	requestInfo, haveRequestInfo := request.RequestInfoFrom(ctx)
-	if !haveRequestInfo {
-		klog.Errorf(storage.NewInternalError("no request info metadata found").Error())
-	}
 
 	// we can't use INSERT ... RETURNING crdb_internal_mvcc_timestamp
 	// so we need to use a transaction here to ensure we do not race
@@ -203,7 +199,6 @@ const (
 // Therefore, while there is a finite window of time for which packing bits into this number is appropriate,
 // it seems robust enough to proceed. Such packing also incurs no data loss, allowing round-tripping.
 func toResourceVersion(hybridLogicalTimestamp *apd.Decimal) (int64, error) {
-	fmt.Printf("    store.go:201: Consuming HLC %s\n", hybridLogicalTimestamp.String())
 	var integral, fractional apd.Decimal
 	hybridLogicalTimestamp.Modf(&integral, &fractional)
 
@@ -278,7 +273,6 @@ func (s *store) Delete(ctx context.Context, key string, out runtime.Object, prec
 func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{
 			Name:     "admin",
 			Parents:  nil,
@@ -430,7 +424,6 @@ func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions,
 
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{
 			Name:     "admin",
 			Wildcard: false,
@@ -443,7 +436,6 @@ func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions,
 func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, out runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{
 			Name:     "admin",
 			Parents:  nil,
@@ -493,7 +485,6 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{
 			Name:     "admin",
 			Parents:  nil,
@@ -630,13 +621,9 @@ func whereClause(offset int, cluster *request.Cluster, info *request.RequestInfo
 func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{Name: "admin"}
 	}
-	requestInfo, haveRequestInfo := request.RequestInfoFrom(ctx)
-	if !haveRequestInfo {
-		klog.Errorf(storage.NewInternalError("no request info metadata found").Error())
-	}
+	requestInfo, _ := request.RequestInfoFrom(ctx)
 
 	listPtr, err := meta.GetItemsPtr(listObj)
 	if err != nil {
@@ -909,7 +896,6 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Object, ignoreNotFound bool, preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
-		klog.Errorf(storage.NewInternalError("no cluster metadata found").Error())
 		cluster = &request.Cluster{
 			Name:     "admin",
 			Parents:  nil,
@@ -917,9 +903,6 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		}
 	}
 	requestInfo, haveRequestInfo := request.RequestInfoFrom(ctx)
-	if !haveRequestInfo {
-		klog.Errorf(storage.NewInternalError("no request info metadata found").Error())
-	}
 	key = path.Join(s.pathPrefix, key)
 
 	v, err := conversion.EnforcePtr(out)

@@ -722,7 +722,6 @@ func (e *Store) Get(ctx context.Context, name string, options *metav1.GetOptions
 	if err != nil {
 		return nil, err
 	}
-	// klog.Infof("DEBUG: GET key func returned: %s", key)
 	if err := e.Storage.Get(ctx, key, storage.GetOptions{ResourceVersion: options.ResourceVersion}, obj); err != nil {
 		return nil, storeerr.InterpretGetError(err, e.qualifiedResourceFromContext(ctx), name)
 	}
@@ -1006,7 +1005,6 @@ func (e *Store) Delete(ctx context.Context, name string, deleteValidation rest.V
 	if err != nil {
 		return nil, false, err
 	}
-	klog.Infof("DEBUG: DELETE key func returned: %s", key)
 	obj := e.NewFunc()
 	qualifiedResource := e.qualifiedResourceFromContext(ctx)
 	if err = e.Storage.Get(ctx, key, storage.GetOptions{}, obj); err != nil {
@@ -1313,9 +1311,6 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 	}
 	if (e.KeyRootFunc == nil) != (e.KeyFunc == nil) {
 		return fmt.Errorf("store for %s must set both KeyRootFunc and KeyFunc or neither", e.DefaultQualifiedResource.String())
-	}
-	if e.KeyFunc != nil || e.KeyFunc != nil {
-		return fmt.Errorf("DEBUG: keyfunc must be non-nil for all resources", e.DefaultQualifiedResource.String())
 	}
 
 	if e.TableConvertor == nil {
