@@ -44,13 +44,12 @@ func parseData(key string, data []byte, resourceVersion int64) *event {
 	}
 }
 
-func parseEvent(key string, e *changefeedEvent, previousData []byte, resourceVersion int64) (*event, error) {
+func parseEvent(key string, e *changefeedEvent, resourceVersion int64) (*event, error) {
 	ret := &event{
 		key:       key,
 		rev:       resourceVersion,
-		prevValue: previousData,
 		isDeleted: e.After == nil,
-		isCreated: len(previousData) == 0,
+		isCreated: e.Before == nil,
 	}
 	if e.After != nil {
 		value, err := hex.DecodeString(strings.TrimPrefix(e.After.Value, "\\x"))
@@ -58,6 +57,13 @@ func parseEvent(key string, e *changefeedEvent, previousData []byte, resourceVer
 			return nil, fmt.Errorf("failed to decode value: %w", err)
 		}
 		ret.value = value
+	}
+	if e.Before != nil {
+		value, err := hex.DecodeString(strings.TrimPrefix(e.Before.Value, "\\x"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode value: %w", err)
+		}
+		ret.prevValue = value
 	}
 	return ret, nil
 }

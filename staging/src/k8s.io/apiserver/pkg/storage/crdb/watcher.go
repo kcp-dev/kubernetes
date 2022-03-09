@@ -314,7 +314,8 @@ type changefeedEvent struct {
 	Updated       *apd.Decimal `json:"Updated,omitempty"`
 	Resolved      *apd.Decimal `json:"resolved,omitempty"`
 
-	After *row `json:"after,omitempty"`
+	Before *row `json:"before,omitempty"`
+	After  *row `json:"after,omitempty"`
 }
 
 type row struct {
@@ -358,6 +359,7 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 	}
 	options := []string{
 		"updated",
+		"diff",
 		"mvcc_timestamp",
 		fmt.Sprintf("cursor='%s'", initialWatchTimestamp.String()),
 	}
@@ -366,7 +368,7 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 	}
 	query := fmt.Sprintf(`EXPERIMENTAL CHANGEFEED FOR k8s WITH %s;`, strings.Join(options, ","))
 	// TODO: the SQL logger only prints the command when it finishes, so we never see it ...
-	klog.InfoS("Exec", "sql", query)
+	klog.V(10).InfoS("Exec", "sql", query)
 	rows, err := wc.watcher.client.Query(wc.ctx, query)
 	if err != nil {
 		// If there is an error on server (e.g. compaction), the channel will return it before closed.
@@ -486,42 +488,7 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 				return
 			}
 
-			// TODO: this is likely better done with a caching layer or something, but the footprint will be enormous
-			// fetch the key at a previous RV - if it existed, we will have a previous version to show the client
-			// who is watching; if it did not, we know this is a "create" event.
-			// NOTE: for some reason k8s watch sends the current RV for the old object ... ?
-			objectTimestamp, err := toHybridLogicalClock(resourceVersion)
-			if err != nil {
-				err = fmt.Errorf("failed to determine hybrid logical clock when handling watch event: %w", err)
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-			var previousTimestamp apd.Decimal
-			condition, err := apd.BaseContext.Sub(&previousTimestamp, objectTimestamp, apd.New(1, 0))
-			if err != nil {
-				err = fmt.Errorf("failed to determine previous object revision: %v", err)
-				klog.Error(err)
-				wc.sendError(err)
-				return
-			}
-			if _, err := condition.GoError(apd.DefaultTraps); err != nil {
-				err = fmt.Errorf("failed to determine previous object revision: %v", err)
-				klog.Error(err)
-				wc.sendError(err)
-				return
-			}
-
-			var previousData []byte
-			err = wc.watcher.client.QueryRow(wc.ctx, fmt.Sprintf(`SELECT value FROM k8s AS OF SYSTEM TIME %s WHERE key=$1 AND cluster=$2;`, previousTimestamp.String()), key, cluster).Scan(&previousData)
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				err = fmt.Errorf("failed to read previous key when handling watch event: %w", err)
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-
-			parsedEvent, err := parseEvent(key, &evt, previousData, resourceVersion)
+			parsedEvent, err := parseEvent(key, &evt, resourceVersion)
 			if err != nil {
 				logWatchChannelErr(err)
 				wc.sendError(err)
