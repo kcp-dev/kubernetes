@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
@@ -58,7 +59,14 @@ var _ = SIGDescribe("client-go should negotiate", func() {
 			framework.ExpectNoError(err)
 			defer w.Stop()
 
-			evt, ok := <-w.ResultChan()
+			var evt watch.Event
+			var ok bool
+			select {
+			case evt, ok = <-w.ResultChan():
+			// nothing
+			case <-time.After(30 * time.Second):
+				framework.Fail("timed out")
+			}
 			o.Expect(ok).To(o.BeTrue())
 			switch evt.Type {
 			case watch.Added, watch.Modified:

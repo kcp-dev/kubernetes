@@ -241,7 +241,7 @@ func toResourceVersion(hybridLogicalTimestamp *apd.Decimal) (int64, error) {
 
 // toHybridLogicalClock is the inverse of toResourceVersion
 func toHybridLogicalClock(resourceVersion int64) (*apd.Decimal, error) {
-	timestamp := resourceVersion >> numBits + datum
+	timestamp := resourceVersion>>numBits + datum
 	logical := apd.New(timestamp, 0)
 
 	counter := resourceVersion & ((1 << numBits) - 1) // mask out the lower bits
@@ -1034,6 +1034,7 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			var tag pgconn.CommandTag
 			var execErr error
+			// TODO: there was some reason I did not use UPSERT here - was it the WHERE clause? Reconsider: https://www.cockroachlabs.com/docs/v21.2/performance-best-practices-overview#use-upsert-instead-of-insert-on-conflict-on-tables-with-no-secondary-indexes
 			if haveRequestInfo {
 				tag, execErr = tx.Exec(ctx, `INSERT INTO k8s (key, value, cluster, namespace, name, api_group, api_version, api_resource) 
 											VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 

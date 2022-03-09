@@ -503,9 +503,9 @@ func LoadConfig() (config *restclient.Config, err error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.TLSClientConfig.ServerName = "apiserver-loopback-client"
-	cfg.ContentConfig.AcceptContentTypes = "application/json"
-	cfg.ContentConfig.ContentType = "application/json"
+	//cfg.TLSClientConfig.ServerName = "apiserver-loopback-client"
+	//cfg.ContentConfig.AcceptContentTypes = "application/json"
+	//cfg.ContentConfig.ContentType = "application/json"
 	return cfg, nil
 }
 

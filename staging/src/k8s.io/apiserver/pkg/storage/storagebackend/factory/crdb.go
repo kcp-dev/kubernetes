@@ -78,7 +78,7 @@ func newCRDBHealthCheck(ctx context.Context, c storagebackend.Config) (func() er
 }
 
 func newCRDBClient(ctx context.Context, c storagebackend.TransportConfig) (*pgxpool.Pool, error) {
-	tlsInfo := transport.TLSInfo{
+	tlsInfo := transport.TLSInfo{ // TODO: stop using the etcd lib here
 		CertFile:      c.CertFile,
 		KeyFile:       c.KeyFile,
 		TrustedCAFile: c.TrustedCAFile,
@@ -105,11 +105,12 @@ func newCRDBClient(ctx context.Context, c storagebackend.TransportConfig) (*pgxp
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse test connection: %v", err)
 	}
+	tlsConfig.ServerName = cfg.ConnConfig.Config.Host
 	cfg.ConnConfig.TLSConfig = tlsConfig
 	if egressDialer != nil {
 		cfg.ConnConfig.DialFunc = pgconn.DialFunc(egressDialer)
 	}
-	cfg.ConnConfig.LogLevel = pgx.LogLevelTrace
+	cfg.ConnConfig.LogLevel = pgx.LogLevelWarn
 	cfg.ConnConfig.Logger = NewLogger()
 	return pgxpool.ConnectConfig(ctx, cfg)
 }

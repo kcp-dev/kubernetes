@@ -20,14 +20,18 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
+	"sync"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	clientset "k8s.io/client-go/kubernetes"
 	cachetools "k8s.io/client-go/tools/cache"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -36,7 +40,8 @@ import (
 )
 
 const (
-	watchConfigMapLabelKey = "watch-this-configmap"
+	watchConfigMapLabelKey          = "watch-this-configmap"
+	watchConfigMapNamespaceLabelKey = "configmap-namespace"
 
 	multipleWatchersLabelValueA   = "multiple-watchers-A"
 	multipleWatchersLabelValueB   = "multiple-watchers-B"
@@ -333,51 +338,107 @@ var _ = SIGDescribe("Watchers", func() {
 		c := f.ClientSet
 		ns := f.Namespace.Name
 
-		iterations := 100
-
 		ginkgo.By("getting a starting resourceVersion")
 		configmaps, err := c.CoreV1().ConfigMaps(ns).List(context.TODO(), metav1.ListOptions{})
 		framework.ExpectNoError(err, "Failed to list configmaps in the namespace %s", ns)
 		resourceVersion := configmaps.ResourceVersion
 
+		iterations := 35
+		totalIterations := 0
 		ginkgo.By("starting a background goroutine to produce watch events")
-		donec := make(chan struct{})
+		done := sync.WaitGroup{}
 		stopc := make(chan struct{})
-		go func() {
+		done.Add(1)
+		totalIterations += iterations
+		go func(c clientset.Interface) {
 			defer ginkgo.GinkgoRecover()
-			defer close(donec)
-			produceConfigMapEvents(f, stopc, 5*time.Millisecond)
-		}()
+			defer done.Done()
+			produceConfigMapEvents(c, ns, iterations, stopc, 5*time.Millisecond)
+		}(c)
 
 		listWatcher := &cachetools.ListWatch{
 			WatchFunc: func(listOptions metav1.ListOptions) (watch.Interface, error) {
-				return c.CoreV1().ConfigMaps(ns).Watch(context.TODO(), listOptions)
+				opts := listOptions.DeepCopy()
+				opts.LabelSelector = metav1.FormatLabelSelector(&metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						// we can't do namespaced list/watch cross-cluster, and need this to be unique for parallelism...
+						{
+							Key:      watchConfigMapNamespaceLabelKey,
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{f.Namespace.Name},
+						},
+					},
+				})
+				return f.ClientSet.CoreV1().ConfigMaps("").Watch(context.TODO(), listOptions)
 			},
 		}
 
+		done.Wait()
+
 		ginkgo.By("creating watches starting from each resource version of the events produced and verifying they all receive resource versions in the same order")
+		var resourceVersions [][]string
 		wcs := []watch.Interface{}
-		for i := 0; i < iterations; i++ {
+		for i := 0; i < totalIterations; i++ {
+			ginkgo.By(fmt.Sprintf("creating a watch starting from resource version %s", resourceVersion))
 			wc, err := watchtools.NewRetryWatcher(resourceVersion, listWatcher)
 			framework.ExpectNoError(err, "Failed to watch configmaps in the namespace %s", ns)
 			wcs = append(wcs, wc)
-			resourceVersion = waitForNextConfigMapEvent(wcs[0]).ResourceVersion
-			for _, wc := range wcs[1:] {
-				e := waitForNextConfigMapEvent(wc)
-				if resourceVersion != e.ResourceVersion {
-					framework.Failf("resource version mismatch, expected %s but got %s", resourceVersion, e.ResourceVersion)
+			e := waitForNextConfigMapEvent(wcs[0])
+			resourceVersions = append(resourceVersions, []string{e.ResourceVersion})
+			if e.ResourceVersion == "NULL" {
+				break
+			}
+			resourceVersion = e.ResourceVersion
+			wg2 := sync.WaitGroup{}
+			for j := range wcs[1:] {
+				wg2.Add(1)
+				go func(j int) {
+					defer wg2.Done()
+					e := waitForNextConfigMapEvent(wcs[j])
+					resourceVersions[j] = append(resourceVersions[j], e.ResourceVersion)
+				}(j)
+			}
+			wg2.Wait()
+		}
+		for i, rvs := range resourceVersions[1:] {
+			fmt.Printf("%d: %v\n", i, rvs)
+		}
+
+		for i, rvs := range resourceVersions[1:] {
+			if len(rvs) != iterations {
+				fmt.Printf("watcher %d got %d RVs, not %d\n", i, len(rvs), iterations)
+			}
+			reference := resourceVersions[0]
+			startingIndex := -1
+			for j, item := range reference {
+				if item == rvs[0] {
+					startingIndex = j
 				}
+			}
+			if startingIndex == -1 {
+				fmt.Println(rvs)
+				fmt.Println(reference)
+				framework.Failf("watcher %d started seeing events at rv %q, but the reference watcher never saw that version!", i+1, rvs[0])
+			}
+			if diff := cmp.Diff(rvs, reference[startingIndex:startingIndex+len(rvs)]); diff != "" {
+				framework.Failf("watcher %d got incorrect ordering for rvs: %v", i+1, diff)
+			}
+
+			if !sort.SliceIsSorted(rvs, func(i, j int) bool {
+				return rvs[i] < rvs[j]
+			}) {
+				framework.Failf("watcher %d got out-of-order rvs: %v", i+1, rvs)
 			}
 		}
 		close(stopc)
 		for _, wc := range wcs {
 			wc.Stop()
 		}
-		<-donec
 	})
 })
 
 func watchConfigMaps(f *framework.Framework, resourceVersion string, labels ...string) (watch.Interface, error) {
+	fmt.Printf("WATCHING FROM RV: %v\n", resourceVersion)
 	c := f.ClientSet
 	ns := f.Namespace.Name
 	opts := metav1.ListOptions{
@@ -453,8 +514,9 @@ func waitForNextConfigMapEvent(watch watch.Interface) *v1.ConfigMap {
 			return configMap
 		}
 		framework.Failf("expected config map, got %T", event.Object)
-	case <-time.After(10 * time.Second):
-		framework.Failf("timed out waiting for watch event")
+	case <-time.After(2 * time.Second):
+		fmt.Println("timed out waiting for watch event")
+		return &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{ResourceVersion: "NULL"}}
 	}
 	return nil // should never happen
 }
@@ -465,10 +527,7 @@ const (
 	deleteEvent
 )
 
-func produceConfigMapEvents(f *framework.Framework, stopc <-chan struct{}, minWaitBetweenEvents time.Duration) {
-	c := f.ClientSet
-	ns := f.Namespace.Name
-
+func produceConfigMapEvents(c clientset.Interface, ns string, iterations int, stopc <-chan struct{}, minWaitBetweenEvents time.Duration) {
 	name := func(i int) string {
 		return fmt.Sprintf("cm-%d", i)
 	}
@@ -476,43 +535,45 @@ func produceConfigMapEvents(f *framework.Framework, stopc <-chan struct{}, minWa
 	existing := []int{}
 	tc := time.NewTicker(minWaitBetweenEvents)
 	defer tc.Stop()
+	var creates, updates, deletes int
 	i := 0
-	updates := 0
-	for range tc.C {
+	for x := 0; x < iterations; x++ {
+		<-tc.C
 		op := rand.Intn(3)
 		if len(existing) == 0 {
 			op = createEvent
 		}
 
+		cm := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					watchConfigMapNamespaceLabelKey: ns,
+				},
+			},
+		}
 		switch op {
 		case createEvent:
-			cm := &v1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: name(i),
-				},
-			}
-			_, err := c.CoreV1().ConfigMaps(ns).Create(context.TODO(), cm, metav1.CreateOptions{})
-			framework.ExpectNoError(err, "Failed to create configmap %s in namespace %s", cm.Name, ns)
+			toCreate := cm.DeepCopy()
+			toCreate.Name = name(i)
+			_, err := c.CoreV1().ConfigMaps(ns).Create(context.TODO(), toCreate, metav1.CreateOptions{})
+			framework.ExpectNoError(err, "Failed to create configmap %s in namespace %s", toCreate.Name, ns)
 			existing = append(existing, i)
 			i++
+			creates++
 		case updateEvent:
 			idx := rand.Intn(len(existing))
-			cm := &v1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: name(existing[idx]),
-					Labels: map[string]string{
-						"mutated": strconv.Itoa(updates),
-					},
-				},
-			}
-			_, err := c.CoreV1().ConfigMaps(ns).Update(context.TODO(), cm, metav1.UpdateOptions{})
-			framework.ExpectNoError(err, "Failed to update configmap %s in namespace %s", cm.Name, ns)
+			toUpdate := cm.DeepCopy()
+			toUpdate.Name = name(existing[idx])
+			toUpdate.ObjectMeta.Labels["mutated"] = strconv.Itoa(updates)
+			_, err := c.CoreV1().ConfigMaps(ns).Update(context.TODO(), toUpdate, metav1.UpdateOptions{})
+			framework.ExpectNoError(err, "Failed to update configmap %s in namespace %s", toUpdate.Name, ns)
 			updates++
 		case deleteEvent:
 			idx := rand.Intn(len(existing))
 			err := c.CoreV1().ConfigMaps(ns).Delete(context.TODO(), name(existing[idx]), metav1.DeleteOptions{})
 			framework.ExpectNoError(err, "Failed to delete configmap %s in namespace %s", name(existing[idx]), ns)
 			existing = append(existing[:idx], existing[idx+1:]...)
+			deletes++
 		default:
 			framework.Failf("Unsupported event operation: %d", op)
 		}
@@ -522,4 +583,5 @@ func produceConfigMapEvents(f *framework.Framework, stopc <-chan struct{}, minWa
 		default:
 		}
 	}
+	fmt.Printf("FINISHED EVENTS %d/%d/%d\n", creates, updates, deletes)
 }
