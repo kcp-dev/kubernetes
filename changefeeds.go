@@ -162,12 +162,11 @@ func main() {
 
 	reference := formattedSink[0]
 	for i, updates := range formattedSink {
-		if len(updates) == 0 {
-			logrus.Errorf("changefeed %d got no events", i)
-			continue
-		}
 		if actual, expected := len(updates), numUpdates-i; actual != expected {
 			logrus.Errorf("changefeed %d got %d events, expected %d", i, actual, expected)
+		}
+		if len(updates) == 0 {
+			continue
 		}
 		if i == 0 {
 			continue

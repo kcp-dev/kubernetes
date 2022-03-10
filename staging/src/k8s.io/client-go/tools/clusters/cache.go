@@ -28,3 +28,15 @@ func SplitClusterAwareKey(clusterAwareKey string) (clusterName, name string) {
 	// clusterName and name
 	return parts[0], parts[1]
 }
+
+func ToClusterAwareFullKey(clusterName, namespace, name string) string {
+	var key string
+	if namespace != "" {
+		key += namespace + "/"
+	}
+	if clusterName != "" {
+		key += clusterName + "#$#"
+	}
+	key += name
+	return key
+}

@@ -122,6 +122,7 @@ var _ = SIGDescribe("Servers with support for API chunking", func() {
 	})
 
 	ginkgo.It("should support continue listing from the last key if the original version has been compacted away, though the list is inconsistent [Slow]", func() {
+		ginkgo.Skip("need to re-think this one w.r.t. compaction interval")
 		ns := f.Namespace.Name
 		c := f.ClientSet
 		client := c.CoreV1().PodTemplates(ns)
