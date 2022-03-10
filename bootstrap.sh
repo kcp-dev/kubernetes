@@ -86,7 +86,7 @@ nodes:
   - |
     kind: ClusterConfiguration
     etcd:
-        crdb: true
+      crdb: true
 EOF
 
 "${kind}" --loglevel trace create cluster --image localhost/skuznets/node:latest --config /tmp/kind/cluster.conf --kubeconfig /tmp/kind/kube.conf
