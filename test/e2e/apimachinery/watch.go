@@ -335,6 +335,7 @@ var _ = SIGDescribe("Watchers", func() {
 	   resource versions of all events match. Events are produced from writes on a background goroutine.
 	*/
 	framework.ConformanceIt("should receive events on concurrent watches in same order", func() {
+		ginkgo.Skip("this is implemented in TestWatchConsistency at the crdb unit test level")
 		c := f.ClientSet
 		ns := f.Namespace.Name
 
