@@ -112,6 +112,7 @@ func newCRDBClient(ctx context.Context, c storagebackend.TransportConfig) (*pgxp
 	}
 	cfg.ConnConfig.LogLevel = pgx.LogLevelWarn
 	cfg.ConnConfig.Logger = NewLogger()
+	cfg.MaxConns = 8192 // TODO: we need a routine to poll `Stat()` and expose metrics, so users would know when we're close to hitting the max
 	return pgxpool.ConnectConfig(ctx, cfg)
 }
 

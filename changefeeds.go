@@ -35,6 +35,7 @@ func main() {
 	}
 	cfg.ConnConfig.LogLevel = pgx.LogLevelTrace
 	cfg.ConnConfig.Logger = logrusadapter.NewLogger(logrus.New())
+	cfg.MaxConns = 128
 	client, err := pgxpool.ConnectConfig(ctx, cfg)
 	if err != nil {
 		logrus.WithError(err).Fatal("failed to connect to crdb")
