@@ -25,6 +25,7 @@ import (
 	"path"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/apd"
 	"github.com/jackc/pgconn"
@@ -46,6 +47,7 @@ import (
 	"k8s.io/apiserver/pkg/storage/versioner"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	utiltrace "k8s.io/utils/trace"
 )
 
 func New(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.Interface {
@@ -94,6 +96,8 @@ func (s *store) Versioner() storage.Versioner {
 }
 
 func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object, ttl uint64) error {
+	trace := utiltrace.New("Create crdb", utiltrace.Field{"type", reflect.TypeOf(obj).String()})
+	defer trace.LogIfLong(500 * time.Millisecond)
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
 		cluster = &request.Cluster{
@@ -110,6 +114,7 @@ func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object,
 	if err := s.versioner.PrepareObjectForStorage(obj); err != nil {
 		return fmt.Errorf("PrepareObjectForStorage failed: %v", err)
 	}
+	trace.Step("prepared for storage")
 	data, err := runtime.Encode(s.codec, obj)
 	if err != nil {
 		return err
@@ -118,12 +123,16 @@ func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object,
 	if err != nil {
 		return storage.NewInternalError(err.Error())
 	}
+	trace.Step("transformed to storage")
 
 	resourceVersion, err := create(ctx, s.client, key, newData)
 	if err != nil {
 		return err
 	}
-	return decode(s.codec, s.versioner, data, out, resourceVersion, cluster.Name)
+	trace.Step("committed to storage")
+	err = decode(s.codec, s.versioner, data, out, resourceVersion, cluster.Name)
+	trace.Step("decoded")
+	return err
 }
 
 func create(ctx context.Context, client pool, key string, data []byte) (int64, error) {
@@ -271,6 +280,8 @@ func (s *store) Delete(ctx context.Context, key string, out runtime.Object, prec
 }
 
 func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
+	trace := utiltrace.New("Delete crdb", utiltrace.Field{"type", reflect.TypeOf(out).String()})
+	defer trace.LogIfLong(500 * time.Millisecond)
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
 		cluster = &request.Cluster{
@@ -280,10 +291,13 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 		}
 	}
 
+	var fetchIdx int
 	getCurrentState := func() (*objState, error) {
+		fetchIdx++
 		var hybridLogicalTimestamp apd.Decimal
 		var blob []byte
 		err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &hybridLogicalTimestamp)
+		trace.Step(fmt.Sprintf("fetched precondition %d", fetchIdx))
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, storage.NewKeyNotFoundError(key, 0)
@@ -294,7 +308,9 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 		if rvErr != nil {
 			return nil, rvErr
 		}
-		return s.getState(blob, resourceVersion, key, v, errors.Is(err, pgx.ErrNoRows), false, cluster.Name)
+		s, e := s.getState(blob, resourceVersion, key, v, errors.Is(err, pgx.ErrNoRows), false, cluster.Name)
+		trace.Step(fmt.Sprintf("decoded precondition %d", fetchIdx))
+		return s, e
 	}
 
 	var origState *objState
@@ -310,17 +326,21 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 		return err
 	}
 
+	var evalIdx int
 	for {
+		evalIdx++
 		if preconditions != nil {
-			if err := preconditions.Check(key, origState.obj); err != nil {
+			precondErr := preconditions.Check(key, origState.obj)
+			trace.Step(fmt.Sprintf("evaluated precondition %d", evalIdx))
+			if precondErr != nil {
 				if origStateIsCurrent {
-					return err
+					return precondErr
 				}
 
 				// It's possible we're working with stale data.
 				// Remember the revision of the potentially stale data and the resulting update error
 				cachedRev := origState.rev
-				cachedUpdateErr := err
+				cachedUpdateErr := precondErr
 
 				// Actually fetch
 				origState, err = getCurrentState()
@@ -338,15 +358,17 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 				continue
 			}
 		}
-		if err := validateDeletion(ctx, origState.obj); err != nil {
+		valErr := validateDeletion(ctx, origState.obj)
+		trace.Step(fmt.Sprintf("validated deletion %d", evalIdx))
+		if valErr != nil {
 			if origStateIsCurrent {
-				return err
+				return valErr
 			}
 
 			// It's possible we're working with stale data.
 			// Remember the revision of the potentially stale data and the resulting update error
 			cachedRev := origState.rev
-			cachedUpdateErr := err
+			cachedUpdateErr := valErr
 
 			// Actually fetch
 			origState, err = getCurrentState()
@@ -391,6 +413,7 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 			}
 			return storage.NewInternalError(err.Error())
 		}
+		trace.Step(fmt.Sprintf("executed deletion %d", evalIdx))
 		if retry {
 			resourceVersion, rvErr := toResourceVersion(&hybridLogicalTimestamp)
 			if rvErr != nil {
@@ -403,7 +426,9 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 			origStateIsCurrent = true
 			continue
 		}
-		return decode(s.codec, s.versioner, origState.data, out, origState.rev, cluster.Name)
+		err = decode(s.codec, s.versioner, origState.data, out, origState.rev, cluster.Name)
+		trace.Step(fmt.Sprintf("decoded %d", evalIdx))
+		return err
 	}
 }
 
@@ -434,6 +459,8 @@ func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions,
 }
 
 func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, out runtime.Object) error {
+	trace := utiltrace.New("Get crdb", utiltrace.Field{"type", reflect.TypeOf(out).String()})
+	defer trace.LogIfLong(500 * time.Millisecond)
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
 		cluster = &request.Cluster{
@@ -460,6 +487,7 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 			return storage.NewInternalError(err.Error())
 		}
 	}
+	trace.Step("fetched data")
 
 	latestResourceVersion, err := toResourceVersion(&clusterTimestamp)
 	if err != nil {
@@ -478,11 +506,16 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 	if err != nil {
 		return storage.NewInternalError(err.Error())
 	}
+	trace.Step("transformed from storage")
 
-	return decode(s.codec, s.versioner, data, out, objectResourceVersion, cluster.Name)
+	err = decode(s.codec, s.versioner, data, out, objectResourceVersion, cluster.Name)
+	trace.Step("decoded")
+	return err
 }
 
 func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
+	trace := utiltrace.New("GetToList crdb", utiltrace.Field{"type", reflect.TypeOf(listObj).String()})
+	defer trace.LogIfLong(500 * time.Millisecond)
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
 		cluster = &request.Cluster{
@@ -544,6 +577,7 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 			return storage.NewInternalError(err.Error())
 		}
 	}
+	trace.Step("fetched data")
 
 	latestResourceVersion, err := toResourceVersion(&clusterTimestamp)
 	if err != nil {
@@ -567,9 +601,12 @@ func (s *store) GetToList(ctx context.Context, key string, opts storage.ListOpti
 			return err
 		}
 	}
+	trace.Step("transformed from storage")
 
 	// update version with cluster level revision
-	return s.versioner.UpdateList(listObj, uint64(latestResourceVersion), "", nil)
+	err = s.versioner.UpdateList(listObj, uint64(latestResourceVersion), "", nil)
+	trace.Step("decoded")
+	return err
 }
 
 const and = " AND "
@@ -619,6 +656,8 @@ func whereClause(offset int, cluster *request.Cluster, info *request.RequestInfo
 }
 
 func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
+	trace := utiltrace.New("List crdb", utiltrace.Field{"type", reflect.TypeOf(listObj).String()})
+	defer trace.LogIfLong(500 * time.Millisecond)
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
 		cluster = &request.Cluster{Name: "admin"}
@@ -669,6 +708,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		}
 		fromRV = &parsedRV
 	}
+	trace.Step("Determined input arguments")
 
 	var returnedRV, continueRV, withRev int64
 	var continueKey string
@@ -724,6 +764,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			}
 		}
 	}
+	trace.Step("Determined resourceVersion to use")
 
 	// loop until we have filled the requested limit from crdb or there are no more results
 	var lastKey []byte
@@ -731,7 +772,9 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 	var numFetched int
 	var numEvald int
 	var remaining int64
+	var loopIdx int
 	for {
+		loopIdx++
 		if withRev != 0 {
 			providedTimestamp, err := toHybridLogicalClock(withRev)
 			if err != nil {
@@ -750,10 +793,12 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		// transaction here to read that ...
 		// TODO: we're hacking the pgx.TxOptions here for `AS OF SYSTEM TIME` ... but there's no other support for it?
 		if err := s.client.BeginTxFunc(ctx, pgx.TxOptions{DeferrableMode: pgx.TxDeferrableMode(revisionClause)}, func(tx pgx.Tx) error {
+			trace.Step(fmt.Sprintf("began transaction %d", loopIdx))
 			// we need to read the cluster timestamp even if the data read fails with a NotFound
 			if err := tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&clusterTimestamp); err != nil {
 				return err
 			}
+			trace.Step(fmt.Sprintf("read HLC %d", loopIdx))
 
 			// TODO: perhaps just for tests, we need WHERE key LIKE prefix% since those tests expect real prefixing ... but that is not ideal for production
 			clauses, args := whereClause(2, cluster, requestInfo)
@@ -761,6 +806,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			if err := tx.QueryRow(ctx, fmt.Sprintf(`SELECT COUNT(*), MAX(key) FROM k8s WHERE key LIKE '%s%%' AND key >= $1%s;`, keyPrefix, clauses), args...).Scan(&remaining, &finalKey); err != nil {
 				return err
 			}
+			trace.Step(fmt.Sprintf("read counts %d", loopIdx))
 
 			query := fmt.Sprintf(`SELECT key, value, crdb_internal_mvcc_timestamp FROM k8s WHERE key LIKE '%s%%' AND key >= $1%s ORDER BY key%s;`, keyPrefix, clauses, limitClause)
 			rows, err := tx.Query(ctx, query, args...)
@@ -770,6 +816,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			defer func() {
 				rows.Close()
 			}()
+			trace.Step(fmt.Sprintf("about to iterate rows %d", loopIdx))
 
 			// we can be certain that we will read up to our limit, if the data is present
 			numRows := remaining
@@ -783,7 +830,9 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			} else {
 				growSlice(v, 2048, int(numRows))
 			}
+			var rowIdx int
 			for rows.Next() {
+				rowIdx++
 				if err := rows.Err(); err != nil {
 					return err
 				}
@@ -802,6 +851,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 				if err := rows.Scan(&lastKey, &data, &hybridLogicalTimestamp); err != nil {
 					return err
 				}
+				trace.Step(fmt.Sprintf("read row data %d", rowIdx))
 
 				clusterName := cluster.Name
 				if cluster.Wildcard {
@@ -823,10 +873,12 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 				if err != nil {
 					return storage.NewInternalErrorf("unable to transform key %q: %v", lastKey, err)
 				}
+				trace.Step(fmt.Sprintf("transformed row data %d", rowIdx))
 
 				if err := appendListItem(v, data, uint64(objectResourceVersion), opts.Predicate, s.codec, s.versioner, newItemFunc, clusterName); err != nil {
 					return err
 				}
+				trace.Step(fmt.Sprintf("deserialized row data %d", rowIdx))
 				numEvald++
 			}
 
@@ -834,6 +886,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		}); err != nil {
 			return interpretListError(err, len(opts.Predicate.Continue) > 0, continueKey, keyPrefix)
 		}
+		trace.Step(fmt.Sprintf("fetched data %d", loopIdx))
 
 		if sliceFull {
 			break
@@ -894,6 +947,8 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 }
 
 func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Object, ignoreNotFound bool, preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
+	trace := utiltrace.New("GuaranteedUpdate crdb", utiltrace.Field{"type", reflect.TypeOf(out).String()})
+	defer trace.LogIfLong(500 * time.Millisecond)
 	cluster := request.ClusterFrom(ctx)
 	if cluster == nil {
 		cluster = &request.Cluster{
@@ -911,10 +966,13 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 	}
 	transformContext := authenticatedDataString(key)
 
+	var fetchIdx int
 	getCurrentState := func() (*objState, error) {
+		fetchIdx++
 		var hybridLogicalTimestamp apd.Decimal
 		var blob []byte
 		err := s.client.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1 AND cluster=$2;`, key, cluster.Name).Scan(&blob, &hybridLogicalTimestamp)
+		trace.Step(fmt.Sprintf("fetched precondition %d", fetchIdx))
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.NewInternalError(err.Error())
 		}
@@ -922,7 +980,9 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		if rvErr != nil {
 			return nil, rvErr
 		}
-		return s.getState(blob, resourceVersion, key, v, errors.Is(err, pgx.ErrNoRows), ignoreNotFound, cluster.Name)
+		s, e := s.getState(blob, resourceVersion, key, v, errors.Is(err, pgx.ErrNoRows), ignoreNotFound, cluster.Name)
+		trace.Step(fmt.Sprintf("decoded precondition %d", fetchIdx))
+		return s, e
 	}
 
 	var origState *objState
@@ -937,17 +997,21 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		return err
 	}
 
+	var evalIdx int
 	for {
-		if err := preconditions.Check(key, origState.obj); err != nil {
+		evalIdx++
+		precondErr := preconditions.Check(key, origState.obj)
+		trace.Step(fmt.Sprintf("evaluated precondition %d", evalIdx))
+		if precondErr != nil {
 			// If our data is already up to date, return the error
 			if origStateIsCurrent {
-				return err
+				return precondErr
 			}
 
 			// It's possible we were working with stale data
 			// Remember the revision of the potentially stale data and the resulting update error
 			cachedRev := origState.rev
-			cachedPreconditionErr := err
+			cachedPreconditionErr := precondErr
 
 			// Actually fetch
 			origState, err = getCurrentState()
@@ -966,6 +1030,7 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		}
 
 		ret, _, err := s.updateState(origState, tryUpdate) // TODO: ttl?
+		trace.Step(fmt.Sprintf("updated state %d", evalIdx))
 		if err != nil {
 			// If our data is already up to date, return the error
 			if origStateIsCurrent {
@@ -994,6 +1059,7 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		}
 
 		data, err := runtime.Encode(s.codec, ret)
+		trace.Step(fmt.Sprintf("encoded state %d", evalIdx))
 		if err != nil {
 			return err
 		}
@@ -1022,6 +1088,7 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 		if err != nil {
 			return storage.NewInternalError(err.Error())
 		}
+		trace.Step(fmt.Sprintf("transformed to storage %d", evalIdx))
 
 		previousHybridLogicalTimestamp, err := toHybridLogicalClock(origState.rev)
 		if err != nil {
@@ -1070,6 +1137,7 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 			}
 			return storage.NewInternalError(err.Error())
 		}
+		trace.Step(fmt.Sprintf("comitted to storage %d", evalIdx))
 		updatedResourceVersion, rvErr := toResourceVersion(&hybridLogicalTimestamp)
 		if rvErr != nil {
 			return rvErr
@@ -1082,7 +1150,9 @@ func (s *store) GuaranteedUpdate(ctx context.Context, key string, out runtime.Ob
 			origStateIsCurrent = true
 			continue
 		}
-		return decode(s.codec, s.versioner, data, out, updatedResourceVersion, cluster.Name)
+		err = decode(s.codec, s.versioner, data, out, updatedResourceVersion, cluster.Name)
+		trace.Step(fmt.Sprintf("decoded %d", evalIdx))
+		return err
 	}
 }
 
