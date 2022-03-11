@@ -27,6 +27,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	apiserverserviceaccount "k8s.io/apiserver/pkg/authentication/serviceaccount"
+	"k8s.io/client-go/tools/clusters"
 )
 
 func LegacyClaims(serviceAccount v1.ServiceAccount, secret v1.Secret) (*jwt.Claims, interface{}) {
@@ -37,6 +38,7 @@ func LegacyClaims(serviceAccount v1.ServiceAccount, secret v1.Secret) (*jwt.Clai
 			ServiceAccountName: serviceAccount.Name,
 			ServiceAccountUID:  string(serviceAccount.UID),
 			SecretName:         secret.Name,
+			ClusterName:        serviceAccount.ClusterName,
 		}
 }
 
@@ -47,6 +49,7 @@ type legacyPrivateClaims struct {
 	ServiceAccountUID  string `json:"kubernetes.io/serviceaccount/service-account.uid"`
 	SecretName         string `json:"kubernetes.io/serviceaccount/secret.name"`
 	Namespace          string `json:"kubernetes.io/serviceaccount/namespace"`
+	ClusterName        string `json:"kubernetes.io/serviceaccount/clusterName"`
 }
 
 func NewLegacyValidator(lookup bool, getter ServiceAccountTokenGetter) Validator {
@@ -98,7 +101,7 @@ func (v *legacyValidator) Validate(ctx context.Context, tokenData string, public
 
 	if v.lookup {
 		// Make sure token hasn't been invalidated by deletion of the secret
-		secret, err := v.getter.GetSecret(namespace, secretName)
+		secret, err := v.getter.GetSecret(namespace, clusters.ToClusterAwareKey(private.ClusterName, secretName))
 		if err != nil {
 			klog.V(4).Infof("Could not retrieve token %s/%s for service account %s/%s: %v", namespace, secretName, namespace, serviceAccountName, err)
 			return nil, errors.New("Token has been invalidated")
@@ -113,7 +116,7 @@ func (v *legacyValidator) Validate(ctx context.Context, tokenData string, public
 		}
 
 		// Make sure service account still exists (name and UID)
-		serviceAccount, err := v.getter.GetServiceAccount(namespace, serviceAccountName)
+		serviceAccount, err := v.getter.GetServiceAccount(namespace, clusters.ToClusterAwareKey(private.ClusterName, serviceAccountName))
 		if err != nil {
 			klog.V(4).Infof("Could not retrieve service account %s/%s: %v", namespace, serviceAccountName, err)
 			return nil, err
@@ -129,9 +132,10 @@ func (v *legacyValidator) Validate(ctx context.Context, tokenData string, public
 	}
 
 	return &apiserverserviceaccount.ServiceAccountInfo{
-		Namespace: private.Namespace,
-		Name:      private.ServiceAccountName,
-		UID:       private.ServiceAccountUID,
+		ClusterName: private.ClusterName,
+		Namespace:   private.Namespace,
+		Name:        private.ServiceAccountName,
+		UID:         private.ServiceAccountUID,
 	}, nil
 }
 

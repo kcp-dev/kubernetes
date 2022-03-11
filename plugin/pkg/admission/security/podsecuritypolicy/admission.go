@@ -211,7 +211,7 @@ func (p *Plugin) computeSecurityContext(ctx context.Context, a admission.Attribu
 	klog.V(4).Infof("getting pod security policies for pod %s (generate: %s)", pod.Name, pod.GenerateName)
 	var saInfo user.Info
 	if len(pod.Spec.ServiceAccountName) > 0 {
-		saInfo = serviceaccount.UserInfo(a.GetNamespace(), pod.Spec.ServiceAccountName, "")
+		saInfo = serviceaccount.UserInfo(pod.ClusterName, a.GetNamespace(), pod.Spec.ServiceAccountName, "")
 	}
 
 	policies, err := p.lister.List(labels.Everything())
