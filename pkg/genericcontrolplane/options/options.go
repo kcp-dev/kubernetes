@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/mutating"
-	"k8s.io/apiserver/pkg/admission/plugin/webhook/validating"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
@@ -116,7 +115,7 @@ func NewServerRunOptions() *ServerRunOptions {
 	s.Etcd.EnableWatchCache = false
 
 	// TODO: turn off the admission webhooks for now
-	s.Admission.DefaultOffPlugins.Insert(validating.PluginName, mutating.PluginName)
+	s.Admission.DefaultOffPlugins.Insert(mutating.PluginName)
 
 	// Overwrite the default for storage data format.
 	s.Etcd.DefaultStorageMediaType = "application/vnd.kubernetes.protobuf"

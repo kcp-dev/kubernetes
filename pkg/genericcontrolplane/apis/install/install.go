@@ -18,6 +18,7 @@ package install
 
 import (
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
+	admissionregistrationinstall "k8s.io/kubernetes/pkg/apis/admissionregistration/install"
 	authenticationinstall "k8s.io/kubernetes/pkg/apis/authentication/install"
 	authorizationinstall "k8s.io/kubernetes/pkg/apis/authorization/install"
 	certificatesinstall "k8s.io/kubernetes/pkg/apis/certificates/install"
@@ -37,4 +38,5 @@ func init() {
 	rbacinstall.Install(genericcontrolplanescheme.Scheme)
 	flowcontrolinstall.Install(genericcontrolplanescheme.Scheme)
 	eventsinstall.Install(genericcontrolplanescheme.Scheme)
+	admissionregistrationinstall.Install(genericcontrolplanescheme.Scheme)
 }

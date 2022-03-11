@@ -33,6 +33,7 @@ import (
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/generic"
 	webhookrequest "k8s.io/apiserver/pkg/admission/plugin/webhook/request"
 	endpointsrequest "k8s.io/apiserver/pkg/endpoints/request"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	webhookutil "k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/apiserver/pkg/warning"
 	"k8s.io/klog/v2"
@@ -64,10 +65,15 @@ var _ generic.Dispatcher = &validatingDispatcher{}
 
 func (d *validatingDispatcher) Dispatch(ctx context.Context, attr admission.Attributes, o admission.ObjectInterfaces, hooks []webhook.WebhookAccessor) error {
 	var relevantHooks []*generic.WebhookInvocation
-	// Construct all the versions we need to call our webhooks
 	versionedAttrs := map[schema.GroupVersionKind]*generic.VersionedAttributes{}
+
+	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
+	if err != nil {
+		return err
+	}
+
 	for _, hook := range hooks {
-		invocation, statusError := d.plugin.ShouldCallHook(hook, attr, o)
+		invocation, statusError := d.plugin.ShouldCallHook(hook, attr, o, clusterName)
 		if statusError != nil {
 			return statusError
 		}

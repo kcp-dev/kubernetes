@@ -19,7 +19,7 @@ package webhook
 import (
 	"sync"
 
-	"k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	webhookutil "k8s.io/apiserver/pkg/util/webhook"
@@ -30,6 +30,8 @@ import (
 type WebhookAccessor interface {
 	// GetUID gets a string that uniquely identifies the webhook.
 	GetUID() string
+
+	GetCluster() string
 
 	// GetConfigurationName gets the name of the webhook configuration that owns this webhook.
 	GetConfigurationName() string
@@ -91,6 +93,10 @@ type mutatingWebhookAccessor struct {
 	initClient sync.Once
 	client     *rest.RESTClient
 	clientErr  error
+}
+
+func (m *mutatingWebhookAccessor) GetCluster() string {
+	return ""
 }
 
 func (m *mutatingWebhookAccessor) GetUID() string {
@@ -171,14 +177,15 @@ func (m *mutatingWebhookAccessor) GetValidatingWebhook() (*v1.ValidatingWebhook,
 }
 
 // NewValidatingWebhookAccessor creates an accessor for a ValidatingWebhook.
-func NewValidatingWebhookAccessor(uid, configurationName string, h *v1.ValidatingWebhook) WebhookAccessor {
-	return &validatingWebhookAccessor{uid: uid, configurationName: configurationName, ValidatingWebhook: h}
+func NewValidatingWebhookAccessor(uid, configurationName, cluster string, h *v1.ValidatingWebhook) WebhookAccessor {
+	return &validatingWebhookAccessor{uid: uid, configurationName: configurationName, cluster: cluster, ValidatingWebhook: h}
 }
 
 type validatingWebhookAccessor struct {
 	*v1.ValidatingWebhook
 	uid               string
 	configurationName string
+	cluster           string
 
 	initObjectSelector sync.Once
 	objectSelector     labels.Selector
@@ -191,6 +198,11 @@ type validatingWebhookAccessor struct {
 	initClient sync.Once
 	client     *rest.RESTClient
 	clientErr  error
+}
+
+func (v *validatingWebhookAccessor) GetCluster() string {
+	return v.cluster
+
 }
 
 func (v *validatingWebhookAccessor) GetUID() string {

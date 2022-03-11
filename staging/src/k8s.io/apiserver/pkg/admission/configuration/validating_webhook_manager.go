@@ -21,7 +21,7 @@ import (
 	"sort"
 	"sync/atomic"
 
-	"k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/admission/plugin/webhook"
@@ -118,7 +118,7 @@ func mergeValidatingWebhookConfigurations(configurations []*v1.ValidatingWebhook
 			n := c.Webhooks[i].Name
 			uid := fmt.Sprintf("%s/%s/%d", c.Name, n, names[n])
 			names[n]++
-			accessors = append(accessors, webhook.NewValidatingWebhookAccessor(uid, c.Name, &c.Webhooks[i]))
+			accessors = append(accessors, webhook.NewValidatingWebhookAccessor(uid, c.Name, c.ObjectMeta.ClusterName, &c.Webhooks[i]))
 		}
 	}
 	return accessors
