@@ -26,10 +26,12 @@ import (
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/validating"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
+	"k8s.io/client-go/util/keyutil"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
 
+	kubeauthenticator "k8s.io/kubernetes/pkg/kubeapiserver/authenticator"
 	kubeoptions "k8s.io/kubernetes/pkg/kubeapiserver/options"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 )
@@ -138,6 +140,51 @@ func (o *ServerRunOptions) Complete() (CompletedServerRunOptions, error) {
 			}
 		}
 		klog.Infof("external host was not specified, using %v", o.GenericServerRunOptions.ExternalHost)
+	}
+
+	// Use (ServiceAccountSigningKeyFile != "") as a proxy to the user enabling
+	// TokenRequest functionality. This defaulting was convenient, but messed up
+	// a lot of people when they rotated their serving cert with no idea it was
+	// connected to their service account keys. We are taking this opportunity to
+	// remove this problematic defaulting.
+	if o.ServiceAccountSigningKeyFile == "" {
+		// Default to the private server key for service account token signing
+		if len(o.Authentication.ServiceAccounts.KeyFiles) == 0 && o.SecureServing.ServerCert.CertKey.KeyFile != "" {
+			if kubeauthenticator.IsValidServiceAccountKeyFile(o.SecureServing.ServerCert.CertKey.KeyFile) {
+				o.Authentication.ServiceAccounts.KeyFiles = []string{o.SecureServing.ServerCert.CertKey.KeyFile}
+			} else {
+				klog.Warning("No TLS key provided, service account token authentication disabled")
+			}
+		}
+	}
+
+	if o.ServiceAccountSigningKeyFile != "" && len(o.Authentication.ServiceAccounts.Issuers) != 0 && o.Authentication.ServiceAccounts.Issuers[0] != "" {
+		sk, err := keyutil.PrivateKeyFromFile(o.ServiceAccountSigningKeyFile)
+		if err != nil {
+			return CompletedServerRunOptions{}, fmt.Errorf("failed to parse service-account-issuer-key-file: %v", err)
+		}
+		if o.Authentication.ServiceAccounts.MaxExpiration != 0 {
+			lowBound := time.Hour
+			upBound := time.Duration(1<<32) * time.Second
+			if o.Authentication.ServiceAccounts.MaxExpiration < lowBound ||
+				o.Authentication.ServiceAccounts.MaxExpiration > upBound {
+				return CompletedServerRunOptions{}, fmt.Errorf("the service-account-max-token-expiration must be between 1 hour and 2^32 seconds")
+			}
+			if o.Authentication.ServiceAccounts.ExtendExpiration {
+				if o.Authentication.ServiceAccounts.MaxExpiration < serviceaccount.WarnOnlyBoundTokenExpirationSeconds*time.Second {
+					klog.Warningf("service-account-extend-token-expiration is true, in order to correctly trigger safe transition logic, service-account-max-token-expiration must be set longer than %d seconds (currently %s)", serviceaccount.WarnOnlyBoundTokenExpirationSeconds, o.Authentication.ServiceAccounts.MaxExpiration)
+				}
+				if o.Authentication.ServiceAccounts.MaxExpiration < serviceaccount.ExpirationExtensionSeconds*time.Second {
+					klog.Warningf("service-account-extend-token-expiration is true, enabling tokens valid up to %d seconds, which is longer than service-account-max-token-expiration set to %s seconds", serviceaccount.ExpirationExtensionSeconds, o.Authentication.ServiceAccounts.MaxExpiration)
+				}
+			}
+		}
+
+		o.ServiceAccountIssuer, err = serviceaccount.JWTTokenGenerator(o.Authentication.ServiceAccounts.Issuers[0], sk)
+		if err != nil {
+			return CompletedServerRunOptions{}, fmt.Errorf("failed to build token generator: %v", err)
+		}
+		o.ServiceAccountTokenMaxExpiration = o.Authentication.ServiceAccounts.MaxExpiration
 	}
 
 	for key, value := range o.APIEnablement.RuntimeConfig {
