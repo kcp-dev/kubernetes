@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"time"
 
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apiserverinternalv1alpha1 "k8s.io/api/apiserverinternal/v1alpha1"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	authorizationapiv1 "k8s.io/api/authorization/v1"
@@ -57,6 +58,7 @@ import (
 	"k8s.io/utils/clock"
 
 	// RESTStorage installers
+	admissionregistrationrest "k8s.io/kubernetes/pkg/registry/admissionregistration/rest"
 	apiserverinternalrest "k8s.io/kubernetes/pkg/registry/apiserverinternal/rest"
 	authenticationrest "k8s.io/kubernetes/pkg/registry/authentication/rest"
 	authorizationrest "k8s.io/kubernetes/pkg/registry/authorization/rest"
@@ -229,6 +231,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		rbacrest.RESTStorageProvider{Authorizer: c.GenericConfig.Authorization.Authorizer},
 		flowcontrolrest.RESTStorageProvider{},
 		eventsrest.RESTStorageProvider{TTL: c.ExtraConfig.EventTTL},
+		admissionregistrationrest.RESTStorageProvider{},
 	}
 	if err := m.InstallAPIs(c.ExtraConfig.APIResourceConfigSource, c.GenericConfig.RESTOptionsGetter, restStorageProviders...); err != nil {
 		return nil, err
@@ -439,6 +442,7 @@ func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 		rbacv1.SchemeGroupVersion,
 		flowcontrolv1beta1.SchemeGroupVersion,
 		flowcontrolv1beta2.SchemeGroupVersion,
+		admissionregistrationv1.SchemeGroupVersion,
 	)
 	// disable alpha versions explicitly so we have a full list of what's possible to serve
 	ret.DisableVersions(
