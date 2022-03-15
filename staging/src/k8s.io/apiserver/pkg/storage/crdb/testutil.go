@@ -49,7 +49,11 @@ func (e *crdbTestBootstrapper) InterfaceForClient(t *testing.T, client storage.I
 	if !ok {
 		t.Fatalf("got a %T, not crdb test client", client)
 	}
-	store := newStore(pool, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+	})
+	store := newStore(ctx, pool, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
 	return &crdbTestInterface{store: store}
 }
 
@@ -62,7 +66,10 @@ func (e *crdbTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc 
 		ts.Stop()
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+	})
 	cfg, err := pgxpool.ParseConfig(ts.PGURL().String())
 	if err != nil {
 		t.Fatalf("failed to parse test connection: %v", err)
@@ -99,7 +106,7 @@ func (e *crdbTestBootstrapper) Setup(t *testing.T, codec runtime.Codec, newFunc 
 			t.Fatalf("error initializing the database: %v", err)
 		}
 	}
-	store := newStore(recordingClient, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+	store := newStore(ctx, recordingClient, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
 
 	clusterName := "admin"
 	ctx = request.WithCluster(ctx, request.Cluster{Name: clusterName})

@@ -18,7 +18,6 @@ package crdb
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -34,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/storage"
-	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	"k8s.io/apiserver/pkg/storage/value"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 
@@ -75,6 +73,7 @@ func TestOnlySetFatalOnDecodeError(b bool) {
 }
 
 type watcher struct {
+	cache       *changefeedCache
 	client      pool
 	codec       runtime.Codec
 	newFunc     func() runtime.Object
@@ -101,8 +100,9 @@ type watchChan struct {
 	cluster *request.Cluster
 }
 
-func newWatcher(client pool, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
+func newWatcher(ctx context.Context, client pool, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
 	res := &watcher{
+		cache:       initialize(ctx, client),
 		client:      client,
 		codec:       codec,
 		newFunc:     newFunc,
@@ -311,7 +311,6 @@ func logWatchChannelErr(err error) {
 
 type changefeedEvent struct {
 	MVCCTimestamp *apd.Decimal `json:"mvcc_timestamp,omitempty"`
-	Updated       *apd.Decimal `json:"Updated,omitempty"`
 	Resolved      *apd.Decimal `json:"resolved,omitempty"`
 
 	Before *row `json:"before,omitempty"`
@@ -357,146 +356,43 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 		wc.sendError(err)
 		return
 	}
-	options := []string{
-		"updated",
-		"diff",
-		"mvcc_timestamp",
-		fmt.Sprintf("cursor='%s'", initialWatchTimestamp.String()),
-	}
-	if wc.progressNotify {
-		options = append(options, "resolved='1s'") // TODO: this is a server setting in etcd, but a client one for us
-	}
-	query := fmt.Sprintf(`EXPERIMENTAL CHANGEFEED FOR k8s WITH %s;`, strings.Join(options, ","))
-	// TODO: the SQL logger only prints the command when it finishes, so we never see it ...
-	klog.V(10).InfoS("Exec", "sql", query)
-	rows, err := wc.watcher.client.Query(wc.ctx, query)
-	if err != nil {
-		// If there is an error on server (e.g. compaction), the channel will return it before closed.
-		err = fmt.Errorf("failed to create changefeed: %w", err)
-		logWatchChannelErr(err)
-		wc.sendError(err)
-		return
-	}
-	defer func() {
-		rows.Close()
+
+	events := make(chan *event)
+	go func() {
+		for {
+			select {
+			case <-wc.ctx.Done():
+				return
+			case evt := <-events:
+				if evt.eType == eventTypeProgressNotify {
+					if wc.progressNotify {
+						wc.sendEvent(evt)
+					}
+					continue
+				}
+
+				keyFilter := func(incomingKey string) bool {
+					if wc.recursive {
+						return strings.HasPrefix(incomingKey, wc.key)
+					}
+					return incomingKey == wc.key
+				}
+				clusterFilter := func(incomingCluster string) bool {
+					if wc.cluster != nil && !wc.cluster.Wildcard && wc.cluster.Name != "" {
+						return incomingCluster == wc.cluster.Name
+					}
+					return true
+				}
+
+				if !keyFilter(evt.key) || !clusterFilter(evt.cluster) {
+					// this watch should not emit this event
+					continue
+				}
+				wc.sendEvent(evt)
+			}
+		}
 	}()
-	for rows.Next() {
-		if err := rows.Err(); err != nil {
-			err = fmt.Errorf("failed to read changefeed row: %w", err)
-			logWatchChannelErr(err)
-			wc.sendError(err)
-			return
-		}
-
-		values := rows.RawValues()
-		if len(values) != 3 {
-			err := fmt.Errorf("expected 3 values in changefeed row, got %d", len(values))
-			logWatchChannelErr(err)
-			wc.sendError(err)
-			return
-		}
-		// values upacks into (tableName, primaryKey, rowData)
-		// tableName = name
-		// primaryKey = ["array", "of", "values"]
-		// rowData = {...}
-		primaryKeysRaw, data := values[1], values[2]
-
-		var key, cluster string
-		if len(primaryKeysRaw) != 0 {
-			// this is insanity but not sure what the best way to parse this is ... ?
-			type wrappedPrimaryKey struct {
-				Key []string `json:"key"`
-			}
-			jsonPrimaryKey := fmt.Sprintf(`{"key":%s}`, string(primaryKeysRaw))
-			var wrappedJsonPrimaryKey wrappedPrimaryKey
-			if err := json.Unmarshal([]byte(jsonPrimaryKey), &wrappedJsonPrimaryKey); err != nil {
-				err = fmt.Errorf("failed to deserialize changefeed primary key: %w", err)
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-			primaryKeys := wrappedJsonPrimaryKey.Key
-			if len(primaryKeys) != 2 {
-				// this should be (key, cluster) as defined in the CREATE TABLE
-				err := fmt.Errorf("expected 2 values in changefeed row primary key, got %d", len(primaryKeys))
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-			key, cluster = primaryKeys[0], primaryKeys[1]
-		}
-
-		var evt changefeedEvent
-		if err := json.Unmarshal(data, &evt); err != nil {
-			err = fmt.Errorf("failed to deserialize changefeed row: %w", err)
-			logWatchChannelErr(err)
-			wc.sendError(err)
-			return
-		}
-
-		// sanity check
-		if evt.After != nil {
-			if evt.After.Key != key {
-				err := fmt.Errorf("expected key in primary key (%s) to match key in row (%s)", key, evt.After.Key)
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-			if evt.After.Cluster != cluster {
-				err := fmt.Errorf("expected cluster in primary key (%s) to match cluster in row (%s)", cluster, evt.After.Cluster)
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-		}
-
-		if evt.Resolved != nil {
-			resourceVersion, err := toResourceVersion(evt.Resolved)
-			if err != nil {
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-			wc.sendEvent(progressNotifyEvent(resourceVersion))
-			metrics.RecordEtcdBookmark(wc.watcher.objectType)
-			continue
-		}
-
-		keyFilter := func(incomingKey string) bool {
-			if wc.recursive {
-				return strings.HasPrefix(incomingKey, wc.key)
-			}
-			return incomingKey == wc.key
-		}
-		clusterFilter := func(incomingCluster string) bool {
-			if wc.cluster != nil && !wc.cluster.Wildcard && wc.cluster.Name != "" {
-				return incomingCluster == wc.cluster.Name
-			}
-			return true
-		}
-
-		if !keyFilter(key) || !clusterFilter(cluster) {
-			// this watch should not emit this event
-			continue
-		}
-
-		if evt.Updated != nil {
-			resourceVersion, err := toResourceVersion(evt.Updated)
-			if err != nil {
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-
-			parsedEvent, err := parseEvent(key, &evt, resourceVersion)
-			if err != nil {
-				logWatchChannelErr(err)
-				wc.sendError(err)
-				return
-			}
-			wc.sendEvent(parsedEvent)
-		}
-	}
+	wc.watcher.cache.subscribeAfter(wc.ctx, &initialWatchTimestamp, events)
 	// When we come to this point, it's only possible that client side ends the watch.
 	// e.g. cancel the context, close the client.
 	// If this watch chan is broken and context isn't cancelled, other goroutines will still hang.
@@ -553,8 +449,14 @@ func (wc *watchChan) transform(e *event) (res *watch.Event) {
 		return nil
 	}
 
-	switch {
-	case e.isProgressNotify:
+	switch e.eType {
+	case eventTypeCompacted:
+		status := apierrors.NewResourceExpired("The resourceVersion for the provided watch is too old.").Status()
+		res = &watch.Event{
+			Type:   watch.Error,
+			Object: &status,
+		}
+	case eventTypeProgressNotify:
 		if wc.watcher.newFunc == nil {
 			return nil
 		}
@@ -567,7 +469,7 @@ func (wc *watchChan) transform(e *event) (res *watch.Event) {
 			Type:   watch.Bookmark,
 			Object: object,
 		}
-	case e.isDeleted:
+	case eventTypeDeleted:
 		if !wc.filter(oldObj) {
 			return nil
 		}
@@ -575,7 +477,7 @@ func (wc *watchChan) transform(e *event) (res *watch.Event) {
 			Type:   watch.Deleted,
 			Object: oldObj,
 		}
-	case e.isCreated:
+	case eventTypeCreated:
 		if !wc.filter(curObj) {
 			return nil
 		}
@@ -644,12 +546,12 @@ func (wc *watchChan) sendEvent(e *event) {
 }
 
 func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtime.Object, err error) {
-	if e.isProgressNotify {
+	if e.eType == eventTypeProgressNotify {
 		// progressNotify events doesn't contain neither current nor previous object version,
 		return nil, nil, nil
 	}
 
-	if !e.isDeleted {
+	if e.eType != eventTypeDeleted {
 		data, _, err := wc.watcher.transformer.TransformFromStorage(e.value, authenticatedDataString(e.key))
 		if err != nil {
 			return nil, nil, err
@@ -690,7 +592,7 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 	// know that the filter for previous object will return true and
 	// we need the object only to compute whether it was filtered out
 	// before).
-	if len(e.prevValue) > 0 && (e.isDeleted || !wc.acceptAll()) {
+	if len(e.prevValue) > 0 && (e.eType == eventTypeDeleted || !wc.acceptAll()) {
 		data, _, err := wc.watcher.transformer.TransformFromStorage(e.prevValue, authenticatedDataString(e.key))
 		if err != nil {
 			return nil, nil, err

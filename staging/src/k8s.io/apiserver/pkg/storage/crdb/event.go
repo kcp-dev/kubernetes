@@ -20,16 +20,28 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/cockroachdb/apd"
+)
+
+type eventType int
+
+const (
+	eventTypeProgressNotify eventType = iota
+	eventTypeCreated
+	eventTypeUpdated
+	eventTypeDeleted
+	eventTypeCompacted
 )
 
 type event struct {
-	key              string
-	value            []byte
-	prevValue        []byte
-	rev              int64
-	isDeleted        bool
-	isCreated        bool
-	isProgressNotify bool
+	key       string
+	cluster   string
+	value     []byte
+	prevValue []byte
+	rev       int64
+	rawRev    *apd.Decimal
+	eType     eventType
 }
 
 // parseData converts a KeyValue retrieved from an initial sync() listing to a synthetic isCreated event.
@@ -39,19 +51,38 @@ func parseData(key string, data []byte, resourceVersion int64) *event {
 		value:     data,
 		prevValue: nil,
 		rev:       resourceVersion,
-		isDeleted: false,
-		isCreated: true,
+		eType:     eventTypeCreated,
 	}
 }
 
-func parseEvent(key string, e *changefeedEvent, resourceVersion int64) (*event, error) {
+func parseEvent(e *changefeedEvent) (*event, error) {
+	var rawRev *apd.Decimal
+	if e.Resolved != nil {
+		rawRev = e.Resolved
+	} else {
+		rawRev = e.MVCCTimestamp
+	}
+	resourceVersion, err := toResourceVersion(rawRev)
+	if err != nil {
+		return nil, err
+	}
 	ret := &event{
-		key:       key,
-		rev:       resourceVersion,
-		isDeleted: e.After == nil,
-		isCreated: e.Before == nil,
+		rev:    resourceVersion,
+		rawRev: rawRev,
+	}
+	switch {
+	case e.Resolved != nil:
+		ret.eType = eventTypeProgressNotify
+	case e.After == nil:
+		ret.eType = eventTypeDeleted
+	case e.Before == nil:
+		ret.eType = eventTypeCreated
+	default:
+		ret.eType = eventTypeUpdated
 	}
 	if e.After != nil {
+		ret.key = e.After.Key
+		ret.cluster = e.After.Cluster
 		value, err := hex.DecodeString(strings.TrimPrefix(e.After.Value, "\\x"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode value: %w", err)
@@ -59,6 +90,8 @@ func parseEvent(key string, e *changefeedEvent, resourceVersion int64) (*event, 
 		ret.value = value
 	}
 	if e.Before != nil {
+		ret.key = e.Before.Key
+		ret.cluster = e.Before.Cluster
 		value, err := hex.DecodeString(strings.TrimPrefix(e.Before.Value, "\\x"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode value: %w", err)
@@ -66,11 +99,4 @@ func parseEvent(key string, e *changefeedEvent, resourceVersion int64) (*event, 
 		ret.prevValue = value
 	}
 	return ret, nil
-}
-
-func progressNotifyEvent(rev int64) *event {
-	return &event{
-		rev:              rev,
-		isProgressNotify: true,
-	}
 }

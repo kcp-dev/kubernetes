@@ -50,11 +50,11 @@ import (
 	utiltrace "k8s.io/utils/trace"
 )
 
-func New(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.Interface {
-	return newStore(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+func New(ctx context.Context, c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.Interface {
+	return newStore(ctx, c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
 }
 
-func newStore(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) *store {
+func newStore(ctx context.Context, c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) *store {
 	objectVersioner := versioner.APIObjectVersioner{}
 	return &store{
 		client:        c,
@@ -68,7 +68,7 @@ func newStore(c pool, codec runtime.Codec, newFunc func() runtime.Object, prefix
 		pathPrefix:          path.Join("/", prefix),
 		groupResource:       groupResource,
 		groupResourceString: groupResource.String(),
-		watcher:             newWatcher(c, codec, newFunc, objectVersioner, transformer),
+		watcher:             newWatcher(ctx, c, codec, newFunc, objectVersioner, transformer),
 	}
 }
 

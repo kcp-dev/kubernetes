@@ -105,7 +105,9 @@ func newCRDBClient(ctx context.Context, c storagebackend.TransportConfig) (*pgxp
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse test connection: %v", err)
 	}
-	tlsConfig.ServerName = cfg.ConnConfig.Config.Host
+	if tlsConfig != nil {
+		tlsConfig.ServerName = cfg.ConnConfig.Config.Host
+	}
 	cfg.ConnConfig.TLSConfig = tlsConfig
 	if egressDialer != nil {
 		cfg.ConnConfig.DialFunc = pgconn.DialFunc(egressDialer)
@@ -148,9 +150,11 @@ func (l *Logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data m
 
 var once = sync.Once{}
 
-func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, newFunc func() runtime.Object) (storage.Interface, DestroyFunc, error) {
+func newCRDBStorage(c storagebackend.ConfigForResource, newFunc func() runtime.Object) (storage.Interface, DestroyFunc, error) {
+	ctx, cancel := context.WithCancel(context.Background())
 	client, err := newCRDBClient(ctx, c.Transport)
 	if err != nil {
+		cancel()
 		return nil, nil, err
 	}
 
@@ -186,6 +190,7 @@ func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, new
 		//}
 	})
 	if initErr != nil {
+		cancel()
 		return nil, nil, initErr
 	}
 
@@ -197,6 +202,7 @@ func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, new
 		// Hence, we only destroy once.
 		// TODO: fix duplicated storage destroy calls higher level
 		once.Do(func() {
+			cancel()
 			client.Close()
 		})
 	}
@@ -204,5 +210,5 @@ func newCRDBStorage(ctx context.Context, c storagebackend.ConfigForResource, new
 	if transformer == nil {
 		transformer = value.IdentityTransformer
 	}
-	return crdb.New(client, c.Codec, newFunc, c.Prefix, c.GroupResource, transformer, c.Paging), destroyFunc, nil
+	return crdb.New(ctx, client, c.Codec, newFunc, c.Prefix, c.GroupResource, transformer, c.Paging), destroyFunc, nil
 }
