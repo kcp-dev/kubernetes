@@ -243,7 +243,7 @@ func NoNamespaceKeyRootFunc(ctx context.Context, prefix string) string {
 	if cluster.Wildcard {
 		return key
 	}
-	return key + "/" + cluster.Name
+	return key + "/" + cluster.Name.String()
 }
 
 // NamespaceKeyRootFunc is the default function for constructing storage paths

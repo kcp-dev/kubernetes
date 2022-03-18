@@ -84,6 +84,7 @@ func (g *genClientset) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 		"NewDiscoveryClientForConfigOrDie":     c.Universe.Function(types.Name{Package: "k8s.io/client-go/discovery", Name: "NewDiscoveryClientForConfigOrDie"}),
 		"NewDiscoveryClient":                   c.Universe.Function(types.Name{Package: "k8s.io/client-go/discovery", Name: "NewDiscoveryClient"}),
 		"flowcontrolNewTokenBucketRateLimiter": c.Universe.Function(types.Name{Package: "k8s.io/client-go/util/flowcontrol", Name: "NewTokenBucketRateLimiter"}),
+		"LogicalCluster":                       c.Universe.Type(types.Name{Package: "github.com/kcp-dev/apimachinery/pkg/logicalcluster", Name: "LogicalCluster"}),
 	}
 	sw.Do(clusterInterface, m)
 	sw.Do(clusterTemplate, m)
@@ -106,7 +107,7 @@ func (g *genClientset) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 
 var clusterInterface = `
 type ClusterInterface interface {
-	Cluster(name string) Interface
+	Cluster(name $.LogicalCluster|raw$) Interface
 }
 `
 
@@ -118,7 +119,7 @@ type Cluster struct {
 
 var setClusterTemplate = `
 // Cluster sets the cluster for a Clientset.
-func (c *Cluster) Cluster(name string) Interface {
+func (c *Cluster) Cluster(name $.LogicalCluster|raw$) Interface {
 	return &Clientset{
 		scopedClientset: c.scopedClientset,
 		cluster:         name,
@@ -152,7 +153,7 @@ var clientsetTemplate = `
 // version included in a Clientset.
 type Clientset struct {
 	*scopedClientset
-	cluster string
+	cluster $.LogicalCluster|raw$
 }
 `
 

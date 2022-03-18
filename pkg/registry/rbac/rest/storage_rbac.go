@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	rbacapiv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -163,7 +165,7 @@ func (p *PolicyData) EnsureRBACPolicy() genericapiserver.PostStartHookFunc {
 				utilruntime.HandleError(fmt.Errorf("unable to initialize client set: %v", err))
 				return false, nil
 			}
-			client := clientClusterGetter.Cluster("system:admin")
+			client := clientClusterGetter.Cluster(logicalcluster.New("system:admin"))
 			return ensureRBACPolicy(p, client)
 		})
 		// if we're never able to make it through initialization, kill the API server

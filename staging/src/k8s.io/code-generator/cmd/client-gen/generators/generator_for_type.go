@@ -127,16 +127,17 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 		extendedMethod := extendedInterfaceMethod{
 			template: updatedVerbtemplate,
 			args: map[string]interface{}{
-				"type":          t,
-				"inputType":     &inputType,
-				"resultType":    &resultType,
-				"CreateOptions": c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "CreateOptions"}),
-				"GetOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "GetOptions"}),
-				"ListOptions":   c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ListOptions"}),
-				"UpdateOptions": c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "UpdateOptions"}),
-				"ApplyOptions":  c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ApplyOptions"}),
-				"PatchType":     c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/types", Name: "PatchType"}),
-				"jsonMarshal":   c.Universe.Type(types.Name{Package: "encoding/json", Name: "Marshal"}),
+				"type":           t,
+				"inputType":      &inputType,
+				"resultType":     &resultType,
+				"CreateOptions":  c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "CreateOptions"}),
+				"GetOptions":     c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "GetOptions"}),
+				"ListOptions":    c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ListOptions"}),
+				"UpdateOptions":  c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "UpdateOptions"}),
+				"ApplyOptions":   c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ApplyOptions"}),
+				"PatchType":      c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/types", Name: "PatchType"}),
+				"jsonMarshal":    c.Universe.Type(types.Name{Package: "encoding/json", Name: "Marshal"}),
+				"LogicalCluster": c.Universe.Type(types.Name{Package: "github.com/kcp-dev/apimachinery/pkg/logicalcluster", Name: "LogicalCluster"}),
 			},
 		}
 		if e.HasVerb("apply") {
@@ -169,6 +170,7 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 		"RESTClientInterface":  c.Universe.Type(types.Name{Package: "k8s.io/client-go/rest", Name: "Interface"}),
 		"schemeParameterCodec": c.Universe.Variable(types.Name{Package: filepath.Join(g.clientsetPackage, "scheme"), Name: "ParameterCodec"}),
 		"jsonMarshal":          c.Universe.Type(types.Name{Package: "encoding/json", Name: "Marshal"}),
+		"LogicalCluster":       c.Universe.Type(types.Name{Package: "github.com/kcp-dev/apimachinery/pkg/logicalcluster", Name: "LogicalCluster"}),
 	}
 
 	if generateApply {
@@ -423,7 +425,7 @@ var structNamespaced = `
 // $.type|privatePlural$ implements $.type|public$Interface
 type $.type|privatePlural$ struct {
 	client  $.RESTClientInterface|raw$
-	cluster string
+	cluster $.LogicalCluster|raw$
 	ns      string
 }
 `
@@ -433,7 +435,7 @@ var structNonNamespaced = `
 // $.type|privatePlural$ implements $.type|public$Interface
 type $.type|privatePlural$ struct {
 	client  $.RESTClientInterface|raw$
-	cluster string
+	cluster $.LogicalCluster|raw$
 }
 `
 

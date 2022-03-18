@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
@@ -110,7 +112,7 @@ func MakeNamespaceGroupName(namespace string) string {
 }
 
 // UserInfo returns a user.Info interface for the given namespace, service account name and UID
-func UserInfo(clusterName, namespace, name, uid string) user.Info {
+func UserInfo(clusterName logicalcluster.LogicalCluster, namespace, name, uid string) user.Info {
 	return (&ServiceAccountInfo{
 		ClusterName: clusterName,
 		Name:        name,
@@ -120,7 +122,7 @@ func UserInfo(clusterName, namespace, name, uid string) user.Info {
 }
 
 type ServiceAccountInfo struct {
-	ClusterName          string
+	ClusterName          logicalcluster.LogicalCluster
 	Name, Namespace, UID string
 	PodName, PodUID      string
 }
@@ -140,7 +142,7 @@ func (sa *ServiceAccountInfo) UserInfo() user.Info {
 	if info.Extra == nil {
 		info.Extra = map[string][]string{}
 	}
-	info.Extra[ClusterNameKey] = []string{sa.ClusterName}
+	info.Extra[ClusterNameKey] = []string{sa.ClusterName.String()}
 	return info
 }
 

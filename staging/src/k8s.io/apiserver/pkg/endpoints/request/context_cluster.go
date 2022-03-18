@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 )
 
 type clusterKey int
@@ -31,9 +33,7 @@ const (
 
 type Cluster struct {
 	// Name is the name of the cluster.
-	Name string
-	// Parents defines the parent clusters that apply to this request.
-	Parents []string
+	Name logicalcluster.LogicalCluster
 
 	// HACK: only for testing wildcard semantics
 	// If true the query applies to all clusters
@@ -70,7 +70,7 @@ func ValidClusterFrom(ctx context.Context) (*Cluster, error) {
 	if cluster == nil {
 		return nil, buildClusterError("no cluster in the request context", ctx)
 	}
-	if cluster.Name == "" && !cluster.Wildcard {
+	if cluster.Name.Empty() && !cluster.Wildcard {
 		return nil, buildClusterError("cluster name is empty in the request context", ctx)
 	}
 	return cluster, nil
@@ -79,13 +79,13 @@ func ValidClusterFrom(ctx context.Context) (*Cluster, error) {
 // ClusterNameFrom returns the cluster name from the value of the cluster
 // key on the ctx.
 // If the cluster name is empty, then return an error.
-func ClusterNameFrom(ctx context.Context) (string, error) {
+func ClusterNameFrom(ctx context.Context) (logicalcluster.LogicalCluster, error) {
 	cluster, err := ValidClusterFrom(ctx)
 	if err != nil {
-		return "", err
+		return logicalcluster.LogicalCluster{}, err
 	}
-	if cluster.Name == "" {
-		return "", buildClusterError("cluster name is empty in the request context", ctx)
+	if cluster.Name.Empty() {
+		return logicalcluster.LogicalCluster{}, buildClusterError("cluster name is empty in the request context", ctx)
 	}
 	return cluster.Name, nil
 }

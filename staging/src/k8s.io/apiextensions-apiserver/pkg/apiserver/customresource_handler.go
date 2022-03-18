@@ -48,6 +48,7 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -562,9 +563,9 @@ func (r *crdHandler) updateCustomResourceDefinition(oldObj, newObj interface{}) 
 	if !apiextensionshelpers.IsCRDConditionTrue(newCRD, apiextensionsv1.Established) &&
 		apiextensionshelpers.IsCRDConditionTrue(newCRD, apiextensionsv1.NamesAccepted) {
 		if r.masterCount > 1 {
-			r.establishingController.QueueCRD(newCRD.Name, newCRD.GetClusterName(), 5*time.Second)
+			r.establishingController.QueueCRD(newCRD.Name, logicalcluster.From(newCRD), 5*time.Second)
 		} else {
-			r.establishingController.QueueCRD(newCRD.Name, newCRD.GetClusterName(), 0)
+			r.establishingController.QueueCRD(newCRD.Name, logicalcluster.From(newCRD), 0)
 		}
 	}
 

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	gopath "path"
 	"sort"
 	"strings"
 	"sync"
@@ -30,6 +31,8 @@ import (
 	//nolint:staticcheck // SA1019 Keep using module since it's still being maintained and the api of google.golang.org/protobuf/proto differs
 	"github.com/golang/protobuf/proto"
 	openapi_v2 "github.com/googleapis/gnostic/openapiv2"
+
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -132,10 +135,10 @@ type OpenAPISchemaInterface interface {
 // versions and resources.
 type DiscoveryClient struct {
 	*scopedClient
-	cluster string
+	cluster logicalcluster.LogicalCluster
 }
 
-func (d *DiscoveryClient) WithCluster(cluster string) DiscoveryInterface {
+func (d *DiscoveryClient) WithCluster(cluster logicalcluster.LogicalCluster) DiscoveryInterface {
 	return &DiscoveryClient{
 		scopedClient: d.scopedClient,
 		cluster:      cluster,
@@ -419,10 +422,10 @@ func ServerPreferredNamespacedResources(d DiscoveryInterface) ([]*metav1.APIReso
 }
 
 func (d *DiscoveryClient) clusterAwarePath(path string) string {
-	if d.cluster == "" {
+	if d.cluster.Empty() {
 		return path
 	}
-	return "/clusters/" + d.cluster + path
+	return gopath.Join(d.cluster.Path(), path)
 }
 
 // ServerVersion retrieves and parses the server's version (git version).

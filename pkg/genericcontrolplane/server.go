@@ -25,6 +25,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -68,8 +70,9 @@ const Include = "kube-control-plane"
 const (
 	etcdRetryLimit    = 60
 	etcdRetryInterval = 1 * time.Second
-	LocalAdminCluster = "system:admin"
 )
+
+var LocalAdminCluster = logicalcluster.New("system:admin")
 
 // Run runs the specified APIServer.  This should never exit.
 func Run(options options.CompletedServerRunOptions, stopCh <-chan struct{}) error {

@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -276,8 +278,8 @@ func convertToCM(obj interface{}) (*v1.ConfigMap, error) {
 }
 
 func getNamespaceKey(configmap *v1.ConfigMap) string {
-	clusterName := configmap.GetClusterName()
-	if len(clusterName) == 0 {
+	clusterName := logicalcluster.From(configmap)
+	if clusterName.Empty() {
 		return ""
 	}
 

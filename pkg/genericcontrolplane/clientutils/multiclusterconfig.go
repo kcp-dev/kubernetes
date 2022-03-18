@@ -26,6 +26,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -93,14 +95,14 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 	contextCluster := genericapirequest.ClusterFrom(req.Context())
 	if requestInfo != nil &&
 		mcrt.enabledOn.Has(requestInfo.Resource) {
-		resourceClusterName := ""
-		headerCluster := ""
+		var resourceClusterName logicalcluster.LogicalCluster
+		var headerCluster logicalcluster.LogicalCluster
 		switch requestInfo.Verb {
 		case "list", "watch":
 			if contextCluster != nil && !contextCluster.Wildcard {
 				headerCluster = contextCluster.Name
 			} else {
-				headerCluster = "*"
+				headerCluster = logicalcluster.Wildcard
 			}
 		case "create", "update", "patch":
 			err := func() error {
@@ -125,7 +127,7 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 					return err
 				}
 				if s, ok := obj.(metav1.Object); ok {
-					resourceClusterName = s.GetClusterName()
+					resourceClusterName = logicalcluster.From(s)
 				}
 				return nil
 			}()
@@ -134,9 +136,9 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 			}
 			fallthrough
 		default:
-			if resourceClusterName != "" {
-				if contextCluster != nil && contextCluster.Name != "" && contextCluster.Name != resourceClusterName {
-					return nil, errors.New("Resource cluster name " + resourceClusterName + " incompatible with context cluster name " + contextCluster.Name)
+			if !resourceClusterName.Empty() {
+				if contextCluster != nil && !contextCluster.Name.Empty() && contextCluster.Name != resourceClusterName {
+					return nil, errors.New("Resource cluster name " + resourceClusterName.String() + " incompatible with context cluster name " + contextCluster.Name.String())
 				}
 				headerCluster = resourceClusterName
 			} else {
@@ -148,13 +150,13 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 				}
 			}
 		}
-		if headerCluster == "" {
+		if headerCluster.Empty() {
 			return nil, fmt.Errorf("Cluster should not be empty for request '%s' on resource '%s' (%s)", requestInfo.Verb, requestInfo.Resource, requestInfo.Path)
 		}
-		req.Header.Add("X-Kubernetes-Cluster", headerCluster)
+		req.Header.Add("X-Kubernetes-Cluster", headerCluster.String())
 	} else {
-		if contextCluster != nil && contextCluster.Name != "" {
-			req.Header.Add("X-Kubernetes-Cluster", contextCluster.Name)
+		if contextCluster != nil && !contextCluster.Name.Empty() {
+			req.Header.Add("X-Kubernetes-Cluster", contextCluster.Name.String())
 		}
 	}
 	return mcrt.rt.RoundTrip(req)

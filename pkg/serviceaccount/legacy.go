@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"k8s.io/klog/v2"
 
@@ -38,18 +39,18 @@ func LegacyClaims(serviceAccount v1.ServiceAccount, secret v1.Secret) (*jwt.Clai
 			ServiceAccountName: serviceAccount.Name,
 			ServiceAccountUID:  string(serviceAccount.UID),
 			SecretName:         secret.Name,
-			ClusterName:        serviceAccount.ClusterName,
+			ClusterName:        logicalcluster.From(&serviceAccount),
 		}
 }
 
 const LegacyIssuer = "kubernetes/serviceaccount"
 
 type legacyPrivateClaims struct {
-	ServiceAccountName string `json:"kubernetes.io/serviceaccount/service-account.name"`
-	ServiceAccountUID  string `json:"kubernetes.io/serviceaccount/service-account.uid"`
-	SecretName         string `json:"kubernetes.io/serviceaccount/secret.name"`
-	Namespace          string `json:"kubernetes.io/serviceaccount/namespace"`
-	ClusterName        string `json:"kubernetes.io/serviceaccount/clusterName"`
+	ServiceAccountName string                        `json:"kubernetes.io/serviceaccount/service-account.name"`
+	ServiceAccountUID  string                        `json:"kubernetes.io/serviceaccount/service-account.uid"`
+	SecretName         string                        `json:"kubernetes.io/serviceaccount/secret.name"`
+	Namespace          string                        `json:"kubernetes.io/serviceaccount/namespace"`
+	ClusterName        logicalcluster.LogicalCluster `json:"kubernetes.io/serviceaccount/clusterName"`
 }
 
 func NewLegacyValidator(lookup bool, getter ServiceAccountTokenGetter) Validator {

@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -202,7 +204,7 @@ func (c *ServiceAccountsController) syncNamespace(ctx context.Context, key strin
 		return nil
 	}
 
-	clusterCtx := genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Name: ns.ClusterName})
+	clusterCtx := genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Name: logicalcluster.From(ns)})
 
 	createFailures := []error{}
 	for _, sa := range c.serviceAccountsToEnsure {
@@ -234,8 +236,8 @@ func (c *ServiceAccountsController) enqueueNamespace(obj metav1.Object) {
 		namespaceKey = obj.GetName()
 	}
 
-	clusterName := obj.GetClusterName()
-	if len(clusterName) > 0 {
+	clusterName := logicalcluster.From(obj)
+	if !clusterName.Empty() {
 		namespaceKey = clusters.ToClusterAwareKey(clusterName, namespaceKey)
 	}
 

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	"golang.org/x/time/rate"
 
 	v1 "k8s.io/api/core/v1"
@@ -66,7 +67,7 @@ type NamespaceController struct {
 func NewNamespaceController(
 	kubeClient clientset.Interface,
 	metadataClient metadata.Interface,
-	discoverResourcesFn func(clusterName string) ([]*metav1.APIResourceList, error),
+	discoverResourcesFn func(clusterName logicalcluster.LogicalCluster) ([]*metav1.APIResourceList, error),
 	namespaceInformer coreinformers.NamespaceInformer,
 	resyncPeriod time.Duration,
 	finalizerToken v1.FinalizerName) *NamespaceController {
@@ -189,7 +190,7 @@ func (nm *NamespaceController) syncNamespaceFromKey(key string) (err error) {
 		utilruntime.HandleError(fmt.Errorf("Unable to retrieve namespace %v from store: %v", key, err))
 		return err
 	}
-	return nm.namespacedResourcesDeleter.Delete(namespace.ClusterName, namespace.Name)
+	return nm.namespacedResourcesDeleter.Delete(logicalcluster.From(namespace), namespace.Name)
 }
 
 // Run starts observing the system with the specified number of workers.

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -109,7 +110,7 @@ func (c *NamingConditionController) getAcceptedNamesForGroup(clusterName, group 
 		// this makes sure that if we tight loop on update and run, our mutation cache will show
 		// us the version of the objects we just updated to.
 		item := curr
-		obj, exists, err := c.crdMutationCache.GetByKey(clusters.ToClusterAwareKey(curr.GetClusterName(), curr.Name))
+		obj, exists, err := c.crdMutationCache.GetByKey(clusters.ToClusterAwareKey(logicalcluster.From(curr), curr.Name))
 		if exists && err == nil {
 			item = obj.(*apiextensionsv1.CustomResourceDefinition)
 		}
@@ -397,7 +398,7 @@ func (c *NamingConditionController) requeueAllOtherGroupCRDs(name string) error 
 	}
 
 	for _, curr := range list {
-		if curr.ClusterName != clusterName {
+		if logicalcluster.From(curr) != clusterName {
 			continue
 		}
 

@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -65,7 +67,7 @@ func NewEstablishingController(crdInformer informers.CustomResourceDefinitionInf
 }
 
 // QueueCRD adds CRD into the establishing queue.
-func (ec *EstablishingController) QueueCRD(name, clusterName string, timeout time.Duration) {
+func (ec *EstablishingController) QueueCRD(name string, clusterName logicalcluster.LogicalCluster, timeout time.Duration) {
 	ec.queue.AddAfter(clusters.ToClusterAwareKey(clusterName, name), timeout)
 }
 

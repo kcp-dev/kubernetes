@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -191,7 +192,7 @@ func (c *CRDFinalizer) deleteInstances(crd *apiextensionsv1.CustomResourceDefini
 	}
 
 	ctx := genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{
-		Name: crd.GetClusterName(),
+		Name: logicalcluster.From(crd),
 	})
 
 	allResources, err := crClient.List(ctx, nil)

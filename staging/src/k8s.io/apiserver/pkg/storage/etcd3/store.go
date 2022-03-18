@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -216,7 +217,7 @@ func (s *store) conditionalDelete(
 	ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions,
 	validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
 	var err error
-	var clusterName string
+	var clusterName logicalcluster.LogicalCluster
 	clusterName, err = genericapirequest.ClusterNameFrom(ctx)
 	if err != nil {
 		klog.Errorf("No cluster defined in conditionalDelete action for key %s : %s", key, err.Error())
@@ -811,9 +812,9 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			if cluster.Wildcard {
 				sub := strings.TrimPrefix(string(kv.Key), keyPrefix)
 				if i := strings.Index(sub, "/"); i != -1 {
-					clusterName = sub[:i]
+					clusterName = logicalcluster.New(sub[:i])
 				}
-				if clusterName == "" {
+				if clusterName.Empty() {
 					klog.Errorf("the cluster name of extracted object should not be empty for key %q", kv.Key)
 				}
 			}
@@ -924,18 +925,15 @@ func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions,
 	if err != nil {
 		return nil, storage.NewInternalError(fmt.Sprintf("Invalid cluster for key %s : %v", key, err))
 	}
-	extractClusterSegmentFromKey := false
 	clusterName := cluster.Name
 	if cluster.Wildcard {
-		clusterName = "*"
-		extractClusterSegmentFromKey = true
+		clusterName = logicalcluster.Wildcard
 	}
 
-	klog.Infof("DEBUG: key=%s willExtractCluster=%t", key, extractClusterSegmentFromKey)
 	return s.watcher.Watch(ctx, key, int64(rev), recursive, clusterName, opts.ProgressNotify, opts.Predicate)
 }
 
-func (s *store) getState(getResp *clientv3.GetResponse, key string, v reflect.Value, ignoreNotFound bool, clusterName string) (*objState, error) {
+func (s *store) getState(getResp *clientv3.GetResponse, key string, v reflect.Value, ignoreNotFound bool, clusterName logicalcluster.LogicalCluster) (*objState, error) {
 	state := &objState{
 		meta: &storage.ResponseMeta{},
 	}
@@ -1046,7 +1044,7 @@ func (s *store) validateMinimumResourceVersion(minimumResourceVersion string, ac
 
 // decode decodes value of bytes into object. It will also set the object resource version to rev.
 // On success, objPtr would be set to the object.
-func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objPtr runtime.Object, rev int64, clusterName string) error {
+func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objPtr runtime.Object, rev int64, clusterName logicalcluster.LogicalCluster) error {
 	if _, err := conversion.EnforcePtr(objPtr); err != nil {
 		return fmt.Errorf("unable to convert output object to pointer: %v", err)
 	}
@@ -1063,16 +1061,13 @@ func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objP
 	// This is done here since we want to set the logical cluster the object is part of,
 	// without storing the clusterName inside the etcd object itself (as it has been until now).
 	// The etcd key is ultimately the only thing that links us to a cluster
-	if clusterName != "" {
+	if !clusterName.Empty() {
 		if s, ok := objPtr.(metav1.ObjectMetaAccessor); ok {
-			klog.Infof("Setting ClusterName %s in appendListItem", clusterName)
-			s.GetObjectMeta().SetClusterName(clusterName)
+			s.GetObjectMeta().SetClusterName(clusterName.String())
 		} else if s, ok := objPtr.(metav1.Object); ok {
-			klog.Infof("Setting ClusterName %s in appendListItem", clusterName)
-			s.SetClusterName(clusterName)
+			s.SetClusterName(clusterName.String())
 		} else if s, ok := objPtr.(*unstructured.Unstructured); ok {
-			klog.Infof("SUB: %s", clusterName)
-			s.SetClusterName(clusterName)
+			s.SetClusterName(clusterName.String())
 		} else {
 			klog.Infof("Could not set ClusterName %s in appendListItem on object: %T", clusterName, objPtr)
 		}
@@ -1084,7 +1079,7 @@ func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objP
 }
 
 // appendListItem decodes and appends the object (if it passes filter) to v, which must be a slice.
-func appendListItem(v reflect.Value, data []byte, rev uint64, pred storage.SelectionPredicate, codec runtime.Codec, versioner storage.Versioner, newItemFunc func() runtime.Object, clusterName string) error {
+func appendListItem(v reflect.Value, data []byte, rev uint64, pred storage.SelectionPredicate, codec runtime.Codec, versioner storage.Versioner, newItemFunc func() runtime.Object, clusterName logicalcluster.LogicalCluster) error {
 	obj, _, err := codec.Decode(data, nil, newItemFunc())
 	if err != nil {
 		return err
@@ -1099,16 +1094,13 @@ func appendListItem(v reflect.Value, data []byte, rev uint64, pred storage.Selec
 	// This is done here since we want to set the logical cluster the object is part of,
 	// without storing the clusterName inside the etcd object itself (as it has been until now).
 	// The etcd key is ultimately the only thing that links us to a cluster
-	if clusterName != "" {
+	if !clusterName.Empty() {
 		if s, ok := obj.(metav1.ObjectMetaAccessor); ok {
-			klog.Infof("Setting ClusterName %s in appendListItem", clusterName)
-			s.GetObjectMeta().SetClusterName(clusterName)
+			s.GetObjectMeta().SetClusterName(clusterName.String())
 		} else if s, ok := obj.(metav1.Object); ok {
-			klog.Infof("Setting ClusterName %s in appendListItem", clusterName)
-			s.SetClusterName(clusterName)
+			s.SetClusterName(clusterName.String())
 		} else if s, ok := obj.(*unstructured.Unstructured); ok {
-			klog.Infof("SUB: %s", clusterName)
-			s.SetClusterName(clusterName)
+			s.SetClusterName(clusterName.String())
 		} else {
 			klog.Infof("Could not set ClusterName %s in appendListItem on object: %T", clusterName, obj)
 		}

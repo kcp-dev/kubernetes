@@ -33,6 +33,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	"golang.org/x/net/http2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -103,7 +104,7 @@ type Request struct {
 	headers    http.Header
 
 	// structural elements of the request that are part of the Kubernetes API conventions
-	cluster      string
+	cluster      logicalcluster.LogicalCluster
 	clusterSet   bool
 	namespace    string
 	namespaceSet bool
@@ -299,7 +300,7 @@ func (r *Request) Namespace(namespace string) *Request {
 }
 
 // Cluster applies the cluster scope to a request ([clusters/<cluster>]/...)
-func (r *Request) Cluster(cluster string) *Request {
+func (r *Request) Cluster(cluster logicalcluster.LogicalCluster) *Request {
 	if r.err != nil {
 		return r
 	}
@@ -307,7 +308,7 @@ func (r *Request) Cluster(cluster string) *Request {
 		r.err = fmt.Errorf("cluster already set to %q, cannot change to %q", r.namespace, cluster)
 		return r
 	}
-	if msgs := IsValidPathSegmentName(cluster); len(msgs) != 0 {
+	if msgs := IsValidPathSegmentName(cluster.String()); len(msgs) != 0 {
 		r.err = fmt.Errorf("invalid cluster %q: %v", cluster, msgs)
 		return r
 	}
@@ -486,8 +487,8 @@ func (r *Request) Body(obj interface{}) *Request {
 // URL returns the current working URL.
 func (r *Request) URL() *url.URL {
 	p := r.basePath
-	if r.clusterSet && len(r.cluster) > 0 {
-		p = path.Join(p, "clusters", r.cluster)
+	if r.clusterSet && len(r.cluster.String()) > 0 {
+		p = path.Join(p, r.cluster.Path())
 	}
 	p = path.Join(p, r.pathPrefix)
 	if r.namespaceSet && len(r.namespace) > 0 {

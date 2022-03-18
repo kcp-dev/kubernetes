@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/client-go/tools/clusters"
@@ -47,12 +48,13 @@ type privateClaims struct {
 }
 
 type kubernetes struct {
-	ClusterName string          `json:"clusterName,omitempty"`
-	Namespace   string          `json:"namespace,omitempty"`
-	Svcacct     ref             `json:"serviceaccount,omitempty"`
-	Pod         *ref            `json:"pod,omitempty"`
-	Secret      *ref            `json:"secret,omitempty"`
-	WarnAfter   jwt.NumericDate `json:"warnafter,omitempty"`
+	ClusterName logicalcluster.LogicalCluster `json:"clusterName,omitempty"`
+
+	Namespace string          `json:"namespace,omitempty"`
+	Svcacct   ref             `json:"serviceaccount,omitempty"`
+	Pod       *ref            `json:"pod,omitempty"`
+	Secret    *ref            `json:"secret,omitempty"`
+	WarnAfter jwt.NumericDate `json:"warnafter,omitempty"`
 }
 
 type ref struct {
@@ -71,7 +73,7 @@ func Claims(sa core.ServiceAccount, pod *core.Pod, secret *core.Secret, expirati
 	}
 	pc := &privateClaims{
 		Kubernetes: kubernetes{
-			ClusterName: sa.ClusterName,
+			ClusterName: logicalcluster.From(&sa),
 			Namespace:   sa.Namespace,
 			Svcacct: ref{
 				Name: sa.Name,

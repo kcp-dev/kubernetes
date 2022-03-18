@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/tools/clusters"
 )
@@ -111,7 +113,7 @@ func MetaNamespaceKeyFunc(obj interface{}) (string, error) {
 		return "", fmt.Errorf("object has no meta: %v", err)
 	}
 
-	name := clusters.ToClusterAwareKey(metaObj.GetClusterName(), metaObj.GetName())
+	name := clusters.ToClusterAwareKey(logicalcluster.From(metaObj), metaObj.GetName())
 	if len(metaObj.GetNamespace()) > 0 {
 		return metaObj.GetNamespace() + "/" + name, nil
 	}

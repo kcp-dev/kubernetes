@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -252,7 +254,7 @@ func (e *TokensController) syncServiceAccount() {
 	case sa == nil:
 		// service account no longer exists, so delete related tokens
 		klog.V(4).Infof("syncServiceAccount(%s|%s/%s), service account deleted, removing tokens", saInfo.clusterName, saInfo.namespace, saInfo.name)
-		sa = &v1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{ClusterName: saInfo.clusterName, Namespace: saInfo.namespace, Name: saInfo.name, UID: saInfo.uid}}
+		sa = &v1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{ClusterName: saInfo.clusterName.String(), Namespace: saInfo.namespace, Name: saInfo.name, UID: saInfo.uid}}
 		retry, err = e.deleteTokens(sa)
 		if err != nil {
 			klog.Errorf("error deleting serviceaccount tokens for %s|%s/%s: %v", saInfo.clusterName, saInfo.namespace, saInfo.name, err)
@@ -333,7 +335,7 @@ func (e *TokensController) deleteTokens(serviceAccount *v1.ServiceAccount) ( /*r
 	retry := false
 	errs := []error{}
 	for _, token := range tokens {
-		r, err := e.deleteToken(token.ClusterName, token.Namespace, token.Name, token.UID)
+		r, err := e.deleteToken(logicalcluster.From(token), token.Namespace, token.Name, token.UID)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -344,7 +346,7 @@ func (e *TokensController) deleteTokens(serviceAccount *v1.ServiceAccount) ( /*r
 	return retry, utilerrors.NewAggregate(errs)
 }
 
-func (e *TokensController) deleteToken(clusterName, ns, name string, uid types.UID) ( /*retry*/ bool, error) {
+func (e *TokensController) deleteToken(clusterName logicalcluster.LogicalCluster, ns, name string, uid types.UID) ( /*retry*/ bool, error) {
 	var opts metav1.DeleteOptions
 	if len(uid) > 0 {
 		opts.Preconditions = &metav1.Preconditions{UID: &uid}
@@ -371,7 +373,7 @@ func (e *TokensController) ensureReferencedToken(serviceAccount *v1.ServiceAccou
 		return false, nil
 	}
 
-	ctx := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: serviceAccount.ClusterName})
+	ctx := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: logicalcluster.From(serviceAccount)})
 
 	// We don't want to update the cache's copy of the service account
 	// so add the secret to a freshly retrieved copy of the service account
@@ -524,7 +526,7 @@ func (e *TokensController) generateTokenIfNeeded(serviceAccount *v1.ServiceAccou
 		return false, nil
 	}
 
-	ctx := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: serviceAccount.ClusterName})
+	ctx := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: logicalcluster.From(serviceAccount)})
 
 	// We don't want to update the cache's copy of the secret
 	// so add the token to a freshly retrieved copy of the secret
@@ -589,7 +591,7 @@ func (e *TokensController) generateTokenIfNeeded(serviceAccount *v1.ServiceAccou
 }
 
 // removeSecretReference updates the given ServiceAccount to remove a reference to the given secretName if needed.
-func (e *TokensController) removeSecretReference(saClusterName string, saNamespace string, saName string, saUID types.UID, secretName string) error {
+func (e *TokensController) removeSecretReference(saClusterName logicalcluster.LogicalCluster, saNamespace string, saName string, saUID types.UID, secretName string) error {
 	ctx := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: saClusterName})
 
 	// We don't want to update the cache's copy of the service account
@@ -630,7 +632,7 @@ func (e *TokensController) removeSecretReference(saClusterName string, saNamespa
 	return err
 }
 
-func (e *TokensController) getServiceAccount(clusterName string, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.ServiceAccount, error) {
+func (e *TokensController) getServiceAccount(clusterName logicalcluster.LogicalCluster, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.ServiceAccount, error) {
 	// Look up in cache
 	sa, err := e.serviceAccounts.ServiceAccounts(ns).Get(clusters.ToClusterAwareKey(clusterName, name))
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -663,7 +665,7 @@ func (e *TokensController) getServiceAccount(clusterName string, ns string, name
 	return nil, nil
 }
 
-func (e *TokensController) getSecret(clusterName string, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.Secret, error) {
+func (e *TokensController) getSecret(clusterName logicalcluster.LogicalCluster, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.Secret, error) {
 	// Look up in cache
 	obj, exists, err := e.updatedSecrets.GetByKey(makeCacheKey(ns, clusters.ToClusterAwareKey(clusterName, name)))
 	if err != nil {
@@ -731,7 +733,7 @@ func getSecretReferences(serviceAccount *v1.ServiceAccount) sets.String {
 // It contains enough information to look up the cached service account,
 // or delete owned tokens if the service account no longer exists.
 type serviceAccountQueueKey struct {
-	clusterName string // Required for kcp
+	clusterName logicalcluster.LogicalCluster // Required for kcp
 
 	namespace string
 	name      string
@@ -740,7 +742,7 @@ type serviceAccountQueueKey struct {
 
 func makeServiceAccountKey(sa *v1.ServiceAccount) interface{} {
 	return serviceAccountQueueKey{
-		clusterName: sa.ClusterName,
+		clusterName: logicalcluster.From(sa),
 
 		namespace: sa.Namespace,
 		name:      sa.Name,
@@ -760,7 +762,7 @@ func parseServiceAccountKey(key interface{}) (serviceAccountQueueKey, error) {
 // It contains enough information to look up the cached service account,
 // or delete the secret reference if the secret no longer exists.
 type secretQueueKey struct {
-	clusterName string // Required for kcp
+	clusterName logicalcluster.LogicalCluster // Required for kcp
 
 	namespace string
 	name      string
@@ -772,7 +774,7 @@ type secretQueueKey struct {
 
 func makeSecretQueueKey(secret *v1.Secret) interface{} {
 	return secretQueueKey{
-		clusterName: secret.ClusterName,
+		clusterName: logicalcluster.From(secret),
 
 		namespace: secret.Namespace,
 		name:      secret.Name,
