@@ -1213,6 +1213,7 @@ func TestList(t *testing.T) {
 		expectError                bool
 		expectRVTooLarge           bool
 		expectRV                   string
+		expectRVFunc               func(string) error
 	}{
 		{
 			name:        "rejects invalid resource version",
@@ -1385,7 +1386,7 @@ func TestList(t *testing.T) {
 			expectContinue:             true,
 			expectedRemainingItemCount: utilpointer.Int64Ptr(1),
 			rv:                         "0",
-			expectRV:                   list.ResourceVersion,
+			expectRVFunc:               resourceVersionNoLaterThan(list.ResourceVersion),
 		},
 		{
 			name:   "test List with limit at resource version 0 match=NotOlderThan",
@@ -1400,7 +1401,7 @@ func TestList(t *testing.T) {
 			expectedRemainingItemCount: utilpointer.Int64Ptr(1),
 			rv:                         "0",
 			rvMatch:                    metav1.ResourceVersionMatchNotOlderThan,
-			expectRV:                   list.ResourceVersion,
+			expectRVFunc:               resourceVersionNoLaterThan(list.ResourceVersion),
 		},
 		{
 			name:   "test List with limit at resource version before first write and match=Exact",
@@ -2106,9 +2107,10 @@ func TestListInconsistentContinuation(t *testing.T) {
 	if len(out.Continue) == 0 {
 		t.Fatalf("No continuation token set")
 	}
+	validateResourceVersion := resourceVersionNoLaterThan(lastRVString)
 	expectNoDiff(t, "incorrect second page", []example.Pod{*preset[1].storedObj}, out.Items)
-	if out.ResourceVersion != lastRVString {
-		t.Fatalf("Expected list resource version to be %s, got %s", lastRVString, out.ResourceVersion)
+	if err := validateResourceVersion(out.ResourceVersion); err != nil {
+		t.Fatal(err)
 	}
 	continueFromThirdItem := out.Continue
 	out = &example.PodList{}
@@ -2124,8 +2126,8 @@ func TestListInconsistentContinuation(t *testing.T) {
 		t.Fatalf("Unexpected continuation token set")
 	}
 	expectNoDiff(t, "incorrect third page", []example.Pod{*preset[2].storedObj}, out.Items)
-	if out.ResourceVersion != lastRVString {
-		t.Fatalf("Expected list resource version to be %s, got %s", lastRVString, out.ResourceVersion)
+	if err := validateResourceVersion(out.ResourceVersion); err != nil {
+		t.Fatal(err)
 	}
 }
 
