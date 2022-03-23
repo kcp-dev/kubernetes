@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,17 +17,25 @@ limitations under the License.
 package etcd3
 
 import (
+	"context"
+
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"k8s.io/apiserver/pkg/storage/generic"
-
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apiserver/pkg/storage"
-	"k8s.io/apiserver/pkg/storage/value"
 )
 
-// New returns an etcd3 implementation of storage.Interface.
-func New(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) storage.Interface {
-	return generic.New(NewClient(c, leaseManagerConfig), codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+func NewTestClient(c *clientv3.Client, config LeaseManagerConfig) generic.TestClient{
+	return &testClient{
+		client: NewClient(c, config),
+	}
 }
+
+type testClient struct {
+	*client
+}
+
+func (c *testClient) Compact(ctx context.Context, revision int64) error {
+	_, err := c.client.KV.Compact(ctx, revision, clientv3.WithCompactPhysical())
+	return err
+}
+
+var _ generic.TestClient = &testClient{}
