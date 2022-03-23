@@ -36,7 +36,7 @@ import (
 	egressmetrics "k8s.io/apiserver/pkg/server/egressselector/metrics"
 	"k8s.io/klog/v2"
 	utiltrace "k8s.io/utils/trace"
-	client "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
+	"sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
 )
 
 var directDialer utilnet.DialFunc = http.DefaultTransport.(*http.Transport).DialContext
@@ -57,6 +57,8 @@ const (
 	Etcd
 	// Cluster is the EgressType for traffic intended to go to the system being managed by Kubernetes.
 	Cluster
+	// CRDB is the EgressType for traffic intended to go to Kubernetes persistence store.
+	CRDB
 )
 
 // NetworkContext is the struct used by Kubernetes API Server to indicate where it intends traffic to be sent.
@@ -79,6 +81,8 @@ func (s EgressType) String() string {
 		return "etcd"
 	case Cluster:
 		return "cluster"
+	case CRDB:
+		return "crdb"
 	default:
 		return "invalid"
 	}
@@ -95,6 +99,8 @@ func lookupServiceName(name string) (EgressType, error) {
 		return ControlPlane, nil
 	case "etcd":
 		return Etcd, nil
+	case "crdb":
+		return CRDB, nil
 	case "cluster":
 		return Cluster, nil
 	}

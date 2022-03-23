@@ -62,6 +62,7 @@ type EtcdOptions struct {
 }
 
 var storageTypes = sets.NewString(
+	storagebackend.StorageTypeCRDB,
 	storagebackend.StorageTypeETCD3,
 )
 

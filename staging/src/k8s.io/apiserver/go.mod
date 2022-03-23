@@ -6,6 +6,8 @@ go 1.16
 
 require (
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
+	github.com/cockroachdb/apd v1.1.0
+	github.com/cockroachdb/cockroach-go/v2 v2.2.8
 	github.com/coreos/go-oidc v2.1.0+incompatible
 	github.com/coreos/go-systemd/v22 v22.3.2
 	github.com/davecgh/go-spew v1.1.1
@@ -18,6 +20,10 @@ require (
 	github.com/google/gofuzz v1.1.0
 	github.com/google/uuid v1.1.2
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
+	github.com/jackc/pgconn v1.11.0
+	github.com/jackc/pgerrcode v0.0.0-20201024163028-a0d42d470451
+	github.com/jackc/pgproto3/v2 v2.2.0
+	github.com/jackc/pgx/v4 v4.15.0
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/pquerna/cachecontrol v0.0.0-20171018203845-0dec1b30a021 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
