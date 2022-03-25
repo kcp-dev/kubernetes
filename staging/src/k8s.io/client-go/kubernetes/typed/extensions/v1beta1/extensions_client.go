@@ -21,6 +21,7 @@ package v1beta1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -39,7 +40,7 @@ type ExtensionsV1beta1Interface interface {
 // ExtensionsV1beta1Client is used to interact with features provided by the extensions group.
 type ExtensionsV1beta1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *ExtensionsV1beta1Client) DaemonSets(namespace string) DaemonSetInterface {
@@ -111,7 +112,7 @@ func New(c rest.Interface) *ExtensionsV1beta1Client {
 }
 
 // NewWithCluster creates a new ExtensionsV1beta1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *ExtensionsV1beta1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *ExtensionsV1beta1Client {
 	return &ExtensionsV1beta1Client{restClient: c, cluster: cluster}
 }
 

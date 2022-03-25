@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	rest "k8s.io/client-go/rest"
 	v1 "k8s.io/code-generator/examples/crd/apis/example2/v1"
 	"k8s.io/code-generator/examples/crd/clientset/versioned/scheme"
@@ -34,7 +35,7 @@ type SecondExampleV1Interface interface {
 // SecondExampleV1Client is used to interact with features provided by the example.test.crd.code-generator.k8s.io group.
 type SecondExampleV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *SecondExampleV1Client) TestTypes(namespace string) TestTypeInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *SecondExampleV1Client {
 }
 
 // NewWithCluster creates a new SecondExampleV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *SecondExampleV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *SecondExampleV1Client {
 	return &SecondExampleV1Client{restClient: c, cluster: cluster}
 }
 

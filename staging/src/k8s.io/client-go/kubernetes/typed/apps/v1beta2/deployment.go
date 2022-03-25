@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1beta2 "k8s.io/api/apps/v1beta2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -58,7 +59,7 @@ type DeploymentInterface interface {
 // deployments implements DeploymentInterface
 type deployments struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 	ns      string
 }
 

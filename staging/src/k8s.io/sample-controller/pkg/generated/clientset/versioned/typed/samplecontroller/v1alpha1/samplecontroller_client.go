@@ -21,6 +21,7 @@ package v1alpha1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	rest "k8s.io/client-go/rest"
 	v1alpha1 "k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1"
 	"k8s.io/sample-controller/pkg/generated/clientset/versioned/scheme"
@@ -34,7 +35,7 @@ type SamplecontrollerV1alpha1Interface interface {
 // SamplecontrollerV1alpha1Client is used to interact with features provided by the samplecontroller.k8s.io group.
 type SamplecontrollerV1alpha1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *SamplecontrollerV1alpha1Client) Foos(namespace string) FooInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *SamplecontrollerV1alpha1Client {
 }
 
 // NewWithCluster creates a new SamplecontrollerV1alpha1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *SamplecontrollerV1alpha1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *SamplecontrollerV1alpha1Client {
 	return &SamplecontrollerV1alpha1Client{restClient: c, cluster: cluster}
 }
 

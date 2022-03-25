@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1beta1 "k8s.io/api/networking/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -56,7 +57,7 @@ type IngressClassInterface interface {
 // ingressClasses implements IngressClassInterface
 type ingressClasses struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 }
 
 // newIngressClasses returns a IngressClasses

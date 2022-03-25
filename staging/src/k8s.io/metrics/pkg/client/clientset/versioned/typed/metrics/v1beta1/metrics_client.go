@@ -21,6 +21,7 @@ package v1beta1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	rest "k8s.io/client-go/rest"
 	v1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	"k8s.io/metrics/pkg/client/clientset/versioned/scheme"
@@ -35,7 +36,7 @@ type MetricsV1beta1Interface interface {
 // MetricsV1beta1Client is used to interact with features provided by the metrics.k8s.io group.
 type MetricsV1beta1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *MetricsV1beta1Client) NodeMetricses() NodeMetricsInterface {
@@ -91,7 +92,7 @@ func New(c rest.Interface) *MetricsV1beta1Client {
 }
 
 // NewWithCluster creates a new MetricsV1beta1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *MetricsV1beta1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *MetricsV1beta1Client {
 	return &MetricsV1beta1Client{restClient: c, cluster: cluster}
 }
 

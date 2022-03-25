@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/storage/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -37,7 +38,7 @@ type StorageV1Interface interface {
 // StorageV1Client is used to interact with features provided by the storage.k8s.io group.
 type StorageV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *StorageV1Client) CSIDrivers() CSIDriverInterface {
@@ -101,7 +102,7 @@ func New(c rest.Interface) *StorageV1Client {
 }
 
 // NewWithCluster creates a new StorageV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *StorageV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *StorageV1Client {
 	return &StorageV1Client{restClient: c, cluster: cluster}
 }
 

@@ -21,6 +21,7 @@ package v1beta2
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1beta2 "k8s.io/api/flowcontrol/v1beta2"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +36,7 @@ type FlowcontrolV1beta2Interface interface {
 // FlowcontrolV1beta2Client is used to interact with features provided by the flowcontrol.apiserver.k8s.io group.
 type FlowcontrolV1beta2Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *FlowcontrolV1beta2Client) FlowSchemas() FlowSchemaInterface {
@@ -91,7 +92,7 @@ func New(c rest.Interface) *FlowcontrolV1beta2Client {
 }
 
 // NewWithCluster creates a new FlowcontrolV1beta2Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *FlowcontrolV1beta2Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *FlowcontrolV1beta2Client {
 	return &FlowcontrolV1beta2Client{restClient: c, cluster: cluster}
 }
 

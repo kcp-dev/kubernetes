@@ -21,6 +21,7 @@ package v1beta1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +36,7 @@ type AdmissionregistrationV1beta1Interface interface {
 // AdmissionregistrationV1beta1Client is used to interact with features provided by the admissionregistration.k8s.io group.
 type AdmissionregistrationV1beta1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *AdmissionregistrationV1beta1Client) MutatingWebhookConfigurations() MutatingWebhookConfigurationInterface {
@@ -91,7 +92,7 @@ func New(c rest.Interface) *AdmissionregistrationV1beta1Client {
 }
 
 // NewWithCluster creates a new AdmissionregistrationV1beta1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *AdmissionregistrationV1beta1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *AdmissionregistrationV1beta1Client {
 	return &AdmissionregistrationV1beta1Client{restClient: c, cluster: cluster}
 }
 

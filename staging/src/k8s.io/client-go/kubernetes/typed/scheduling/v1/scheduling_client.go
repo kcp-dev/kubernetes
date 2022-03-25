@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/scheduling/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ type SchedulingV1Interface interface {
 // SchedulingV1Client is used to interact with features provided by the scheduling.k8s.io group.
 type SchedulingV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *SchedulingV1Client) PriorityClasses() PriorityClassInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *SchedulingV1Client {
 }
 
 // NewWithCluster creates a new SchedulingV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *SchedulingV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *SchedulingV1Client {
 	return &SchedulingV1Client{restClient: c, cluster: cluster}
 }
 

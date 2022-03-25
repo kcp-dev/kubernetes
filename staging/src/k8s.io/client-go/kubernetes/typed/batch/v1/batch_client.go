@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/batch/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +36,7 @@ type BatchV1Interface interface {
 // BatchV1Client is used to interact with features provided by the batch group.
 type BatchV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *BatchV1Client) CronJobs(namespace string) CronJobInterface {
@@ -91,7 +92,7 @@ func New(c rest.Interface) *BatchV1Client {
 }
 
 // NewWithCluster creates a new BatchV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *BatchV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *BatchV1Client {
 	return &BatchV1Client{restClient: c, cluster: cluster}
 }
 

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -62,7 +63,7 @@ type ReplicationControllerInterface interface {
 // replicationControllers implements ReplicationControllerInterface
 type replicationControllers struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 	ns      string
 }
 

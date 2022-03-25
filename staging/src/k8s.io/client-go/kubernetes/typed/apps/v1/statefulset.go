@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/apps/v1"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,7 +65,7 @@ type StatefulSetInterface interface {
 // statefulSets implements StatefulSetInterface
 type statefulSets struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 	ns      string
 }
 

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -31,7 +32,7 @@ import (
 )
 
 type ClusterInterface interface {
-	Cluster(name string) Interface
+	Cluster(name logicalcluster.LogicalCluster) Interface
 }
 
 type Cluster struct {
@@ -39,7 +40,7 @@ type Cluster struct {
 }
 
 // Cluster sets the cluster for a Clientset.
-func (c *Cluster) Cluster(name string) Interface {
+func (c *Cluster) Cluster(name logicalcluster.LogicalCluster) Interface {
 	return &Clientset{
 		scopedClientset: c.scopedClientset,
 		cluster:         name,
@@ -68,7 +69,7 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*scopedClientset
-	cluster string
+	cluster logicalcluster.LogicalCluster
 }
 
 // scopedClientset contains the clients for groups. Each group has exactly one

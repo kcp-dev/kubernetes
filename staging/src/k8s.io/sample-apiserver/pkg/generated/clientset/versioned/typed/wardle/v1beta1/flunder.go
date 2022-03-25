@@ -22,6 +22,7 @@ import (
 	"context"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -53,7 +54,7 @@ type FlunderInterface interface {
 // flunders implements FlunderInterface
 type flunders struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 	ns      string
 }
 

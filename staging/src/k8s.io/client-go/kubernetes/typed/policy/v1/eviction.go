@@ -19,6 +19,7 @@ limitations under the License.
 package v1
 
 import (
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	rest "k8s.io/client-go/rest"
 )
 
@@ -36,7 +37,7 @@ type EvictionInterface interface {
 // evictions implements EvictionInterface
 type evictions struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 	ns      string
 }
 

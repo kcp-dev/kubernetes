@@ -21,6 +21,7 @@ package v1
 import (
 	"context"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	scheme "k8s.io/client-go/kubernetes/scheme"
@@ -42,7 +43,7 @@ type TokenReviewInterface interface {
 // tokenReviews implements TokenReviewInterface
 type tokenReviews struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 }
 
 // newTokenReviews returns a TokenReviews

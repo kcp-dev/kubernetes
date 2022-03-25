@@ -21,6 +21,7 @@ package v1
 import (
 	"context"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	scheme "k8s.io/client-go/kubernetes/scheme"
@@ -42,7 +43,7 @@ type LocalSubjectAccessReviewInterface interface {
 // localSubjectAccessReviews implements LocalSubjectAccessReviewInterface
 type localSubjectAccessReviews struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 	ns      string
 }
 

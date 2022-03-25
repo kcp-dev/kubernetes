@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1alpha1 "k8s.io/api/node/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -56,7 +57,7 @@ type RuntimeClassInterface interface {
 // runtimeClasses implements RuntimeClassInterface
 type runtimeClasses struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 }
 
 // newRuntimeClasses returns a RuntimeClasses

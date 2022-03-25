@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/events/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ type EventsV1Interface interface {
 // EventsV1Client is used to interact with features provided by the events.k8s.io group.
 type EventsV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *EventsV1Client) Events(namespace string) EventInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *EventsV1Client {
 }
 
 // NewWithCluster creates a new EventsV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *EventsV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *EventsV1Client {
 	return &EventsV1Client{restClient: c, cluster: cluster}
 }
 

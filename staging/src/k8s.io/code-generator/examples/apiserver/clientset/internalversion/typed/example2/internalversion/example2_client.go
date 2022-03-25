@@ -21,6 +21,7 @@ package internalversion
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	rest "k8s.io/client-go/rest"
 	"k8s.io/code-generator/examples/apiserver/clientset/internalversion/scheme"
 )
@@ -33,7 +34,7 @@ type SecondExampleInterface interface {
 // SecondExampleClient is used to interact with features provided by the example.test.apiserver.code-generator.k8s.io group.
 type SecondExampleClient struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *SecondExampleClient) TestTypes() TestTypeInterface {
@@ -85,7 +86,7 @@ func New(c rest.Interface) *SecondExampleClient {
 }
 
 // NewWithCluster creates a new SecondExampleClient for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *SecondExampleClient {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *SecondExampleClient {
 	return &SecondExampleClient{restClient: c, cluster: cluster}
 }
 

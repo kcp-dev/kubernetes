@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/discovery/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ type DiscoveryV1Interface interface {
 // DiscoveryV1Client is used to interact with features provided by the discovery.k8s.io group.
 type DiscoveryV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *DiscoveryV1Client) EndpointSlices(namespace string) EndpointSliceInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *DiscoveryV1Client {
 }
 
 // NewWithCluster creates a new DiscoveryV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *DiscoveryV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *DiscoveryV1Client {
 	return &DiscoveryV1Client{restClient: c, cluster: cluster}
 }
 

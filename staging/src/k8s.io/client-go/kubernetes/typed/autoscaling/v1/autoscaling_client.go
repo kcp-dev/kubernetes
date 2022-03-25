@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/autoscaling/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ type AutoscalingV1Interface interface {
 // AutoscalingV1Client is used to interact with features provided by the autoscaling group.
 type AutoscalingV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *AutoscalingV1Client) HorizontalPodAutoscalers(namespace string) HorizontalPodAutoscalerInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *AutoscalingV1Client {
 }
 
 // NewWithCluster creates a new AutoscalingV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *AutoscalingV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *AutoscalingV1Client {
 	return &AutoscalingV1Client{restClient: c, cluster: cluster}
 }
 

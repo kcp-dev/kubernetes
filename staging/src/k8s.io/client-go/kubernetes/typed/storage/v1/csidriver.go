@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -56,7 +57,7 @@ type CSIDriverInterface interface {
 // cSIDrivers implements CSIDriverInterface
 type cSIDrivers struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 }
 
 // newCSIDrivers returns a CSIDrivers

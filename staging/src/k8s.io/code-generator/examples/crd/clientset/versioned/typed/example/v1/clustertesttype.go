@@ -22,6 +22,7 @@ import (
 	"context"
 	"time"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -57,7 +58,7 @@ type ClusterTestTypeInterface interface {
 // clusterTestTypes implements ClusterTestTypeInterface
 type clusterTestTypes struct {
 	client  rest.Interface
-	cluster string
+	cluster logicalcluster.LogicalCluster
 }
 
 // newClusterTestTypes returns a ClusterTestTypes

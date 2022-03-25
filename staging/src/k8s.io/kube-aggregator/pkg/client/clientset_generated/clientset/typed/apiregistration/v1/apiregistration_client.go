@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	rest "k8s.io/client-go/rest"
 	v1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	"k8s.io/kube-aggregator/pkg/client/clientset_generated/clientset/scheme"
@@ -34,7 +35,7 @@ type ApiregistrationV1Interface interface {
 // ApiregistrationV1Client is used to interact with features provided by the apiregistration.k8s.io group.
 type ApiregistrationV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *ApiregistrationV1Client) APIServices() APIServiceInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *ApiregistrationV1Client {
 }
 
 // NewWithCluster creates a new ApiregistrationV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *ApiregistrationV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *ApiregistrationV1Client {
 	return &ApiregistrationV1Client{restClient: c, cluster: cluster}
 }
 

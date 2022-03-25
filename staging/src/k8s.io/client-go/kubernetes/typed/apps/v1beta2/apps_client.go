@@ -21,6 +21,7 @@ package v1beta2
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1beta2 "k8s.io/api/apps/v1beta2"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -38,7 +39,7 @@ type AppsV1beta2Interface interface {
 // AppsV1beta2Client is used to interact with features provided by the apps group.
 type AppsV1beta2Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *AppsV1beta2Client) ControllerRevisions(namespace string) ControllerRevisionInterface {
@@ -106,7 +107,7 @@ func New(c rest.Interface) *AppsV1beta2Client {
 }
 
 // NewWithCluster creates a new AppsV1beta2Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *AppsV1beta2Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *AppsV1beta2Client {
 	return &AppsV1beta2Client{restClient: c, cluster: cluster}
 }
 

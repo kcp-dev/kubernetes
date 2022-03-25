@@ -21,6 +21,7 @@ package v1alpha1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1alpha1 "k8s.io/api/rbac/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -37,7 +38,7 @@ type RbacV1alpha1Interface interface {
 // RbacV1alpha1Client is used to interact with features provided by the rbac.authorization.k8s.io group.
 type RbacV1alpha1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *RbacV1alpha1Client) ClusterRoles() ClusterRoleInterface {
@@ -101,7 +102,7 @@ func New(c rest.Interface) *RbacV1alpha1Client {
 }
 
 // NewWithCluster creates a new RbacV1alpha1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *RbacV1alpha1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *RbacV1alpha1Client {
 	return &RbacV1alpha1Client{restClient: c, cluster: cluster}
 }
 

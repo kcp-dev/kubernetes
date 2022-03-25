@@ -21,6 +21,7 @@ package v1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1 "k8s.io/apiextensions-apiserver/examples/client-go/pkg/apis/cr/v1"
 	"k8s.io/apiextensions-apiserver/examples/client-go/pkg/client/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ type CrV1Interface interface {
 // CrV1Client is used to interact with features provided by the cr.example.apiextensions.k8s.io group.
 type CrV1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *CrV1Client) Examples(namespace string) ExampleInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *CrV1Client {
 }
 
 // NewWithCluster creates a new CrV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *CrV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *CrV1Client {
 	return &CrV1Client{restClient: c, cluster: cluster}
 }
 

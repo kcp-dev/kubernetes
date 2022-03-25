@@ -21,6 +21,7 @@ package v1alpha1
 import (
 	"net/http"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	v1alpha1 "k8s.io/api/node/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -34,7 +35,7 @@ type NodeV1alpha1Interface interface {
 // NodeV1alpha1Client is used to interact with features provided by the node.k8s.io group.
 type NodeV1alpha1Client struct {
 	restClient rest.Interface
-	cluster    string
+	cluster    logicalcluster.LogicalCluster
 }
 
 func (c *NodeV1alpha1Client) RuntimeClasses() RuntimeClassInterface {
@@ -86,7 +87,7 @@ func New(c rest.Interface) *NodeV1alpha1Client {
 }
 
 // NewWithCluster creates a new NodeV1alpha1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster string) *NodeV1alpha1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *NodeV1alpha1Client {
 	return &NodeV1alpha1Client{restClient: c, cluster: cluster}
 }
 
