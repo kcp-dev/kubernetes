@@ -22,7 +22,8 @@ import (
 	"testing"
 
 	fuzz "github.com/google/gofuzz"
-	"k8s.io/api/admissionregistration/v1"
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/util/diff"
 )
 
@@ -37,7 +38,7 @@ func TestMutatingWebhookAccessor(t *testing.T) {
 			orig.ReinvocationPolicy = nil
 
 			uid := fmt.Sprintf("test.configuration.admission/%s/0", orig.Name)
-			accessor := NewMutatingWebhookAccessor(uid, "test.configuration.admission", orig)
+			accessor := NewMutatingWebhookAccessor(uid, "test.configuration.admission", logicalcluster.New(""), orig)
 			if uid != accessor.GetUID() {
 				t.Errorf("expected GetUID to return %s, but got %s", accessor.GetUID(), uid)
 			}
@@ -77,7 +78,7 @@ func TestValidatingWebhookAccessor(t *testing.T) {
 			orig := &v1.ValidatingWebhook{}
 			f.Fuzz(orig)
 			uid := fmt.Sprintf("test.configuration.admission/%s/0", orig.Name)
-			accessor := NewValidatingWebhookAccessor(uid, "test.configuration.admission", orig)
+			accessor := NewValidatingWebhookAccessor(uid, "test.configuration.admission", logicalcluster.New("testing"), orig)
 			if uid != accessor.GetUID() {
 				t.Errorf("expected GetUID to return %s, but got %s", accessor.GetUID(), uid)
 			}

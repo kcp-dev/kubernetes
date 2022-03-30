@@ -19,7 +19,8 @@ package object
 import (
 	"testing"
 
-	"k8s.io/api/admissionregistration/v1"
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -115,7 +116,7 @@ func TestObjectSelector(t *testing.T) {
 			}}}
 
 		t.Run(testcase.name, func(t *testing.T) {
-			match, err := matcher.MatchObjectSelector(webhook.NewValidatingWebhookAccessor("mock-hook", "mock-cfg", hook), testcase.attrs)
+			match, err := matcher.MatchObjectSelector(webhook.NewValidatingWebhookAccessor("mock-hook", "mock-cfg", logicalcluster.New("mock-cluster"), hook), testcase.attrs)
 			if err != nil {
 				t.Error(err)
 			}

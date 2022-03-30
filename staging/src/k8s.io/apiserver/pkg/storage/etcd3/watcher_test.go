@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	apitesting "k8s.io/apimachinery/pkg/api/apitesting"
@@ -241,7 +242,7 @@ func TestWatchContextCancel(t *testing.T) {
 	cancel()
 	// When we watch with a canceled context, we should detect that it's context canceled.
 	// We won't take it as error and also close the watcher.
-	w, err := store.watcher.Watch(canceledCtx, "/abc", 0, false, "", false, storage.Everything)
+	w, err := store.watcher.Watch(canceledCtx, "/abc", 0, false, logicalcluster.New(""), false, storage.Everything)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +260,7 @@ func TestWatchContextCancel(t *testing.T) {
 func TestWatchErrResultNotBlockAfterCancel(t *testing.T) {
 	origCtx, store, _ := testSetup(t)
 	ctx, cancel := context.WithCancel(origCtx)
-	w := store.watcher.createWatchChan(ctx, "/abc", 0, false, "", false, storage.Everything)
+	w := store.watcher.createWatchChan(ctx, "/abc", 0, false, logicalcluster.New(""), false, storage.Everything)
 	// make resutlChan and errChan blocking to ensure ordering.
 	w.resultChan = make(chan watch.Event)
 	w.errChan = make(chan error)

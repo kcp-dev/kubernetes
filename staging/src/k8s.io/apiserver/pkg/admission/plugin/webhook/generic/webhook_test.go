@@ -17,11 +17,13 @@ limitations under the License.
 package generic
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
-	"k8s.io/api/admissionregistration/v1"
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,6 +71,7 @@ func TestShouldCallHook(t *testing.T) {
 
 		webhook *v1.ValidatingWebhook
 		attrs   admission.Attributes
+		cluster logicalcluster.LogicalCluster
 
 		expectCall            bool
 		expectErr             string
@@ -296,7 +299,7 @@ func TestShouldCallHook(t *testing.T) {
 
 	for i, testcase := range testcases {
 		t.Run(testcase.name, func(t *testing.T) {
-			invocation, err := a.ShouldCallHook(webhook.NewValidatingWebhookAccessor(fmt.Sprintf("webhook-%d", i), fmt.Sprintf("webhook-cfg-%d", i), testcase.webhook), testcase.attrs, interfaces)
+			invocation, err := a.ShouldCallHook(webhook.NewValidatingWebhookAccessor(fmt.Sprintf("webhook-%d", i), fmt.Sprintf("webhook-cfg-%d", i), testcase.cluster, testcase.webhook), testcase.attrs, interfaces, testcase.cluster)
 			if err != nil {
 				if len(testcase.expectErr) == 0 {
 					t.Fatal(err)
@@ -346,6 +349,12 @@ func (f fakeNamespaceLister) Get(name string) (*corev1.Namespace, error) {
 		return ns, nil
 	}
 	return nil, errors.NewNotFound(corev1.Resource("namespaces"), name)
+}
+func (f fakeNamespaceLister) GetWithContext(ctx context.Context, name string) (*corev1.Namespace, error) {
+	return f.Get(name)
+}
+func (f fakeNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) ([]*corev1.Namespace, error) {
+	return f.List(selector)
 }
 
 func BenchmarkShouldCallHookWithComplexSelector(b *testing.B) {
@@ -407,13 +416,13 @@ func BenchmarkShouldCallHookWithComplexSelector(b *testing.B) {
 		},
 	}
 
-	wbAccessor := webhook.NewValidatingWebhookAccessor("webhook", "webhook-cfg", wb)
+	wbAccessor := webhook.NewValidatingWebhookAccessor("webhook", "webhook-cfg", logicalcluster.New("cluster"), wb)
 	attrs := admission.NewAttributesRecord(nil, nil, schema.GroupVersionKind{"autoscaling", "v1", "Scale"}, "ns", "name", schema.GroupVersionResource{"apps", "v1", "deployments"}, "scale", admission.Create, &metav1.CreateOptions{}, false, nil)
 	interfaces := &admission.RuntimeObjectInterfaces{EquivalentResourceMapper: mapper}
 	a := &Webhook{namespaceMatcher: &namespace.Matcher{NamespaceLister: namespaceLister}, objectMatcher: &object.Matcher{}}
 
 	for i := 0; i < b.N; i++ {
-		a.ShouldCallHook(wbAccessor, attrs, interfaces)
+		a.ShouldCallHook(wbAccessor, attrs, interfaces, logicalcluster.New("cluster"))
 	}
 }
 
@@ -475,13 +484,13 @@ func BenchmarkShouldCallHookWithComplexRule(b *testing.B) {
 		wb.Rules = append(wb.Rules, rule)
 	}
 
-	wbAccessor := webhook.NewValidatingWebhookAccessor("webhook", "webhook-cfg", wb)
+	wbAccessor := webhook.NewValidatingWebhookAccessor("webhook", "webhook-cfg", logicalcluster.New("cluster"), wb)
 	attrs := admission.NewAttributesRecord(nil, nil, schema.GroupVersionKind{"autoscaling", "v1", "Scale"}, "ns", "name", schema.GroupVersionResource{"apps", "v1", "deployments"}, "scale", admission.Create, &metav1.CreateOptions{}, false, nil)
 	interfaces := &admission.RuntimeObjectInterfaces{EquivalentResourceMapper: mapper}
 	a := &Webhook{namespaceMatcher: &namespace.Matcher{NamespaceLister: namespaceLister}, objectMatcher: &object.Matcher{}}
 
 	for i := 0; i < b.N; i++ {
-		a.ShouldCallHook(wbAccessor, attrs, interfaces)
+		a.ShouldCallHook(wbAccessor, attrs, interfaces, logicalcluster.New("cluster"))
 	}
 }
 
@@ -548,12 +557,12 @@ func BenchmarkShouldCallHookWithComplexSelectorAndRule(b *testing.B) {
 		wb.Rules = append(wb.Rules, rule)
 	}
 
-	wbAccessor := webhook.NewValidatingWebhookAccessor("webhook", "webhook-cfg", wb)
+	wbAccessor := webhook.NewValidatingWebhookAccessor("webhook", "webhook-cfg", logicalcluster.New("cluster"), wb)
 	attrs := admission.NewAttributesRecord(nil, nil, schema.GroupVersionKind{"autoscaling", "v1", "Scale"}, "ns", "name", schema.GroupVersionResource{"apps", "v1", "deployments"}, "scale", admission.Create, &metav1.CreateOptions{}, false, nil)
 	interfaces := &admission.RuntimeObjectInterfaces{EquivalentResourceMapper: mapper}
 	a := &Webhook{namespaceMatcher: &namespace.Matcher{NamespaceLister: namespaceLister}, objectMatcher: &object.Matcher{}}
 
 	for i := 0; i < b.N; i++ {
-		a.ShouldCallHook(wbAccessor, attrs, interfaces)
+		a.ShouldCallHook(wbAccessor, attrs, interfaces, logicalcluster.New("cluster"))
 	}
 }

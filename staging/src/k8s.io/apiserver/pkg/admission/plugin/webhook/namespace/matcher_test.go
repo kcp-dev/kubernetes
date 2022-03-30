@@ -17,9 +17,11 @@ limitations under the License.
 package namespace
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	registrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -43,6 +45,12 @@ func (f fakeNamespaceLister) Get(name string) (*corev1.Namespace, error) {
 		return ns, nil
 	}
 	return nil, errors.NewNotFound(corev1.Resource("namespaces"), name)
+}
+func (f fakeNamespaceLister) GetWithContext(ctx context.Context, name string) (*corev1.Namespace, error) {
+	return f.Get(name)
+}
+func (f fakeNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) ([]*corev1.Namespace, error) {
+	return f.List(selector)
 }
 
 func TestGetNamespaceLabels(t *testing.T) {
@@ -120,7 +128,7 @@ func TestNotExemptClusterScopedResource(t *testing.T) {
 	}
 	attr := admission.NewAttributesRecord(nil, nil, schema.GroupVersionKind{}, "", "mock-name", schema.GroupVersionResource{Version: "v1", Resource: "nodes"}, "", admission.Create, &metav1.CreateOptions{}, false, nil)
 	matcher := Matcher{}
-	matches, err := matcher.MatchNamespaceSelector(webhook.NewValidatingWebhookAccessor("mock-hook", "mock-cfg", hook), attr)
+	matches, err := matcher.MatchNamespaceSelector(webhook.NewValidatingWebhookAccessor("mock-hook", "mock-cfg", logicalcluster.New("mock-cluster"), hook), attr)
 	if err != nil {
 		t.Fatal(err)
 	}

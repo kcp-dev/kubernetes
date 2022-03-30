@@ -19,6 +19,8 @@ package webhook
 import (
 	"sync"
 
+	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
 	v1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,7 +33,7 @@ type WebhookAccessor interface {
 	// GetUID gets a string that uniquely identifies the webhook.
 	GetUID() string
 
-	GetCluster() string
+	GetLogicalCluster() logicalcluster.LogicalCluster
 
 	// GetConfigurationName gets the name of the webhook configuration that owns this webhook.
 	GetConfigurationName() string
@@ -73,14 +75,15 @@ type WebhookAccessor interface {
 }
 
 // NewMutatingWebhookAccessor creates an accessor for a MutatingWebhook.
-func NewMutatingWebhookAccessor(uid, configurationName string, h *v1.MutatingWebhook) WebhookAccessor {
-	return &mutatingWebhookAccessor{uid: uid, configurationName: configurationName, MutatingWebhook: h}
+func NewMutatingWebhookAccessor(uid, configurationName string, cluster logicalcluster.LogicalCluster, h *v1.MutatingWebhook) WebhookAccessor {
+	return &mutatingWebhookAccessor{uid: uid, configurationName: configurationName, cluster: cluster, MutatingWebhook: h}
 }
 
 type mutatingWebhookAccessor struct {
 	*v1.MutatingWebhook
 	uid               string
 	configurationName string
+	cluster           logicalcluster.LogicalCluster
 
 	initObjectSelector sync.Once
 	objectSelector     labels.Selector
@@ -95,8 +98,8 @@ type mutatingWebhookAccessor struct {
 	clientErr  error
 }
 
-func (m *mutatingWebhookAccessor) GetCluster() string {
-	return ""
+func (m *mutatingWebhookAccessor) GetLogicalCluster() logicalcluster.LogicalCluster {
+	return m.cluster
 }
 
 func (m *mutatingWebhookAccessor) GetUID() string {
@@ -177,7 +180,7 @@ func (m *mutatingWebhookAccessor) GetValidatingWebhook() (*v1.ValidatingWebhook,
 }
 
 // NewValidatingWebhookAccessor creates an accessor for a ValidatingWebhook.
-func NewValidatingWebhookAccessor(uid, configurationName, cluster string, h *v1.ValidatingWebhook) WebhookAccessor {
+func NewValidatingWebhookAccessor(uid, configurationName string, cluster logicalcluster.LogicalCluster, h *v1.ValidatingWebhook) WebhookAccessor {
 	return &validatingWebhookAccessor{uid: uid, configurationName: configurationName, cluster: cluster, ValidatingWebhook: h}
 }
 
@@ -185,7 +188,7 @@ type validatingWebhookAccessor struct {
 	*v1.ValidatingWebhook
 	uid               string
 	configurationName string
-	cluster           string
+	cluster           logicalcluster.LogicalCluster
 
 	initObjectSelector sync.Once
 	objectSelector     labels.Selector
@@ -200,7 +203,7 @@ type validatingWebhookAccessor struct {
 	clientErr  error
 }
 
-func (v *validatingWebhookAccessor) GetCluster() string {
+func (v *validatingWebhookAccessor) GetLogicalCluster() logicalcluster.LogicalCluster {
 	return v.cluster
 
 }

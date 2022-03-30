@@ -114,9 +114,6 @@ func NewServerRunOptions() *ServerRunOptions {
 	// disable the watch cache
 	s.Etcd.EnableWatchCache = false
 
-	// TODO: turn off the admission webhooks for now
-	s.Admission.DefaultOffPlugins.Insert(mutating.PluginName)
-
 	// Overwrite the default for storage data format.
 	s.Etcd.DefaultStorageMediaType = "application/vnd.kubernetes.protobuf"
 
