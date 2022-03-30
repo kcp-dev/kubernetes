@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors.
+Copyright 2022 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,14 @@ limitations under the License.
 package crdb
 
 import (
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
+	"testing"
+
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/generic"
-	"k8s.io/apiserver/pkg/storage/value"
 )
 
-func New(c generic.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, indexers storage.IndexerFuncs) storage.Interface {
-	return generic.NewWithIndexers(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled, indexers)
+func TestListUsingSecondaryIndex(t *testing.T) {
+	generic.RunTestListUsingSecondaryIndex(t, func(indexers storage.IndexerFuncs) generic.InternalTestClient {
+		return newTestClientWithIndexers(t, indexers)
+	})
 }

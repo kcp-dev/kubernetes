@@ -30,11 +30,16 @@ type DestroyFunc func()
 
 // Create creates a storage backend based on given config.
 func Create(c storagebackend.ConfigForResource, enableCaching bool, newFunc func() runtime.Object) (storage.Interface, DestroyFunc, error) {
+	return CreateWithIndices(c, enableCaching, newFunc, nil)
+}
+
+// CreateWithIndices creates a storage backend based on given config and secondary indices.
+func CreateWithIndices(c storagebackend.ConfigForResource, enableCaching bool, newFunc func() runtime.Object, indexers storage.IndexerFuncs) (storage.Interface, DestroyFunc, error) {
 	switch c.Type {
 	case storagebackend.StorageTypeETCD2:
 		return nil, nil, fmt.Errorf("%s is no longer a supported storage backend", c.Type)
 	case storagebackend.StorageTypeCRDB:
-		return newCRDBStorage(c, enableCaching, newFunc)
+		return newCRDBStorageWithIndices(c, enableCaching, newFunc, indexers)
 	case storagebackend.StorageTypeUnset, storagebackend.StorageTypeETCD3:
 		return newETCD3Storage(c, newFunc)
 	default:

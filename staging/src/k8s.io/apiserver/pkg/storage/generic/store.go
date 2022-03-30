@@ -31,11 +31,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
@@ -74,6 +73,7 @@ type store struct {
 	codec               runtime.Codec
 	versioner           storage.Versioner
 	transformer         value.Transformer
+	indexers storage.IndexerFuncs
 	pathPrefix          string
 	groupResource       schema.GroupResource
 	groupResourceString string
@@ -89,9 +89,16 @@ type objState struct {
 	stale bool
 }
 
+// NewWithIndexers returns an implementation of storage.Interface with secondary indices.
+func NewWithIndexers(c Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, indexers storage.IndexerFuncs) storage.Interface {
+	s := newStore(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+	s.indexers = indexers
+	return s
+}
+
 // New returns an etcd3 implementation of storage.Interface.
 func New(c Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.Interface {
-	return newStore(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
+	return NewWithIndexers(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled, nil)
 }
 
 func newStore(c Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) *store {
@@ -155,6 +162,7 @@ func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object,
 	if err := s.versioner.PrepareObjectForStorage(obj); err != nil {
 		return fmt.Errorf("PrepareObjectForStorage failed: %v", err)
 	}
+	ctx  = ContextWithComputedIndexFields(ctx, obj, s.indexers)
 	data, err := runtime.Encode(s.codec, obj)
 	if err != nil {
 		return err
@@ -299,7 +307,6 @@ func (s *store) GuaranteedUpdate(
 	preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
 	trace := utiltrace.New("GuaranteedUpdate etcd3", utiltrace.Field{"type", getTypeName(out)})
 	defer trace.LogIfLong(500 * time.Millisecond)
-
 	v, err := conversion.EnforcePtr(out)
 	if err != nil {
 		return fmt.Errorf("unable to convert output object to pointer: %v", err)
@@ -375,6 +382,7 @@ func (s *store) GuaranteedUpdate(
 			// Retry
 			continue
 		}
+		ctx  = ContextWithComputedIndexFields(ctx, ret, s.indexers)
 
 		data, err := runtime.Encode(s.codec, ret)
 		if err != nil {
@@ -532,6 +540,7 @@ func (s *store) GetList(ctx context.Context, key string, opts storage.ListOption
 	resourceVersion := opts.ResourceVersion
 	match := opts.ResourceVersionMatch
 	pred := opts.Predicate
+	ctx = ContextWithIndexFields(ctx, pred.MatcherIndex()) // TODO: if we're allowed to inspect multi-matching selectors, we can use indices for 'foo in [items]' queries
 	trace := utiltrace.New(fmt.Sprintf("List(recursive=%v) etcd3", recursive),
 		utiltrace.Field{"key", key},
 		utiltrace.Field{"resourceVersion", resourceVersion},

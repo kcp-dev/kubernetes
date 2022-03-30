@@ -44,19 +44,21 @@ type pool interface {
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
 }
 
-func NewClient(ctx context.Context, enableCaching bool, c pool) *client {
+func NewClient(ctx context.Context, enableCaching bool, c pool, indexSchema string) *client {
 	var cache *changefeedCache
 	if enableCaching {
 		cache = initialize(ctx, c)
 	}
 	return &client{
 		pool:            c,
+		indexSchema:     indexSchema,
 		changefeedCache: cache,
 	}
 }
 
 type client struct {
 	pool
+	indexSchema string
 	*changefeedCache
 }
 
@@ -119,6 +121,13 @@ func (c *client) Create(ctx context.Context, key string, value []byte, ttl uint6
 			return err
 		}
 
+		if indexFields, ok := generic.IndexFieldsFromContext(ctx); ok && len(indexFields) > 0 {
+			for _, index := range indexFields {
+				if _, err := tx.Exec(ctx, fmt.Sprintf(`INSERT INTO %s.%s (key, value) VALUES ($1, $2);`, c.indexSchema, SanitizeIdentifier(index.IndexName)), key, index.Value); err != nil {
+					return err
+				}
+			}
+		}
 		return tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&hybridLogicalTimestamp)
 	}); err != nil {
 		var pgErr *pgconn.PgError
@@ -215,6 +224,14 @@ func (c *client) ConditionalUpdate(ctx context.Context, key string, value []byte
 			// value we can use for preconditions next time around
 			return tx.QueryRow(ctx, `SELECT value, crdb_internal_mvcc_timestamp FROM k8s WHERE key=$1;`, key).Scan(&data, &hybridLogicalTimestamp)
 		}
+		if indexFields, ok := generic.IndexFieldsFromContext(ctx); ok && len(indexFields) > 0 {
+			for _, index := range indexFields {
+				if _, err := tx.Exec(ctx, fmt.Sprintf(`UPSERT INTO %s.%s (key, value) VALUES ($1, $2);`, c.indexSchema, SanitizeIdentifier(index.IndexName)), key, index.Value); err != nil {
+					return err
+				}
+			}
+		}
+
 		// read the updated timestamp so we know the new resourceVersion
 		return tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&hybridLogicalTimestamp)
 	}); err != nil {
@@ -283,13 +300,37 @@ func (c *client) List(ctx context.Context, key, prefix string, recursive, paging
 			return err
 		}
 
-		// TODO: perhaps just for tests, we need WHERE key LIKE prefix% since those tests expect real prefixing ... but that is not ideal for production
-		if err := tx.QueryRow(ctx, `SELECT COUNT(*), MAX(key) FROM k8s WHERE key LIKE $1 AND key >= $2;`, fmt.Sprintf("%s%%", prefix), key).Scan(&remaining, &finalKey); err != nil {
+		whereClauses := []string{
+			"key LIKE $1", // TODO: perhaps just for tests, we need WHERE key LIKE prefix% since those tests expect real prefixing ... but that is not ideal for production
+			"key >= $2",
+		}
+		args := []interface{}{
+			fmt.Sprintf("%s%%", prefix),
+			key,
+		}
+		var tableStatement string
+		if indexFields, ok := generic.IndexFieldsFromContext(ctx); ok && len(indexFields) > 0 {
+			clauseIndex := len(whereClauses) + 1
+			var joinStatements []string
+			for _, index := range indexFields {
+				indexName := SanitizeIdentifier(index.IndexName)
+				whereClauses = append(whereClauses, fmt.Sprintf("%s.%s.value = $%d", c.indexSchema, indexName, clauseIndex))
+				joinStatements = append(joinStatements, fmt.Sprintf(`INNER JOIN %s.%s USING (key)`, c.indexSchema, indexName))
+				args = append(args, index.Value)
+				clauseIndex++
+			}
+			tableStatement = fmt.Sprintf(`(k8s %s)`, strings.Join(joinStatements, " "))
+		} else {
+			tableStatement = "k8s"
+		}
+		whereClause := strings.Join(whereClauses, " AND ")
+
+		if err := tx.QueryRow(ctx, fmt.Sprintf(`SELECT COUNT(*), MAX(key) FROM %s WHERE %s;`, tableStatement, whereClause), args...).Scan(&remaining, &finalKey); err != nil {
 			return err
 		}
 
-		query := fmt.Sprintf(`SELECT key, value, crdb_internal_mvcc_timestamp FROM k8s WHERE key LIKE $1 AND key >= $2 ORDER BY key%s;`, limitClause)
-		rows, err := tx.Query(ctx, query, fmt.Sprintf("%s%%", prefix), key)
+		query := fmt.Sprintf(`SELECT k8s.key, k8s.value, k8s.crdb_internal_mvcc_timestamp FROM %s WHERE %s ORDER BY key%s;`, tableStatement, whereClause, limitClause)
+		rows, err := tx.Query(ctx, query, args...)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}

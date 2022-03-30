@@ -160,6 +160,10 @@ func (l *Logger) Log(ctx context.Context, level pgx.LogLevel, msg string, data m
 var once = sync.Once{}
 
 func newCRDBStorage(c storagebackend.ConfigForResource, enableCaching bool, newFunc func() runtime.Object) (storage.Interface, DestroyFunc, error) {
+	return newCRDBStorageWithIndices(c, enableCaching, newFunc, nil)
+}
+
+func newCRDBStorageWithIndices(c storagebackend.ConfigForResource, enableCaching bool, newFunc func() runtime.Object, indexers storage.IndexerFuncs) (storage.Interface, DestroyFunc, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	client, err := newCRDBClient(ctx, c.Transport)
 	if err != nil {
@@ -174,6 +178,15 @@ func newCRDBStorage(c storagebackend.ConfigForResource, enableCaching bool, newF
 	if initErr != nil {
 		cancel()
 		return nil, nil, initErr
+	}
+
+	// indices will be per-storage
+	indexSchemaName := crdb.SanitizeIdentifier(c.GroupResource.String())
+	if indexers != nil { // TODO: do we get re-created when the schema changes ... ? migration?
+		if err := crdb.AddIndices(ctx, indexSchemaName, client, indexers); err != nil {
+			cancel()
+			return nil, nil, err
+		}
 	}
 
 	// TODO: no way to monitor size: https://github.com/cockroachdb/cockroach/issues/20712
@@ -192,5 +205,5 @@ func newCRDBStorage(c storagebackend.ConfigForResource, enableCaching bool, newF
 	if transformer == nil {
 		transformer = value.IdentityTransformer
 	}
-	return crdb.New(crdb.NewClient(ctx, enableCaching, client), c.Codec, newFunc, c.Prefix, c.GroupResource, transformer, c.Paging), destroyFunc, nil
+	return crdb.New(crdb.NewClient(ctx, enableCaching, client, indexSchemaName), c.Codec, newFunc, c.Prefix, c.GroupResource, transformer, c.Paging, indexers), destroyFunc, nil
 }
