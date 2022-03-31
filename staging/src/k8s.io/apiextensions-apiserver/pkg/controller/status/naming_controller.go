@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/klog/v2"
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -129,6 +129,14 @@ func (c *NamingConditionController) getAcceptedNamesForGroup(clusterName, group 
 func (c *NamingConditionController) calculateNamesAndConditions(in *apiextensionsv1.CustomResourceDefinition) (apiextensionsv1.CustomResourceDefinitionNames, apiextensionsv1.CustomResourceDefinitionCondition, apiextensionsv1.CustomResourceDefinitionCondition) {
 	// Get the names that have already been claimed
 	allResources, allKinds := c.getAcceptedNamesForGroup(in.GetClusterName(), in.Spec.Group)
+
+	// HACK(kcp): if it's a bound CRD, reset already claimed resources and kinds to empty, because we need to support
+	// multiple bound CRDs with overlapping names. KCP admission will ensure that a workspace does not have any
+	// naming conflicts.
+	if _, kcpBoundCRD := in.Annotations["apis.kcp.dev/bound-crd"]; kcpBoundCRD {
+		allResources = sets.NewString()
+		allKinds = sets.NewString()
+	}
 
 	namesAcceptedCondition := apiextensionsv1.CustomResourceDefinitionCondition{
 		Type:   apiextensionsv1.NamesAccepted,
