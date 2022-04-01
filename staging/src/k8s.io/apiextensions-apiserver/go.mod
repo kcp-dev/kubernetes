@@ -12,9 +12,10 @@ require (
 	github.com/google/gofuzz v1.1.0
 	github.com/google/uuid v1.1.2
 	github.com/googleapis/gnostic v0.5.5
+	github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	go.etcd.io/etcd/client/pkg/v3 v3.5.0
 	go.etcd.io/etcd/client/v3 v3.5.0
 	google.golang.org/genproto v0.0.0-20210831024726-fe130286e0e2
@@ -29,13 +30,14 @@ require (
 	k8s.io/component-base v0.0.0
 	k8s.io/klog/v2 v2.30.0
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
-	k8s.io/kubernetes v1.23.4
+	k8s.io/kubernetes v1.23.5
 	k8s.io/utils v0.0.0-20211116205334-6203023598ed
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1
 	sigs.k8s.io/yaml v1.2.0
 )
 
 replace (
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	k8s.io/api => ../api
 	k8s.io/apiextensions-apiserver => ../apiextensions-apiserver
 	k8s.io/apimachinery => ../apimachinery

@@ -13,7 +13,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/onsi/ginkgo v1.14.0 // indirect
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.0 // indirect
+	github.com/stretchr/testify v1.7.1 // indirect
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63 // indirect
 	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e // indirect
 	golang.org/x/text v0.3.7 // indirect
@@ -25,4 +25,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
 
-replace k8s.io/code-generator => ../code-generator
+replace (
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
+	k8s.io/code-generator => ../code-generator
+)

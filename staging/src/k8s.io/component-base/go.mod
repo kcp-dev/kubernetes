@@ -18,7 +18,7 @@ require (
 	github.com/prometheus/procfs v0.6.0
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.20.0
 	go.opentelemetry.io/otel v0.20.0
 	go.opentelemetry.io/otel/exporters/otlp v0.20.0
@@ -36,6 +36,7 @@ require (
 )
 
 replace (
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	k8s.io/api => ../api
 	k8s.io/apimachinery => ../apimachinery
 	k8s.io/client-go => ../client-go

@@ -6,6 +6,7 @@ go 1.16
 
 require (
 	github.com/google/gofuzz v1.1.0
+	github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
 	github.com/spf13/cobra v1.2.1
 	k8s.io/apimachinery v0.0.0
 	k8s.io/apiserver v0.0.0
@@ -17,6 +18,7 @@ require (
 )
 
 replace (
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	k8s.io/api => ../api
 	k8s.io/apimachinery => ../apimachinery
 	k8s.io/apiserver => ../apiserver

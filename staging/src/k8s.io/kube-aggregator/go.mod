@@ -8,9 +8,10 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/emicklei/go-restful v2.9.5+incompatible
 	github.com/gogo/protobuf v1.3.2
+	github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63
 	k8s.io/api v0.0.0
 	k8s.io/apimachinery v0.0.0
@@ -25,6 +26,7 @@ require (
 )
 
 replace (
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	k8s.io/api => ../api
 	k8s.io/apimachinery => ../apimachinery
 	k8s.io/apiserver => ../apiserver

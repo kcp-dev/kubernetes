@@ -14,7 +14,7 @@ require (
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	golang.org/x/text v0.3.7
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.0.0
@@ -27,6 +27,7 @@ require (
 )
 
 replace (
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	k8s.io/api => ../api
 	k8s.io/apimachinery => ../apimachinery
 	k8s.io/cli-runtime => ../cli-runtime
