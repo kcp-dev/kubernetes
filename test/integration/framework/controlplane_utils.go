@@ -151,6 +151,7 @@ func startAPIServerOrDie(controlPlaneConfig *controlplane.Config, incomingServer
 			m.GenericAPIServer.RunPreShutdownHooks()
 		}
 		close(stopCh)
+		m.GenericAPIServer.Destroy()
 		s.Close()
 	}
 

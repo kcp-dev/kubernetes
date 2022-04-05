@@ -58,10 +58,12 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/logs"
-	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
+	_ "k8s.io/component-base/metrics/prometheus/workqueue"
 	"k8s.io/component-base/term"
 	"k8s.io/component-base/version"
 	"k8s.io/component-base/version/verflag"
+
+	// for workqueue metric registration
 	"k8s.io/klog/v2"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
 	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
@@ -171,7 +173,7 @@ func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) erro
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
 
-	server, err := CreateServerChain(completeOptions, stopCh)
+	server, err := CreateServerChain(completeOptions)
 	if err != nil {
 		return err
 	}
@@ -185,7 +187,7 @@ func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) erro
 }
 
 // CreateServerChain creates the apiservers connected via delegation.
-func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan struct{}) (*aggregatorapiserver.APIAggregator, error) {
+func CreateServerChain(completedOptions completedServerRunOptions) (*aggregatorapiserver.APIAggregator, error) {
 	kubeAPIServerConfig, serviceResolver, pluginInitializer, err := CreateKubeAPIServerConfig(completedOptions)
 	if err != nil {
 		return nil, err

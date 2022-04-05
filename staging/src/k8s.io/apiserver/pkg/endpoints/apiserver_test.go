@@ -463,6 +463,9 @@ func (storage *SimpleRESTStorage) NewList() runtime.Object {
 	return &genericapitesting.SimpleList{}
 }
 
+func (storage *SimpleRESTStorage) Destroy() {
+}
+
 func (storage *SimpleRESTStorage) Create(ctx context.Context, obj runtime.Object, createValidation rest.ValidateObjectFunc, options *metav1.CreateOptions) (runtime.Object, error) {
 	storage.checkContext(ctx)
 	storage.created = obj.(*genericapitesting.Simple)
@@ -546,6 +549,9 @@ var _ = rest.Connecter(&ConnecterRESTStorage{})
 
 func (s *ConnecterRESTStorage) New() runtime.Object {
 	return &genericapitesting.Simple{}
+}
+
+func (s *ConnecterRESTStorage) Destroy() {
 }
 
 func (s *ConnecterRESTStorage) Connect(ctx context.Context, id string, options runtime.Object, responder rest.Responder) (http.Handler, error) {
@@ -667,6 +673,9 @@ type SimpleTypedStorage struct {
 
 func (storage *SimpleTypedStorage) New() runtime.Object {
 	return storage.baseType
+}
+
+func (storage *SimpleTypedStorage) Destroy() {
 }
 
 func (storage *SimpleTypedStorage) Get(ctx context.Context, id string, options *metav1.GetOptions) (runtime.Object, error) {
@@ -809,6 +818,9 @@ func (UnimplementedRESTStorage) NamespaceScoped() bool {
 
 func (UnimplementedRESTStorage) New() runtime.Object {
 	return &genericapitesting.Simple{}
+}
+
+func (UnimplementedRESTStorage) Destroy() {
 }
 
 // TestUnimplementedRESTStorage ensures that if a rest.Storage does not implement a given
@@ -4448,6 +4460,9 @@ var _ = rest.GroupVersionKindProvider(&SimpleXGSubresourceRESTStorage{})
 
 func (storage *SimpleXGSubresourceRESTStorage) New() runtime.Object {
 	return &genericapitesting.SimpleXGSubresource{}
+}
+
+func (storage *SimpleXGSubresourceRESTStorage) Destroy() {
 }
 
 func (storage *SimpleXGSubresourceRESTStorage) Get(ctx context.Context, id string, options *metav1.GetOptions) (runtime.Object, error) {
