@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/mutating"
+	"k8s.io/apiserver/pkg/admission/plugin/webhook/validating"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
@@ -116,6 +117,8 @@ func NewServerRunOptions() *ServerRunOptions {
 
 	// Overwrite the default for storage data format.
 	s.Etcd.DefaultStorageMediaType = "application/vnd.kubernetes.protobuf"
+
+	s.Admission.DefaultOffPlugins.Insert(validating.PluginName, mutating.PluginName)
 
 	return &s
 }
