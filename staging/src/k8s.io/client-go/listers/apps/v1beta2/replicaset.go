@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta2
 
 import (
-	"context"
-
 	v1beta2 "k8s.io/api/apps/v1beta2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type ReplicaSetLister interface {
 	// List lists all ReplicaSets in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta2.ReplicaSet, err error)
-	// ListWithContext lists all ReplicaSets in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta2.ReplicaSet, err error)
 	// ReplicaSets returns an object that can list and get ReplicaSets.
 	ReplicaSets(namespace string) ReplicaSetNamespaceLister
 	ReplicaSetListerExpansion
@@ -53,11 +48,6 @@ func NewReplicaSetLister(indexer cache.Indexer) ReplicaSetLister {
 
 // List lists all ReplicaSets in the indexer.
 func (s *replicaSetLister) List(selector labels.Selector) (ret []*v1beta2.ReplicaSet, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ReplicaSets in the indexer.
-func (s *replicaSetLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta2.ReplicaSet, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta2.ReplicaSet))
 	})
@@ -90,11 +80,6 @@ type replicaSetNamespaceLister struct {
 
 // List lists all ReplicaSets in the indexer for a given namespace.
 func (s replicaSetNamespaceLister) List(selector labels.Selector) (ret []*v1beta2.ReplicaSet, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ReplicaSets in the indexer for a given namespace.
-func (s replicaSetNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta2.ReplicaSet, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta2.ReplicaSet))
 	})
@@ -103,11 +88,6 @@ func (s replicaSetNamespaceLister) ListWithContext(ctx context.Context, selector
 
 // Get retrieves the ReplicaSet from the indexer for a given namespace and name.
 func (s replicaSetNamespaceLister) Get(name string) (*v1beta2.ReplicaSet, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the ReplicaSet from the indexer for a given namespace and name.
-func (s replicaSetNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta2.ReplicaSet, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

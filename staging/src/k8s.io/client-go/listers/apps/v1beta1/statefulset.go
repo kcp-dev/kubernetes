@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/apps/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type StatefulSetLister interface {
 	// List lists all StatefulSets in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.StatefulSet, err error)
-	// ListWithContext lists all StatefulSets in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.StatefulSet, err error)
 	// StatefulSets returns an object that can list and get StatefulSets.
 	StatefulSets(namespace string) StatefulSetNamespaceLister
 	StatefulSetListerExpansion
@@ -53,11 +48,6 @@ func NewStatefulSetLister(indexer cache.Indexer) StatefulSetLister {
 
 // List lists all StatefulSets in the indexer.
 func (s *statefulSetLister) List(selector labels.Selector) (ret []*v1beta1.StatefulSet, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all StatefulSets in the indexer.
-func (s *statefulSetLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.StatefulSet, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.StatefulSet))
 	})
@@ -90,11 +80,6 @@ type statefulSetNamespaceLister struct {
 
 // List lists all StatefulSets in the indexer for a given namespace.
 func (s statefulSetNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.StatefulSet, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all StatefulSets in the indexer for a given namespace.
-func (s statefulSetNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.StatefulSet, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.StatefulSet))
 	})
@@ -103,11 +88,6 @@ func (s statefulSetNamespaceLister) ListWithContext(ctx context.Context, selecto
 
 // Get retrieves the StatefulSet from the indexer for a given namespace and name.
 func (s statefulSetNamespaceLister) Get(name string) (*v1beta1.StatefulSet, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the StatefulSet from the indexer for a given namespace and name.
-func (s statefulSetNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.StatefulSet, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

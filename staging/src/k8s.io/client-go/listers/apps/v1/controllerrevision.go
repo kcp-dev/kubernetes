@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type ControllerRevisionLister interface {
 	// List lists all ControllerRevisions in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ControllerRevision, err error)
-	// ListWithContext lists all ControllerRevisions in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ControllerRevision, err error)
 	// ControllerRevisions returns an object that can list and get ControllerRevisions.
 	ControllerRevisions(namespace string) ControllerRevisionNamespaceLister
 	ControllerRevisionListerExpansion
@@ -53,11 +48,6 @@ func NewControllerRevisionLister(indexer cache.Indexer) ControllerRevisionLister
 
 // List lists all ControllerRevisions in the indexer.
 func (s *controllerRevisionLister) List(selector labels.Selector) (ret []*v1.ControllerRevision, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ControllerRevisions in the indexer.
-func (s *controllerRevisionLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ControllerRevision, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ControllerRevision))
 	})
@@ -90,11 +80,6 @@ type controllerRevisionNamespaceLister struct {
 
 // List lists all ControllerRevisions in the indexer for a given namespace.
 func (s controllerRevisionNamespaceLister) List(selector labels.Selector) (ret []*v1.ControllerRevision, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ControllerRevisions in the indexer for a given namespace.
-func (s controllerRevisionNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ControllerRevision, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ControllerRevision))
 	})
@@ -103,11 +88,6 @@ func (s controllerRevisionNamespaceLister) ListWithContext(ctx context.Context, 
 
 // Get retrieves the ControllerRevision from the indexer for a given namespace and name.
 func (s controllerRevisionNamespaceLister) Get(name string) (*v1.ControllerRevision, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the ControllerRevision from the indexer for a given namespace and name.
-func (s controllerRevisionNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.ControllerRevision, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

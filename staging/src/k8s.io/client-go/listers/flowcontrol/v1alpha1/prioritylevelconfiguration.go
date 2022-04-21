@@ -19,8 +19,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
-
 	v1alpha1 "k8s.io/api/flowcontrol/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type PriorityLevelConfigurationLister interface {
 	// List lists all PriorityLevelConfigurations in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.PriorityLevelConfiguration, err error)
-	// ListWithContext lists all PriorityLevelConfigurations in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.PriorityLevelConfiguration, err error)
 	// Get retrieves the PriorityLevelConfiguration from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.PriorityLevelConfiguration, error)
-	// GetWithContext retrieves the PriorityLevelConfiguration from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1alpha1.PriorityLevelConfiguration, error)
 	PriorityLevelConfigurationListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewPriorityLevelConfigurationLister(indexer cache.Indexer) PriorityLevelCon
 
 // List lists all PriorityLevelConfigurations in the indexer.
 func (s *priorityLevelConfigurationLister) List(selector labels.Selector) (ret []*v1alpha1.PriorityLevelConfiguration, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all PriorityLevelConfigurations in the indexer.
-func (s *priorityLevelConfigurationLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.PriorityLevelConfiguration, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.PriorityLevelConfiguration))
 	})
@@ -70,11 +57,6 @@ func (s *priorityLevelConfigurationLister) ListWithContext(ctx context.Context, 
 
 // Get retrieves the PriorityLevelConfiguration from the index for a given name.
 func (s *priorityLevelConfigurationLister) Get(name string) (*v1alpha1.PriorityLevelConfiguration, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the PriorityLevelConfiguration from the index for a given name.
-func (s *priorityLevelConfigurationLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.PriorityLevelConfiguration, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

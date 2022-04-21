@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type NetworkPolicyLister interface {
 	// List lists all NetworkPolicies in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.NetworkPolicy, err error)
-	// ListWithContext lists all NetworkPolicies in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.NetworkPolicy, err error)
 	// NetworkPolicies returns an object that can list and get NetworkPolicies.
 	NetworkPolicies(namespace string) NetworkPolicyNamespaceLister
 	NetworkPolicyListerExpansion
@@ -53,11 +48,6 @@ func NewNetworkPolicyLister(indexer cache.Indexer) NetworkPolicyLister {
 
 // List lists all NetworkPolicies in the indexer.
 func (s *networkPolicyLister) List(selector labels.Selector) (ret []*v1beta1.NetworkPolicy, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all NetworkPolicies in the indexer.
-func (s *networkPolicyLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.NetworkPolicy, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.NetworkPolicy))
 	})
@@ -90,11 +80,6 @@ type networkPolicyNamespaceLister struct {
 
 // List lists all NetworkPolicies in the indexer for a given namespace.
 func (s networkPolicyNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.NetworkPolicy, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all NetworkPolicies in the indexer for a given namespace.
-func (s networkPolicyNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.NetworkPolicy, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.NetworkPolicy))
 	})
@@ -103,11 +88,6 @@ func (s networkPolicyNamespaceLister) ListWithContext(ctx context.Context, selec
 
 // Get retrieves the NetworkPolicy from the indexer for a given namespace and name.
 func (s networkPolicyNamespaceLister) Get(name string) (*v1beta1.NetworkPolicy, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the NetworkPolicy from the indexer for a given namespace and name.
-func (s networkPolicyNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.NetworkPolicy, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

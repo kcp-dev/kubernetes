@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type PodSecurityPolicyLister interface {
 	// List lists all PodSecurityPolicies in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.PodSecurityPolicy, err error)
-	// ListWithContext lists all PodSecurityPolicies in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.PodSecurityPolicy, err error)
 	// Get retrieves the PodSecurityPolicy from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1beta1.PodSecurityPolicy, error)
-	// GetWithContext retrieves the PodSecurityPolicy from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1beta1.PodSecurityPolicy, error)
 	PodSecurityPolicyListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewPodSecurityPolicyLister(indexer cache.Indexer) PodSecurityPolicyLister {
 
 // List lists all PodSecurityPolicies in the indexer.
 func (s *podSecurityPolicyLister) List(selector labels.Selector) (ret []*v1beta1.PodSecurityPolicy, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all PodSecurityPolicies in the indexer.
-func (s *podSecurityPolicyLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.PodSecurityPolicy, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.PodSecurityPolicy))
 	})
@@ -70,11 +57,6 @@ func (s *podSecurityPolicyLister) ListWithContext(ctx context.Context, selector 
 
 // Get retrieves the PodSecurityPolicy from the index for a given name.
 func (s *podSecurityPolicyLister) Get(name string) (*v1beta1.PodSecurityPolicy, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the PodSecurityPolicy from the index for a given name.
-func (s *podSecurityPolicyLister) GetWithContext(ctx context.Context, name string) (*v1beta1.PodSecurityPolicy, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

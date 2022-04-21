@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type NodeLister interface {
 	// List lists all Nodes in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Node, err error)
-	// ListWithContext lists all Nodes in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Node, err error)
 	// Get retrieves the Node from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.Node, error)
-	// GetWithContext retrieves the Node from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1.Node, error)
 	NodeListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewNodeLister(indexer cache.Indexer) NodeLister {
 
 // List lists all Nodes in the indexer.
 func (s *nodeLister) List(selector labels.Selector) (ret []*v1.Node, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Nodes in the indexer.
-func (s *nodeLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Node, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Node))
 	})
@@ -70,11 +57,6 @@ func (s *nodeLister) ListWithContext(ctx context.Context, selector labels.Select
 
 // Get retrieves the Node from the index for a given name.
 func (s *nodeLister) Get(name string) (*v1.Node, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the Node from the index for a given name.
-func (s *nodeLister) GetWithContext(ctx context.Context, name string) (*v1.Node, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

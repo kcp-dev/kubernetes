@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type NamespaceLister interface {
 	// List lists all Namespaces in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.Namespace, err error)
-	// ListWithContext lists all Namespaces in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Namespace, err error)
 	// Get retrieves the Namespace from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.Namespace, error)
-	// GetWithContext retrieves the Namespace from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1.Namespace, error)
 	NamespaceListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewNamespaceLister(indexer cache.Indexer) NamespaceLister {
 
 // List lists all Namespaces in the indexer.
 func (s *namespaceLister) List(selector labels.Selector) (ret []*v1.Namespace, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Namespaces in the indexer.
-func (s *namespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.Namespace, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.Namespace))
 	})
@@ -70,11 +57,6 @@ func (s *namespaceLister) ListWithContext(ctx context.Context, selector labels.S
 
 // Get retrieves the Namespace from the index for a given name.
 func (s *namespaceLister) Get(name string) (*v1.Namespace, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the Namespace from the index for a given name.
-func (s *namespaceLister) GetWithContext(ctx context.Context, name string) (*v1.Namespace, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

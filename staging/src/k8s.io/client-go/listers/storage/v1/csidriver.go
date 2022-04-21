@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type CSIDriverLister interface {
 	// List lists all CSIDrivers in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.CSIDriver, err error)
-	// ListWithContext lists all CSIDrivers in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CSIDriver, err error)
 	// Get retrieves the CSIDriver from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1.CSIDriver, error)
-	// GetWithContext retrieves the CSIDriver from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1.CSIDriver, error)
 	CSIDriverListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewCSIDriverLister(indexer cache.Indexer) CSIDriverLister {
 
 // List lists all CSIDrivers in the indexer.
 func (s *cSIDriverLister) List(selector labels.Selector) (ret []*v1.CSIDriver, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all CSIDrivers in the indexer.
-func (s *cSIDriverLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.CSIDriver, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.CSIDriver))
 	})
@@ -70,11 +57,6 @@ func (s *cSIDriverLister) ListWithContext(ctx context.Context, selector labels.S
 
 // Get retrieves the CSIDriver from the index for a given name.
 func (s *cSIDriverLister) Get(name string) (*v1.CSIDriver, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the CSIDriver from the index for a given name.
-func (s *cSIDriverLister) GetWithContext(ctx context.Context, name string) (*v1.CSIDriver, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/apps/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type DeploymentLister interface {
 	// List lists all Deployments in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.Deployment, err error)
-	// ListWithContext lists all Deployments in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Deployment, err error)
 	// Deployments returns an object that can list and get Deployments.
 	Deployments(namespace string) DeploymentNamespaceLister
 	DeploymentListerExpansion
@@ -53,11 +48,6 @@ func NewDeploymentLister(indexer cache.Indexer) DeploymentLister {
 
 // List lists all Deployments in the indexer.
 func (s *deploymentLister) List(selector labels.Selector) (ret []*v1beta1.Deployment, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Deployments in the indexer.
-func (s *deploymentLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Deployment, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Deployment))
 	})
@@ -90,11 +80,6 @@ type deploymentNamespaceLister struct {
 
 // List lists all Deployments in the indexer for a given namespace.
 func (s deploymentNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.Deployment, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Deployments in the indexer for a given namespace.
-func (s deploymentNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Deployment, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Deployment))
 	})
@@ -103,11 +88,6 @@ func (s deploymentNamespaceLister) ListWithContext(ctx context.Context, selector
 
 // Get retrieves the Deployment from the indexer for a given namespace and name.
 func (s deploymentNamespaceLister) Get(name string) (*v1beta1.Deployment, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the Deployment from the indexer for a given namespace and name.
-func (s deploymentNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.Deployment, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type ConfigMapLister interface {
 	// List lists all ConfigMaps in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ConfigMap, err error)
-	// ListWithContext lists all ConfigMaps in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ConfigMap, err error)
 	// ConfigMaps returns an object that can list and get ConfigMaps.
 	ConfigMaps(namespace string) ConfigMapNamespaceLister
 	ConfigMapListerExpansion
@@ -53,11 +48,6 @@ func NewConfigMapLister(indexer cache.Indexer) ConfigMapLister {
 
 // List lists all ConfigMaps in the indexer.
 func (s *configMapLister) List(selector labels.Selector) (ret []*v1.ConfigMap, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ConfigMaps in the indexer.
-func (s *configMapLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ConfigMap, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ConfigMap))
 	})
@@ -90,11 +80,6 @@ type configMapNamespaceLister struct {
 
 // List lists all ConfigMaps in the indexer for a given namespace.
 func (s configMapNamespaceLister) List(selector labels.Selector) (ret []*v1.ConfigMap, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ConfigMaps in the indexer for a given namespace.
-func (s configMapNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ConfigMap, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ConfigMap))
 	})
@@ -103,11 +88,6 @@ func (s configMapNamespaceLister) ListWithContext(ctx context.Context, selector 
 
 // Get retrieves the ConfigMap from the indexer for a given namespace and name.
 func (s configMapNamespaceLister) Get(name string) (*v1.ConfigMap, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the ConfigMap from the indexer for a given namespace and name.
-func (s configMapNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.ConfigMap, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type LimitRangeLister interface {
 	// List lists all LimitRanges in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.LimitRange, err error)
-	// ListWithContext lists all LimitRanges in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.LimitRange, err error)
 	// LimitRanges returns an object that can list and get LimitRanges.
 	LimitRanges(namespace string) LimitRangeNamespaceLister
 	LimitRangeListerExpansion
@@ -53,11 +48,6 @@ func NewLimitRangeLister(indexer cache.Indexer) LimitRangeLister {
 
 // List lists all LimitRanges in the indexer.
 func (s *limitRangeLister) List(selector labels.Selector) (ret []*v1.LimitRange, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all LimitRanges in the indexer.
-func (s *limitRangeLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.LimitRange, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.LimitRange))
 	})
@@ -90,11 +80,6 @@ type limitRangeNamespaceLister struct {
 
 // List lists all LimitRanges in the indexer for a given namespace.
 func (s limitRangeNamespaceLister) List(selector labels.Selector) (ret []*v1.LimitRange, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all LimitRanges in the indexer for a given namespace.
-func (s limitRangeNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.LimitRange, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.LimitRange))
 	})
@@ -103,11 +88,6 @@ func (s limitRangeNamespaceLister) ListWithContext(ctx context.Context, selector
 
 // Get retrieves the LimitRange from the indexer for a given namespace and name.
 func (s limitRangeNamespaceLister) Get(name string) (*v1.LimitRange, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the LimitRange from the indexer for a given namespace and name.
-func (s limitRangeNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.LimitRange, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

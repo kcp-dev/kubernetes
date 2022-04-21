@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type PodDisruptionBudgetLister interface {
 	// List lists all PodDisruptionBudgets in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.PodDisruptionBudget, err error)
-	// ListWithContext lists all PodDisruptionBudgets in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PodDisruptionBudget, err error)
 	// PodDisruptionBudgets returns an object that can list and get PodDisruptionBudgets.
 	PodDisruptionBudgets(namespace string) PodDisruptionBudgetNamespaceLister
 	PodDisruptionBudgetListerExpansion
@@ -53,11 +48,6 @@ func NewPodDisruptionBudgetLister(indexer cache.Indexer) PodDisruptionBudgetList
 
 // List lists all PodDisruptionBudgets in the indexer.
 func (s *podDisruptionBudgetLister) List(selector labels.Selector) (ret []*v1.PodDisruptionBudget, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all PodDisruptionBudgets in the indexer.
-func (s *podDisruptionBudgetLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PodDisruptionBudget, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.PodDisruptionBudget))
 	})
@@ -90,11 +80,6 @@ type podDisruptionBudgetNamespaceLister struct {
 
 // List lists all PodDisruptionBudgets in the indexer for a given namespace.
 func (s podDisruptionBudgetNamespaceLister) List(selector labels.Selector) (ret []*v1.PodDisruptionBudget, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all PodDisruptionBudgets in the indexer for a given namespace.
-func (s podDisruptionBudgetNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.PodDisruptionBudget, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.PodDisruptionBudget))
 	})
@@ -103,11 +88,6 @@ func (s podDisruptionBudgetNamespaceLister) ListWithContext(ctx context.Context,
 
 // Get retrieves the PodDisruptionBudget from the indexer for a given namespace and name.
 func (s podDisruptionBudgetNamespaceLister) Get(name string) (*v1.PodDisruptionBudget, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the PodDisruptionBudget from the indexer for a given namespace and name.
-func (s podDisruptionBudgetNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.PodDisruptionBudget, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

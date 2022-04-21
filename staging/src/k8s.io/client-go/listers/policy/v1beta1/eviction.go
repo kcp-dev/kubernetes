@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type EvictionLister interface {
 	// List lists all Evictions in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.Eviction, err error)
-	// ListWithContext lists all Evictions in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Eviction, err error)
 	// Evictions returns an object that can list and get Evictions.
 	Evictions(namespace string) EvictionNamespaceLister
 	EvictionListerExpansion
@@ -53,11 +48,6 @@ func NewEvictionLister(indexer cache.Indexer) EvictionLister {
 
 // List lists all Evictions in the indexer.
 func (s *evictionLister) List(selector labels.Selector) (ret []*v1beta1.Eviction, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Evictions in the indexer.
-func (s *evictionLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Eviction, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Eviction))
 	})
@@ -90,11 +80,6 @@ type evictionNamespaceLister struct {
 
 // List lists all Evictions in the indexer for a given namespace.
 func (s evictionNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.Eviction, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Evictions in the indexer for a given namespace.
-func (s evictionNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Eviction, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Eviction))
 	})
@@ -103,11 +88,6 @@ func (s evictionNamespaceLister) ListWithContext(ctx context.Context, selector l
 
 // Get retrieves the Eviction from the indexer for a given namespace and name.
 func (s evictionNamespaceLister) Get(name string) (*v1beta1.Eviction, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the Eviction from the indexer for a given namespace and name.
-func (s evictionNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.Eviction, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

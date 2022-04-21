@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type ResourceQuotaLister interface {
 	// List lists all ResourceQuotas in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.ResourceQuota, err error)
-	// ListWithContext lists all ResourceQuotas in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ResourceQuota, err error)
 	// ResourceQuotas returns an object that can list and get ResourceQuotas.
 	ResourceQuotas(namespace string) ResourceQuotaNamespaceLister
 	ResourceQuotaListerExpansion
@@ -53,11 +48,6 @@ func NewResourceQuotaLister(indexer cache.Indexer) ResourceQuotaLister {
 
 // List lists all ResourceQuotas in the indexer.
 func (s *resourceQuotaLister) List(selector labels.Selector) (ret []*v1.ResourceQuota, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ResourceQuotas in the indexer.
-func (s *resourceQuotaLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ResourceQuota, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ResourceQuota))
 	})
@@ -90,11 +80,6 @@ type resourceQuotaNamespaceLister struct {
 
 // List lists all ResourceQuotas in the indexer for a given namespace.
 func (s resourceQuotaNamespaceLister) List(selector labels.Selector) (ret []*v1.ResourceQuota, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ResourceQuotas in the indexer for a given namespace.
-func (s resourceQuotaNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.ResourceQuota, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.ResourceQuota))
 	})
@@ -103,11 +88,6 @@ func (s resourceQuotaNamespaceLister) ListWithContext(ctx context.Context, selec
 
 // Get retrieves the ResourceQuota from the indexer for a given namespace and name.
 func (s resourceQuotaNamespaceLister) Get(name string) (*v1.ResourceQuota, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the ResourceQuota from the indexer for a given namespace and name.
-func (s resourceQuotaNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.ResourceQuota, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

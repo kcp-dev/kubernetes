@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/node/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type RuntimeClassLister interface {
 	// List lists all RuntimeClasses in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.RuntimeClass, err error)
-	// ListWithContext lists all RuntimeClasses in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.RuntimeClass, err error)
 	// Get retrieves the RuntimeClass from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1beta1.RuntimeClass, error)
-	// GetWithContext retrieves the RuntimeClass from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1beta1.RuntimeClass, error)
 	RuntimeClassListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewRuntimeClassLister(indexer cache.Indexer) RuntimeClassLister {
 
 // List lists all RuntimeClasses in the indexer.
 func (s *runtimeClassLister) List(selector labels.Selector) (ret []*v1beta1.RuntimeClass, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all RuntimeClasses in the indexer.
-func (s *runtimeClassLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.RuntimeClass, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.RuntimeClass))
 	})
@@ -70,11 +57,6 @@ func (s *runtimeClassLister) ListWithContext(ctx context.Context, selector label
 
 // Get retrieves the RuntimeClass from the index for a given name.
 func (s *runtimeClassLister) Get(name string) (*v1beta1.RuntimeClass, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the RuntimeClass from the index for a given name.
-func (s *runtimeClassLister) GetWithContext(ctx context.Context, name string) (*v1beta1.RuntimeClass, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

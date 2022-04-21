@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type IngressLister interface {
 	// List lists all Ingresses in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.Ingress, err error)
-	// ListWithContext lists all Ingresses in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Ingress, err error)
 	// Ingresses returns an object that can list and get Ingresses.
 	Ingresses(namespace string) IngressNamespaceLister
 	IngressListerExpansion
@@ -53,11 +48,6 @@ func NewIngressLister(indexer cache.Indexer) IngressLister {
 
 // List lists all Ingresses in the indexer.
 func (s *ingressLister) List(selector labels.Selector) (ret []*v1beta1.Ingress, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Ingresses in the indexer.
-func (s *ingressLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Ingress, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Ingress))
 	})
@@ -90,11 +80,6 @@ type ingressNamespaceLister struct {
 
 // List lists all Ingresses in the indexer for a given namespace.
 func (s ingressNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.Ingress, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all Ingresses in the indexer for a given namespace.
-func (s ingressNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.Ingress, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.Ingress))
 	})
@@ -103,11 +88,6 @@ func (s ingressNamespaceLister) ListWithContext(ctx context.Context, selector la
 
 // Get retrieves the Ingress from the indexer for a given namespace and name.
 func (s ingressNamespaceLister) Get(name string) (*v1beta1.Ingress, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the Ingress from the indexer for a given namespace and name.
-func (s ingressNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.Ingress, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

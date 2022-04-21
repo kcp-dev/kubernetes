@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,9 +31,6 @@ type CSIStorageCapacityLister interface {
 	// List lists all CSIStorageCapacities in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.CSIStorageCapacity, err error)
-	// ListWithContext lists all CSIStorageCapacities in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.CSIStorageCapacity, err error)
 	// CSIStorageCapacities returns an object that can list and get CSIStorageCapacities.
 	CSIStorageCapacities(namespace string) CSIStorageCapacityNamespaceLister
 	CSIStorageCapacityListerExpansion
@@ -53,11 +48,6 @@ func NewCSIStorageCapacityLister(indexer cache.Indexer) CSIStorageCapacityLister
 
 // List lists all CSIStorageCapacities in the indexer.
 func (s *cSIStorageCapacityLister) List(selector labels.Selector) (ret []*v1beta1.CSIStorageCapacity, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all CSIStorageCapacities in the indexer.
-func (s *cSIStorageCapacityLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.CSIStorageCapacity, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.CSIStorageCapacity))
 	})
@@ -90,11 +80,6 @@ type cSIStorageCapacityNamespaceLister struct {
 
 // List lists all CSIStorageCapacities in the indexer for a given namespace.
 func (s cSIStorageCapacityNamespaceLister) List(selector labels.Selector) (ret []*v1beta1.CSIStorageCapacity, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all CSIStorageCapacities in the indexer for a given namespace.
-func (s cSIStorageCapacityNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.CSIStorageCapacity, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.CSIStorageCapacity))
 	})
@@ -103,11 +88,6 @@ func (s cSIStorageCapacityNamespaceLister) ListWithContext(ctx context.Context, 
 
 // Get retrieves the CSIStorageCapacity from the indexer for a given namespace and name.
 func (s cSIStorageCapacityNamespaceLister) Get(name string) (*v1beta1.CSIStorageCapacity, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the CSIStorageCapacity from the indexer for a given namespace and name.
-func (s cSIStorageCapacityNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1beta1.CSIStorageCapacity, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

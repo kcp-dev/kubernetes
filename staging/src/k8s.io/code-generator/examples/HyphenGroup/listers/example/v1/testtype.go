@@ -19,8 +19,6 @@ limitations under the License.
 package v1
 
 import (
-	"context"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
@@ -33,9 +31,6 @@ type TestTypeLister interface {
 	// List lists all TestTypes in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1.TestType, err error)
-	// ListWithContext lists all TestTypes in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.TestType, err error)
 	// TestTypes returns an object that can list and get TestTypes.
 	TestTypes(namespace string) TestTypeNamespaceLister
 	TestTypeListerExpansion
@@ -53,11 +48,6 @@ func NewTestTypeLister(indexer cache.Indexer) TestTypeLister {
 
 // List lists all TestTypes in the indexer.
 func (s *testTypeLister) List(selector labels.Selector) (ret []*v1.TestType, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all TestTypes in the indexer.
-func (s *testTypeLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.TestType, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.TestType))
 	})
@@ -90,11 +80,6 @@ type testTypeNamespaceLister struct {
 
 // List lists all TestTypes in the indexer for a given namespace.
 func (s testTypeNamespaceLister) List(selector labels.Selector) (ret []*v1.TestType, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all TestTypes in the indexer for a given namespace.
-func (s testTypeNamespaceLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1.TestType, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1.TestType))
 	})
@@ -103,11 +88,6 @@ func (s testTypeNamespaceLister) ListWithContext(ctx context.Context, selector l
 
 // Get retrieves the TestType from the indexer for a given namespace and name.
 func (s testTypeNamespaceLister) Get(name string) (*v1.TestType, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the TestType from the indexer for a given namespace and name.
-func (s testTypeNamespaceLister) GetWithContext(ctx context.Context, name string) (*v1.TestType, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err

@@ -19,8 +19,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
-
 	v1alpha1 "k8s.io/api/imagepolicy/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type ImageReviewLister interface {
 	// List lists all ImageReviews in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.ImageReview, err error)
-	// ListWithContext lists all ImageReviews in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.ImageReview, err error)
 	// Get retrieves the ImageReview from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.ImageReview, error)
-	// GetWithContext retrieves the ImageReview from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1alpha1.ImageReview, error)
 	ImageReviewListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewImageReviewLister(indexer cache.Indexer) ImageReviewLister {
 
 // List lists all ImageReviews in the indexer.
 func (s *imageReviewLister) List(selector labels.Selector) (ret []*v1alpha1.ImageReview, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all ImageReviews in the indexer.
-func (s *imageReviewLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1alpha1.ImageReview, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1alpha1.ImageReview))
 	})
@@ -70,11 +57,6 @@ func (s *imageReviewLister) ListWithContext(ctx context.Context, selector labels
 
 // Get retrieves the ImageReview from the index for a given name.
 func (s *imageReviewLister) Get(name string) (*v1alpha1.ImageReview, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the ImageReview from the index for a given name.
-func (s *imageReviewLister) GetWithContext(ctx context.Context, name string) (*v1alpha1.ImageReview, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err

@@ -19,8 +19,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
-
 	v1beta1 "k8s.io/api/flowcontrol/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,15 +31,9 @@ type FlowSchemaLister interface {
 	// List lists all FlowSchemas in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.FlowSchema, err error)
-	// ListWithContext lists all FlowSchemas in the indexer.
-	// Objects returned here must be treated as read-only.
-	ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.FlowSchema, err error)
 	// Get retrieves the FlowSchema from the index for a given name.
 	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1beta1.FlowSchema, error)
-	// GetWithContext retrieves the FlowSchema from the index for a given name.
-	// Objects returned here must be treated as read-only.
-	GetWithContext(ctx context.Context, name string) (*v1beta1.FlowSchema, error)
 	FlowSchemaListerExpansion
 }
 
@@ -57,11 +49,6 @@ func NewFlowSchemaLister(indexer cache.Indexer) FlowSchemaLister {
 
 // List lists all FlowSchemas in the indexer.
 func (s *flowSchemaLister) List(selector labels.Selector) (ret []*v1beta1.FlowSchema, err error) {
-	return s.ListWithContext(context.Background(), selector)
-}
-
-// ListWithContext lists all FlowSchemas in the indexer.
-func (s *flowSchemaLister) ListWithContext(ctx context.Context, selector labels.Selector) (ret []*v1beta1.FlowSchema, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*v1beta1.FlowSchema))
 	})
@@ -70,11 +57,6 @@ func (s *flowSchemaLister) ListWithContext(ctx context.Context, selector labels.
 
 // Get retrieves the FlowSchema from the index for a given name.
 func (s *flowSchemaLister) Get(name string) (*v1beta1.FlowSchema, error) {
-	return s.GetWithContext(context.Background(), name)
-}
-
-// GetWithContext retrieves the FlowSchema from the index for a given name.
-func (s *flowSchemaLister) GetWithContext(ctx context.Context, name string) (*v1beta1.FlowSchema, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
