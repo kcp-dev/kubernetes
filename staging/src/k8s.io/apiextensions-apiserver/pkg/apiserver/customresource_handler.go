@@ -347,7 +347,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	//     contexts (like controller-runtime for example)
 	if clientgoscheme.Scheme.IsGroupRegistered(requestInfo.APIGroup) {
 		supportedTypes = append(supportedTypes, string(types.StrategicMergePatchType))
-		req, err := convertProtobufRequestsToJson(verb, req, schema.GroupVersionKind{
+		req, err := ConvertProtobufRequestsToJson(verb, req, schema.GroupVersionKind{
 			Group:   requestInfo.APIGroup,
 			Version: requestInfo.APIVersion,
 			Kind:    crd.Spec.Names.Kind,
@@ -409,7 +409,7 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // and provide a list of supported content types.
 // client-go should then examine whether it can satisfy such a request by encoding the object with a different scheme.
 // This would require a KEP but is in keeping with content negotiation on GET / WATCH in Kube
-func convertProtobufRequestsToJson(verb string, req *http.Request, gvk schema.GroupVersionKind) (*http.Request, error) {
+func ConvertProtobufRequestsToJson(verb string, req *http.Request, gvk schema.GroupVersionKind) (*http.Request, error) {
 	if (verb == "CREATE" || verb == "UPDATE") &&
 		req.Header.Get("Content-Type") == runtime.ContentTypeProtobuf {
 		resource, err := clientgoscheme.Scheme.New(gvk)
