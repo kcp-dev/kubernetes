@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,7 +33,6 @@ import (
 	"testing"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
 	admissionreviewv1 "k8s.io/api/admission/v1"
 	"k8s.io/api/admission/v1beta1"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
@@ -54,7 +54,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
-	dynamic "k8s.io/client-go/dynamic"
+	"k8s.io/apiserver/pkg/storage/generic"
+	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
@@ -604,10 +605,10 @@ func testWebhookAdmission(t *testing.T, watchCache bool) {
 		holder.gvrToConvertedGVK[metaGVR] = schema.GroupVersionKind{Group: resourcesByGVR[convertedGVR].Group, Version: resourcesByGVR[convertedGVR].Version, Kind: resourcesByGVR[convertedGVR].Kind}
 	}
 
-	if err := createV1beta1MutationWebhook(server.EtcdClient, server.EtcdStoragePrefix, client, webhookServer.URL+"/v1beta1/"+mutation, webhookServer.URL+"/v1beta1/convert/"+mutation, convertedV1beta1Rules); err != nil {
+	if err := createV1beta1MutationWebhook(server.StorageClient, server.StoragePrefix, client, webhookServer.URL+"/v1beta1/"+mutation, webhookServer.URL+"/v1beta1/convert/"+mutation, convertedV1beta1Rules); err != nil {
 		t.Fatal(err)
 	}
-	if err := createV1beta1ValidationWebhook(server.EtcdClient, server.EtcdStoragePrefix, client, webhookServer.URL+"/v1beta1/"+validation, webhookServer.URL+"/v1beta1/convert/"+validation, convertedV1beta1Rules); err != nil {
+	if err := createV1beta1ValidationWebhook(server.StorageClient, server.StoragePrefix, client, webhookServer.URL+"/v1beta1/"+validation, webhookServer.URL+"/v1beta1/convert/"+validation, convertedV1beta1Rules); err != nil {
 		t.Fatal(err)
 	}
 	if err := createV1MutationWebhook(client, webhookServer.URL+"/v1/"+mutation, webhookServer.URL+"/v1/convert/"+mutation, convertedV1Rules); err != nil {
@@ -1533,7 +1534,7 @@ func shouldTestResourceVerb(gvr schema.GroupVersionResource, resource metav1.API
 // webhook registration helpers
 //
 
-func createV1beta1ValidationWebhook(etcdClient *clientv3.Client, etcdStoragePrefix string, client clientset.Interface, endpoint, convertedEndpoint string, convertedRules []admissionv1beta1.RuleWithOperations) error {
+func createV1beta1ValidationWebhook(storageClient generic.Client, etcdStoragePrefix string, client clientset.Interface, endpoint, convertedEndpoint string, convertedRules []admissionv1beta1.RuleWithOperations) error {
 	fail := admissionv1beta1.Fail
 	equivalent := admissionv1beta1.Equivalent
 	webhookConfig := &admissionv1beta1.ValidatingWebhookConfiguration{
@@ -1574,8 +1575,10 @@ func createV1beta1ValidationWebhook(etcdClient *clientv3.Client, etcdStoragePref
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceNone)
 	key := path.Join("/", etcdStoragePrefix, "validatingwebhookconfigurations", webhookConfig.Name)
 	val, _ := json.Marshal(webhookConfig)
-	if _, err := etcdClient.Put(ctx, key, string(val)); err != nil {
+	if succeeded, _, err := storageClient.Create(ctx, key, val, 0); err != nil {
 		return err
+	} else if !succeeded {
+		return errors.New("failed to create validating webhook configuration using raw storage client")
 	}
 
 	// make sure we can get the webhook
@@ -1586,7 +1589,7 @@ func createV1beta1ValidationWebhook(etcdClient *clientv3.Client, etcdStoragePref
 	return nil
 }
 
-func createV1beta1MutationWebhook(etcdClient *clientv3.Client, etcdStoragePrefix string, client clientset.Interface, endpoint, convertedEndpoint string, convertedRules []admissionv1beta1.RuleWithOperations) error {
+func createV1beta1MutationWebhook(storageClient generic.Client, etcdStoragePrefix string, client clientset.Interface, endpoint, convertedEndpoint string, convertedRules []admissionv1beta1.RuleWithOperations) error {
 	fail := admissionv1beta1.Fail
 	equivalent := admissionv1beta1.Equivalent
 	webhookConfig := &admissionv1beta1.MutatingWebhookConfiguration{
@@ -1627,8 +1630,10 @@ func createV1beta1MutationWebhook(etcdClient *clientv3.Client, etcdStoragePrefix
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceNone)
 	key := path.Join("/", etcdStoragePrefix, "mutatingwebhookconfigurations", webhookConfig.Name)
 	val, _ := json.Marshal(webhookConfig)
-	if _, err := etcdClient.Put(ctx, key, string(val)); err != nil {
+	if succeeded, _, err := storageClient.Create(ctx, key, val, 0); err != nil {
 		return err
+	} else if !succeeded {
+		return errors.New("failed to create mutating webhook configuration using raw storage client")
 	}
 
 	// make sure we can get the webhook

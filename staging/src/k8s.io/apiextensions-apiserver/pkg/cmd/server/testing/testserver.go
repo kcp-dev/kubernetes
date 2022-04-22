@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-
 	"k8s.io/apiextensions-apiserver/pkg/cmd/server/options"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/registry/generic/registry"
@@ -127,6 +126,13 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 
 	if storageConfig != nil {
 		s.RecommendedOptions.Etcd.StorageConfig = *storageConfig
+		if storageConfig.Type == storagebackend.StorageTypeCRDB {
+			s.RecommendedOptions.Etcd.EnableWatchCache = false
+			customFlags = append(customFlags,
+				"--watch-cache=false",
+				"--storage-backend=crdb",
+			)
+		}
 	}
 	s.APIEnablement.RuntimeConfig.Set("api/all=true")
 

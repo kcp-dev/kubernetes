@@ -147,10 +147,10 @@ resources:
 	// Since Data Encryption Key (DEK) is randomly generated (per encryption operation), we need to ask KMS Mock for it.
 	plainTextDEK := pluginMock.LastEncryptRequest()
 
-	secretETCDPath := test.getETCDPath()
-	rawEnvelope, err := test.getRawSecretFromETCD()
+	secretPath := test.getStoragePath()
+	rawEnvelope, err := test.getRawSecretFromStorage()
 	if err != nil {
-		t.Fatalf("failed to read %s from etcd: %v", secretETCDPath, err)
+		t.Fatalf("failed to read %s from storage: %v", secretPath, err)
 	}
 	envelopeData := envelope{
 		providerName: providerName,
@@ -176,7 +176,7 @@ resources:
 			plainTextDEK, dekPlainAsWouldBeSeenByETCD)
 	}
 
-	plainSecret, err := envelopeData.plainTextPayload(secretETCDPath)
+	plainSecret, err := envelopeData.plainTextPayload(secretPath)
 	if err != nil {
 		t.Fatalf("failed to transform from storage via AESCBC, err: %v", err)
 	}
@@ -210,7 +210,7 @@ resources:
 	}
 
 	// we cannot precompute this because the authenticated data changes per run
-	futureEncryptedSecretBytes, err := aestransformer.NewGCMTransformer(block).TransformToStorage(ctx, futureSecretBytes, value.DefaultContext(secretETCDPath))
+	futureEncryptedSecretBytes, err := aestransformer.NewGCMTransformer(block).TransformToStorage(ctx, futureSecretBytes, value.DefaultContext(secretPath))
 	if err != nil {
 		t.Fatalf("failed to encrypt future secret, err: %v", err)
 	}
@@ -222,22 +222,22 @@ resources:
 	})
 	futureEncryptedSecretBuf.AddBytes(futureEncryptedSecretBytes)
 
-	_, err = test.writeRawRecordToETCD(secretETCDPath, futureEncryptedSecretBuf.BytesOrPanic())
+	_, err = test.writeRawRecordToETCD(secretPath, futureEncryptedSecretBuf.BytesOrPanic())
 	if err != nil {
 		t.Fatalf("failed to write future encrypted secret, err: %v", err)
 	}
 
 	// confirm that direct AES CBC decryption does not work
-	failingRawEnvelope, err := test.getRawSecretFromETCD()
+	failingRawEnvelope, err := test.getRawSecretFromStorage()
 	if err != nil {
-		t.Fatalf("failed to read %s from etcd: %v", secretETCDPath, err)
+		t.Fatalf("failed to read %s from etcd: %v", secretPath, err)
 	}
 	failingFutureEnvelope := envelope{
 		providerName: providerName,
 		rawEnvelope:  failingRawEnvelope,
 		plainTextDEK: futureKeyBytes,
 	}
-	failingFuturePlainSecret, err := failingFutureEnvelope.plainTextPayload(secretETCDPath)
+	failingFuturePlainSecret, err := failingFutureEnvelope.plainTextPayload(secretPath)
 	if err == nil || !errors.Is(err, aestransformer.ErrInvalidBlockSize) {
 		t.Fatalf("AESCBC decryption failure not seen, err: %v, data: %s", err, string(failingFuturePlainSecret))
 	}
@@ -261,9 +261,9 @@ resources:
 	}
 
 	// confirm that direct AES CBC decryption works
-	futureRawEnvelope, err := test.getRawSecretFromETCD()
+	futureRawEnvelope, err := test.getRawSecretFromStorage()
 	if err != nil {
-		t.Fatalf("failed to read %s from etcd: %v", secretETCDPath, err)
+		t.Fatalf("failed to read %s from etcd: %v", secretPath, err)
 	}
 	futureEnvelope := envelope{
 		providerName: providerName,
@@ -273,7 +273,7 @@ resources:
 	if !bytes.HasPrefix(futureRawEnvelope, []byte(wantPrefix)) {
 		t.Fatalf("expected secret to be prefixed with %s, but got %s", wantPrefix, futureRawEnvelope)
 	}
-	futurePlainSecret, err := futureEnvelope.plainTextPayload(secretETCDPath)
+	futurePlainSecret, err := futureEnvelope.plainTextPayload(secretPath)
 	if err != nil {
 		t.Fatalf("failed to transform from storage via AESCBC, err: %v", err)
 	}

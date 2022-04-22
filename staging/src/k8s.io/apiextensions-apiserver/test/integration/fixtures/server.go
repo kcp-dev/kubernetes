@@ -36,6 +36,10 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+func CRDBStorageBackendEnabled() bool {
+	return os.Getenv("KUBE_INTEGRATION_STORAGE_BACKEND") == "crdb"
+}
+
 // StartDefaultServer starts a test server.
 func StartDefaultServer(t servertesting.Logger, flags ...string) (func(), *rest.Config, *options.CustomResourceDefinitionsServerOptions, error) {
 	// create kubeconfig which will not actually be used. But authz/authn needs it to startup.
@@ -63,6 +67,10 @@ users:
     username: test
 `)
 	fakeKubeConfig.Close()
+
+	if CRDBStorageBackendEnabled() {
+		flags = append(flags, "--storage-backend=crdb", "--watch-cache=false")
+	}
 
 	s, err := servertesting.StartTestServer(t, nil, append([]string{
 		"--etcd-prefix", uuid.New().String(),

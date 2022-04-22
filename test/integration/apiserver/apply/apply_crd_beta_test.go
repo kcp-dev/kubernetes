@@ -22,12 +22,11 @@ import (
 	"reflect"
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apiextensions-apiserver/test/integration/fixtures"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -60,7 +59,7 @@ func TestApplyCRDNoSchema(t *testing.T) {
 
 	noxuBetaDefinition := nearlyRemovedBetaMultipleVersionNoxuCRD(apiextensionsv1beta1.ClusterScoped)
 
-	noxuDefinition, err := fixtures.CreateCRDUsingRemovedAPI(server.EtcdClient, server.EtcdStoragePrefix, noxuBetaDefinition, apiExtensionClient, dynamicClient)
+	noxuDefinition, err := fixtures.CreateCRDUsingRemovedAPI(server.StorageClient, server.StoragePrefix, noxuBetaDefinition, apiExtensionClient, dynamicClient)
 	if err != nil {
 		t.Fatal(err)
 	}

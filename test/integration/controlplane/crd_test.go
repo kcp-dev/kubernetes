@@ -24,9 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/apiextensions-apiserver/test/integration/fixtures"
-
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apiextensions-apiserver/test/integration/fixtures"
 
 	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -234,7 +233,7 @@ func TestCRDOpenAPI(t *testing.T) {
 			},
 		},
 	}
-	nonStructuralCRD, err := fixtures.CreateCRDUsingRemovedAPI(result.EtcdClient, result.EtcdStoragePrefix, nonStructuralBetaCRD, apiextensionsclient, dynamicClient)
+	nonStructuralCRD, err := fixtures.CreateCRDUsingRemovedAPI(result.StorageClient, result.StoragePrefix, nonStructuralBetaCRD, apiextensionsclient, dynamicClient)
 	if err != nil {
 		t.Fatal(err)
 	}

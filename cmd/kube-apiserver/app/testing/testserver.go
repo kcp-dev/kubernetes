@@ -27,16 +27,14 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-	"go.etcd.io/etcd/client/pkg/v3/transport"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"google.golang.org/grpc"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/registry/generic/registry"
+	"k8s.io/apiserver/pkg/storage/generic"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
+	"k8s.io/apiserver/pkg/storage/storagebackend/factory"
 	"k8s.io/apiserver/pkg/storageversion"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
@@ -69,12 +67,12 @@ type TestServerInstanceOptions struct {
 
 // TestServer return values supplied by kube-test-ApiServer
 type TestServer struct {
-	ClientConfig      *restclient.Config        // Rest client config
-	ServerOpts        *options.ServerRunOptions // ServerOpts
-	TearDownFn        TearDownFunc              // TearDown function
-	TmpDir            string                    // Temp Dir used, by the apiserver
-	EtcdClient        *clientv3.Client          // used by tests that need to check data migrated from APIs that are no longer served
-	EtcdStoragePrefix string                    // storage prefix in etcd
+	ClientConfig  *restclient.Config        // Rest client config
+	ServerOpts    *options.ServerRunOptions // ServerOpts
+	TearDownFn    TearDownFunc              // TearDown function
+	TmpDir        string                    // Temp Dir used, by the apiserver
+	StorageClient generic.Client            // used by tests that need to check data migrated from APIs that are no longer served
+	StoragePrefix string                    // storage prefix in etcd
 }
 
 // Logger allows t.Testing and b.Testing to be passed to StartTestServer and StartTestServerOrDie
@@ -186,6 +184,14 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 	s.Etcd.StorageConfig = *storageConfig
 	s.APIEnablement.RuntimeConfig.Set("api/all=true")
 
+	if storageConfig.Type == storagebackend.StorageTypeCRDB {
+		s.Etcd.EnableWatchCache = false
+		customFlags = append(customFlags,
+			"--watch-cache=false",
+			"--storage-backend=crdb",
+		)
+	}
+
 	if err := fs.Parse(customFlags); err != nil {
 		return result, err
 	}
@@ -287,24 +293,7 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 		return result, fmt.Errorf("failed to wait for default namespace to be created: %v", err)
 	}
 
-	tlsInfo := transport.TLSInfo{
-		CertFile:      storageConfig.Transport.CertFile,
-		KeyFile:       storageConfig.Transport.KeyFile,
-		TrustedCAFile: storageConfig.Transport.TrustedCAFile,
-	}
-	tlsConfig, err := tlsInfo.ClientConfig()
-	if err != nil {
-		return result, err
-	}
-	etcdConfig := clientv3.Config{
-		Endpoints:   storageConfig.Transport.ServerList,
-		DialTimeout: 20 * time.Second,
-		DialOptions: []grpc.DialOption{
-			grpc.WithBlock(), // block until the underlying connection is up
-		},
-		TLS: tlsConfig,
-	}
-	etcdClient, err := clientv3.New(etcdConfig)
+	storageClient, err := GetClient(storageConfig)
 	if err != nil {
 		return result, err
 	}
@@ -315,10 +304,23 @@ func StartTestServer(t Logger, instanceOptions *TestServerInstanceOptions, custo
 	result.ClientConfig.Burst = 10000
 	result.ServerOpts = s
 	result.TearDownFn = tearDown
-	result.EtcdClient = etcdClient
-	result.EtcdStoragePrefix = storageConfig.Prefix
+	result.StorageClient = storageClient
+	result.StoragePrefix = storageConfig.Prefix
 
 	return result, nil
+}
+
+func GetClient(c *storagebackend.Config) (generic.TestClient, error) {
+	switch c.Type {
+	case storagebackend.StorageTypeETCD2:
+		return nil, fmt.Errorf("%s is no longer a supported storage backend", c.Type)
+	case storagebackend.StorageTypeCRDB:
+		return factory.NewCRDBTestClient(context.Background(), c.Transport)
+	case storagebackend.StorageTypeUnset, storagebackend.StorageTypeETCD3:
+		return factory.NewETCD3TestClient(c.Transport)
+	default:
+		return nil, fmt.Errorf("unknown storage type: %s", c.Type)
+	}
 }
 
 // StartTestServerOrDie calls StartTestServer t.Fatal if it does not succeed.
