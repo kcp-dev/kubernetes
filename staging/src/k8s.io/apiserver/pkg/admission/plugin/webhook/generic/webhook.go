@@ -21,10 +21,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	admissionv1 "k8s.io/api/admission/v1"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
-	"k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/admission"
@@ -141,10 +140,7 @@ func (a *Webhook) ValidateInitialization() error {
 
 // ShouldCallHook returns invocation details if the webhook should be called, nil if the webhook should not be called,
 // or an error if an error was encountered during evaluation.
-func (a *Webhook) ShouldCallHook(h webhook.WebhookAccessor, attr admission.Attributes, o admission.ObjectInterfaces, cluster logicalcluster.LogicalCluster) (*WebhookInvocation, *apierrors.StatusError) {
-	if h.GetLogicalCluster() != cluster {
-		return nil, nil
-	}
+func (a *Webhook) ShouldCallHook(h webhook.WebhookAccessor, attr admission.Attributes, o admission.ObjectInterfaces) (*WebhookInvocation, *apierrors.StatusError) {
 	matches, matchNsErr := a.namespaceMatcher.MatchNamespaceSelector(h, attr)
 	// Should not return an error here for webhooks which do not apply to the request, even if err is an unexpected scenario.
 	if !matches && matchNsErr == nil {

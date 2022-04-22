@@ -33,7 +33,6 @@ import (
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/generic"
 	webhookrequest "k8s.io/apiserver/pkg/admission/plugin/webhook/request"
 	endpointsrequest "k8s.io/apiserver/pkg/endpoints/request"
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	webhookutil "k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/apiserver/pkg/warning"
 	"k8s.io/klog/v2"
@@ -67,13 +66,8 @@ func (d *validatingDispatcher) Dispatch(ctx context.Context, attr admission.Attr
 	var relevantHooks []*generic.WebhookInvocation
 	versionedAttrs := map[schema.GroupVersionKind]*generic.VersionedAttributes{}
 
-	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
-	if err != nil {
-		return err
-	}
-
 	for _, hook := range hooks {
-		invocation, statusError := d.plugin.ShouldCallHook(hook, attr, o, clusterName)
+		invocation, statusError := d.plugin.ShouldCallHook(hook, attr, o)
 		if statusError != nil {
 			return statusError
 		}
@@ -91,6 +85,8 @@ func (d *validatingDispatcher) Dispatch(ctx context.Context, attr admission.Attr
 		}
 		versionedAttrs[invocation.Kind] = versionedAttr
 	}
+
+	fmt.Printf("Here in relevantHooks: %#v", relevantHooks)
 
 	if len(relevantHooks) == 0 {
 		// no matching hooks

@@ -47,7 +47,6 @@ import (
 	webhookutil "k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/apiserver/pkg/warning"
 	utiltrace "k8s.io/utils/trace"
-	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 )
 
 const (
@@ -95,17 +94,14 @@ func (a *mutatingDispatcher) Dispatch(ctx context.Context, attr admission.Attrib
 	defer func() {
 		webhookReinvokeCtx.SetLastWebhookInvocationOutput(attr.GetObject())
 	}()
-	clusterName, err := genericapirequest.ClusterNameFrom(ctx)
-	if err != nil {
-		return err
-	}
+
 	var versionedAttr *generic.VersionedAttributes
 	for i, hook := range hooks {
 		attrForCheck := attr
 		if versionedAttr != nil {
 			attrForCheck = versionedAttr
 		}
-		invocation, statusErr := a.plugin.ShouldCallHook(hook, attrForCheck, o, clusterName) 
+		invocation, statusErr := a.plugin.ShouldCallHook(hook, attrForCheck, o)
 		if statusErr != nil {
 			return statusErr
 		}
