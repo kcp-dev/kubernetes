@@ -17,15 +17,17 @@ limitations under the License.
 package generic
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
+	stderrors "errors"
 
-	etcdrpc "go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
+var ErrCompacted = stderrors.New("revision compacted")
+
 func interpretWatchError(err error) error {
 	switch {
-	case err == etcdrpc.ErrCompacted:
+	case stderrors.Is(err, ErrCompacted):
 		return errors.NewResourceExpired("The resourceVersion for the provided watch is too old.")
 	}
 	return err
@@ -47,7 +49,7 @@ const (
 
 func interpretListError(err error, paging bool, continueKey, keyPrefix string) error {
 	switch {
-	case err == etcdrpc.ErrCompacted:
+	case stderrors.Is(err, ErrCompacted):
 		if paging {
 			return handleCompactedErrorForPaging(continueKey, keyPrefix)
 		}

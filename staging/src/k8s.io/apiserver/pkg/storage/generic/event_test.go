@@ -17,31 +17,29 @@ limitations under the License.
 package generic
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/etcd/api/v3/mvccpb"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"testing"
 )
 
 func TestParseEvent(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
-		etcdEvent     *clientv3.Event
+		event         *WatchEvent
 		expectedEvent *event
 		expectedErr   string
 	}{
 		{
 			name: "successful create",
-			etcdEvent: &clientv3.Event{
-				Type:   clientv3.EventTypePut,
+			event: &WatchEvent{
+				Type:   EventTypeCreate,
 				PrevKv: nil,
-				Kv: &mvccpb.KeyValue{
+				Kv: &KeyValue{
 					// key is the key in bytes. An empty key is not allowed.
-					Key:            []byte("key"),
-					ModRevision:    1,
-					CreateRevision: 1,
-					Value:          []byte("value"),
+					Key:         []byte("key"),
+					ModRevision: 1,
+					Value:       []byte("value"),
 				},
 			},
 			expectedEvent: &event{
@@ -56,33 +54,30 @@ func TestParseEvent(t *testing.T) {
 		},
 		{
 			name: "unsuccessful delete",
-			etcdEvent: &clientv3.Event{
-				Type:   mvccpb.DELETE,
+			event: &WatchEvent{
+				Type:   EventTypeDelete,
 				PrevKv: nil,
-				Kv: &mvccpb.KeyValue{
-					Key:            []byte("key"),
-					CreateRevision: 1,
-					ModRevision:    2,
-					Value:          nil,
+				Kv: &KeyValue{
+					Key:         []byte("key"),
+					ModRevision: 2,
+					Value:       nil,
 				},
 			},
 			expectedErr: "etcd event received with PrevKv=nil",
 		},
 		{
 			name: "successful delete",
-			etcdEvent: &clientv3.Event{
-				Type: mvccpb.DELETE,
-				PrevKv: &mvccpb.KeyValue{
-					Key:            []byte("key"),
-					CreateRevision: 1,
-					ModRevision:    1,
-					Value:          []byte("value"),
+			event: &WatchEvent{
+				Type: EventTypeDelete,
+				PrevKv: &KeyValue{
+					Key:         []byte("key"),
+					ModRevision: 1,
+					Value:       []byte("value"),
 				},
-				Kv: &mvccpb.KeyValue{
-					Key:            []byte("key"),
-					CreateRevision: 1,
-					ModRevision:    2,
-					Value:          nil,
+				Kv: &KeyValue{
+					Key:         []byte("key"),
+					ModRevision: 2,
+					Value:       nil,
 				},
 			},
 			expectedEvent: &event{
@@ -97,7 +92,7 @@ func TestParseEvent(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			actualEvent, err := parseEvent(tc.etcdEvent)
+			actualEvent, err := parseEvent(tc.event)
 			if tc.expectedErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.expectedErr)

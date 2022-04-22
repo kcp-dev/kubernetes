@@ -18,8 +18,6 @@ package generic
 
 import (
 	"fmt"
-	"go.etcd.io/etcd/api/v3/mvccpb"
-	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type event struct {
@@ -33,7 +31,7 @@ type event struct {
 }
 
 // parseKV converts a KeyValue retrieved from an initial sync() listing to a synthetic isCreated event.
-func parseKV(kv *mvccpb.KeyValue) *event {
+func parseKV(kv *KeyValue) *event {
 	return &event{
 		key:       string(kv.Key),
 		value:     kv.Value,
@@ -44,7 +42,7 @@ func parseKV(kv *mvccpb.KeyValue) *event {
 	}
 }
 
-func parseEvent(e *clientv3.Event) (*event, error) {
+func parseEvent(e *WatchEvent) (*event, error) {
 	if !e.IsCreate() && e.PrevKv == nil {
 		// If the previous value is nil, error. One example of how this is possible is if the previous value has been compacted already.
 		return nil, fmt.Errorf("etcd event received with PrevKv=nil (key=%q, modRevision=%d, type=%s)", string(e.Kv.Key), e.Kv.ModRevision, e.Type.String())
@@ -54,7 +52,7 @@ func parseEvent(e *clientv3.Event) (*event, error) {
 		key:       string(e.Kv.Key),
 		value:     e.Kv.Value,
 		rev:       e.Kv.ModRevision,
-		isDeleted: e.Type == clientv3.EventTypeDelete,
+		isDeleted: e.Type == EventTypeDelete,
 		isCreated: e.IsCreate(),
 	}
 	if e.PrevKv != nil {
