@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package etcd3
+package generic
 
 import (
 	"bytes"
@@ -34,7 +34,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc/grpclog"
 
 	"k8s.io/apimachinery/pkg/api/apitesting"
@@ -52,7 +51,6 @@ import (
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
-	"k8s.io/apiserver/pkg/storage/etcd3/testserver"
 	storagetesting "k8s.io/apiserver/pkg/storage/testing"
 	"k8s.io/apiserver/pkg/storage/value"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -109,17 +107,17 @@ func newPod() runtime.Object {
 	return &example.Pod{}
 }
 
-func TestCreate(t *testing.T) {
-	ctx, store, etcdClient := testSetup(t)
+func RunTestCreate(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	key := "/testkey"
 	out := &example.Pod{}
 	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", SelfLink: "testlink"}}
 
 	// verify that kv pair is empty before set
-	getResp, err := etcdClient.KV.Get(ctx, key)
+	getResp, err := client.Get(ctx, key)
 	if err != nil {
-		t.Fatalf("etcdClient.KV.Get failed: %v", err)
+		t.Fatalf("client.KV.Get failed: %v", err)
 	}
 	if len(getResp.Kvs) != 0 {
 		t.Fatalf("expecting empty result on key: %s", key)
@@ -140,13 +138,13 @@ func TestCreate(t *testing.T) {
 		t.Errorf("output should have empty selfLink")
 	}
 
-	checkStorageInvariants(ctx, t, etcdClient, store, key)
+	checkStorageInvariants(ctx, t, client, store, key)
 }
 
-func checkStorageInvariants(ctx context.Context, t *testing.T, etcdClient *clientv3.Client, store *store, key string) {
-	getResp, err := etcdClient.KV.Get(ctx, key)
+func checkStorageInvariants(ctx context.Context, t *testing.T, client Client, store *store, key string) {
+	getResp, err := client.Get(ctx, key)
 	if err != nil {
-		t.Fatalf("etcdClient.KV.Get failed: %v", err)
+		t.Fatalf("client.KV.Get failed: %v", err)
 	}
 	if len(getResp.Kvs) == 0 {
 		t.Fatalf("expecting non empty result on key: %s", key)
@@ -164,8 +162,8 @@ func checkStorageInvariants(ctx context.Context, t *testing.T, etcdClient *clien
 	}
 }
 
-func TestCreateWithTTL(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestCreateWithTTL(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	input := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key := "/somekey"
@@ -182,8 +180,8 @@ func TestCreateWithTTL(t *testing.T) {
 	testCheckEventType(t, watch.Deleted, w)
 }
 
-func TestCreateWithKeyExist(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestCreateWithKeyExist(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key, _ := testPropogateStore(ctx, t, store, obj)
 	out := &example.Pod{}
@@ -193,8 +191,8 @@ func TestCreateWithKeyExist(t *testing.T) {
 	}
 }
 
-func TestGet(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestGet(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	// create an object to test
 	key, createdObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 	// update the object once to allow get by exact resource version to be tested
@@ -295,8 +293,8 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestUnconditionalDelete(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestUnconditionalDelete(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	key, storedObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 
 	tests := []struct {
@@ -334,8 +332,8 @@ func TestUnconditionalDelete(t *testing.T) {
 	}
 }
 
-func TestConditionalDelete(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestConditionalDelete(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	key, storedObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", UID: "A"}})
 
 	tests := []struct {
@@ -396,8 +394,8 @@ func TestConditionalDelete(t *testing.T) {
 // - https://github.com/kubernetes/kubernetes/pull/78713
 //   [DONE] Added TestPreconditionalDeleteWithSuggestion
 
-func TestDeleteWithSuggestion(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestDeleteWithSuggestion(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -411,8 +409,8 @@ func TestDeleteWithSuggestion(t *testing.T) {
 	}
 }
 
-func TestDeleteWithSuggestionAndConflict(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestDeleteWithSuggestionAndConflict(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -437,8 +435,8 @@ func TestDeleteWithSuggestionAndConflict(t *testing.T) {
 	}
 }
 
-func TestDeleteWithSuggestionOfDeletedObject(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestDeleteWithSuggestionOfDeletedObject(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -455,8 +453,8 @@ func TestDeleteWithSuggestionOfDeletedObject(t *testing.T) {
 	}
 }
 
-func TestValidateDeletionWithSuggestion(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestValidateDeletionWithSuggestion(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -509,8 +507,8 @@ func TestValidateDeletionWithSuggestion(t *testing.T) {
 	}
 }
 
-func TestPreconditionalDeleteWithSuggestion(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestPreconditionalDeleteWithSuggestion(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}})
 
@@ -537,8 +535,8 @@ func TestPreconditionalDeleteWithSuggestion(t *testing.T) {
 	}
 }
 
-func TestGetListNonRecursive(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestGetListNonRecursive(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	prevKey, prevStoredObj := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "prev"}})
 
 	prevRV, _ := strconv.Atoi(prevStoredObj.ResourceVersion)
@@ -669,8 +667,8 @@ func TestGetListNonRecursive(t *testing.T) {
 	}
 }
 
-func TestGuaranteedUpdate(t *testing.T) {
-	ctx, store, etcdClient := testSetup(t)
+func RunTestGuaranteedUpdate(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	key := "/testkey"
 
 	tests := []struct {
@@ -806,7 +804,7 @@ func TestGuaranteedUpdate(t *testing.T) {
 			}
 
 			// verify that kv pair is not empty after set and that the underlying data matches expectations
-			checkStorageInvariants(ctx, t, etcdClient, store, key)
+			checkStorageInvariants(ctx, t, client, store, key)
 
 			switch tt.expectNoUpdate {
 			case true:
@@ -822,8 +820,8 @@ func TestGuaranteedUpdate(t *testing.T) {
 	}
 }
 
-func TestGuaranteedUpdateWithTTL(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestGuaranteedUpdateWithTTL(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	input := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key := "/somekey"
@@ -845,8 +843,8 @@ func TestGuaranteedUpdateWithTTL(t *testing.T) {
 	testCheckEventType(t, watch.Deleted, w)
 }
 
-func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestGuaranteedUpdateChecksStoredData(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	input := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
 	key := "/somekey"
@@ -858,7 +856,7 @@ func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := store.client.Put(ctx, key, "test! "+string(data)+" ")
+	_, resp, err := client.Create(ctx, key, []byte("test! "+string(data)+" "), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -911,8 +909,8 @@ func TestGuaranteedUpdateChecksStoredData(t *testing.T) {
 	}
 }
 
-func TestGuaranteedUpdateWithConflict(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestGuaranteedUpdateWithConflict(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	key, _ := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 
 	errChan := make(chan error, 1)
@@ -957,8 +955,8 @@ func TestGuaranteedUpdateWithConflict(t *testing.T) {
 	}
 }
 
-func TestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 	key, originalPod := testPropogateStore(ctx, t, store, &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}})
 
 	// First, update without a suggestion so originalPod is outdated
@@ -1033,10 +1031,9 @@ func TestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T) {
 	}
 }
 
-func TestTransformationFailure(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
+func RunTestTransformationFailure(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false, newTestLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false)
 	ctx := context.Background()
 
 	preset := []struct {
@@ -1112,12 +1109,11 @@ func TestTransformationFailure(t *testing.T) {
 	}
 }
 
-func TestList(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
+func RunTestList(t *testing.T, client InternalTestClient) {
 	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.RemainingItemCount, true)()
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true, newTestLeaseManagerConfig())
-	disablePagingStore := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false, newTestLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true)
+	disablePagingStore := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false)
 	ctx := context.Background()
 
 	// Setup storage with the following structure:
@@ -1627,13 +1623,10 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestListContinuation(t *testing.T) {
-	etcdClient := testserver.RunEtcd(t, nil)
+func RunTestListContinuation(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
-	recorder := &clientRecorder{KV: etcdClient.KV}
-	etcdClient.KV = recorder
-	store := newStore(etcdClient, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true, newTestLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true)
 	ctx := context.Background()
 
 	// Setup storage with the following structure:
@@ -1675,6 +1668,7 @@ func TestListContinuation(t *testing.T) {
 		}
 	}
 
+	client.ResetReads()
 	// test continuations
 	out := &example.PodList{}
 	pred := func(limit int64, continueValue string) storage.SelectionPredicate {
@@ -1704,11 +1698,11 @@ func TestListContinuation(t *testing.T) {
 	if transformer.reads != 1 {
 		t.Errorf("unexpected reads: %d", transformer.reads)
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
 	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	continueFromSecondItem := out.Continue
 
@@ -1731,11 +1725,11 @@ func TestListContinuation(t *testing.T) {
 	if transformer.reads != 2 {
 		t.Errorf("unexpected reads: %d", transformer.reads)
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
 	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	// limit, should get two more pages
 	out = &example.PodList{}
@@ -1754,11 +1748,11 @@ func TestListContinuation(t *testing.T) {
 	if transformer.reads != 1 {
 		t.Errorf("unexpected reads: %d", transformer.reads)
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
 	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	continueFromThirdItem := out.Continue
 
@@ -1778,20 +1772,17 @@ func TestListContinuation(t *testing.T) {
 	if transformer.reads != 1 {
 		t.Errorf("unexpected reads: %d", transformer.reads)
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
 	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 }
 
-func TestListPaginationRareObject(t *testing.T) {
-	etcdClient := testserver.RunEtcd(t, nil)
+func RunTestListPaginationRareObject(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
-	recorder := &clientRecorder{KV: etcdClient.KV}
-	etcdClient.KV = recorder
-	store := newStore(etcdClient, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true, NewDefaultLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true)
 	ctx := context.Background()
 
 	podCount := 1000
@@ -1839,34 +1830,17 @@ func TestListPaginationRareObject(t *testing.T) {
 	// The expected number of calls is n+1 where n is the smallest n so that:
 	// pageSize + pageSize * 2 + pageSize * 4 + ... + pageSize * 2^n >= podCount.
 	// For pageSize = 1, podCount = 1000, we get n+1 = 10, 2 ^ 10 = 1024.
-	if recorder.reads != 10 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
+	if client.Reads() != 10 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
 	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 }
 
-type clientRecorder struct {
-	reads uint64
-	clientv3.KV
-}
-
-func (r *clientRecorder) Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error) {
-	atomic.AddUint64(&r.reads, 1)
-	return r.KV.Get(ctx, key, opts...)
-}
-
-func (r *clientRecorder) resetReads() {
-	r.reads = 0
-}
-
-func TestListContinuationWithFilter(t *testing.T) {
-	etcdClient := testserver.RunEtcd(t, nil)
+func RunTestListContinuationWithFilter(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
-	recorder := &clientRecorder{KV: etcdClient.KV}
-	etcdClient.KV = recorder
-	store := newStore(etcdClient, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true, newTestLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true)
 	ctx := context.Background()
 
 	preset := []struct {
@@ -1900,6 +1874,7 @@ func TestListContinuationWithFilter(t *testing.T) {
 		}
 	}
 
+	client.ResetReads()
 	// the first list call should try to get 2 items from etcd (and only those items should be returned)
 	// the field selector should result in it reading 3 items via the transformer
 	// the chunking should result in 2 etcd Gets
@@ -1932,11 +1907,11 @@ func TestListContinuationWithFilter(t *testing.T) {
 	if transformer.reads != 3 {
 		t.Errorf("unexpected reads: %d", transformer.reads)
 	}
-	if recorder.reads != 2 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
+	if client.Reads() != 2 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
 	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 
 	// the rest of the test does not make sense if the previous call failed
 	if t.Failed() {
@@ -1964,17 +1939,16 @@ func TestListContinuationWithFilter(t *testing.T) {
 	if transformer.reads != 1 {
 		t.Errorf("unexpected reads: %d", transformer.reads)
 	}
-	if recorder.reads != 1 {
-		t.Errorf("unexpected reads: %d", recorder.reads)
+	if client.Reads() != 1 {
+		t.Errorf("unexpected reads: %d", client.Reads())
 	}
 	transformer.resetReads()
-	recorder.resetReads()
+	client.ResetReads()
 }
 
-func TestListInconsistentContinuation(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
+func RunTestListInconsistentContinuation(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true, newTestLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true)
 	ctx := context.Background()
 
 	// Setup storage with the following structure:
@@ -2069,7 +2043,7 @@ func TestListInconsistentContinuation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.KV.Compact(ctx, int64(lastRV), clientv3.WithCompactPhysical()); err != nil {
+	if err := client.Compact(ctx, int64(lastRV)); err != nil {
 		t.Fatalf("Unable to compact, %v", err)
 	}
 
@@ -2131,21 +2105,15 @@ func TestListInconsistentContinuation(t *testing.T) {
 	}
 }
 
-func newTestLeaseManagerConfig() LeaseManagerConfig {
-	cfg := NewDefaultLeaseManagerConfig()
-	// As 30s is the default timeout for testing in global configuration,
-	// we cannot wait longer than that in a single time: change it to 1s
-	// for testing purposes. See wait.ForeverTestTimeout
-	cfg.ReuseDurationSeconds = 1
-	return cfg
+func TestSetup(client Client) (context.Context, storage.Interface) {
+	return testSetup(client)
 }
 
-func testSetup(t *testing.T) (context.Context, *store, *clientv3.Client) {
-	client := testserver.RunEtcd(t, nil)
+func testSetup(client Client) (context.Context, *store) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true, newTestLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true)
 	ctx := context.Background()
-	return ctx, store, client
+	return ctx, store
 }
 
 // testPropogateStore helps propagates store with objects, automates key generation, and returns
@@ -2182,8 +2150,7 @@ func encodeContinueOrDie(apiVersion string, resourceVersion int64, nextKey strin
 	return base64.RawURLEncoding.EncodeToString(out)
 }
 
-func TestPrefix(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
+func RunTestPrefix(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
 	testcases := map[string]string{
@@ -2192,7 +2159,7 @@ func TestPrefix(t *testing.T) {
 		"/registry":         "/registry",
 	}
 	for configuredPrefix, effectivePrefix := range testcases {
-		store := newStore(client, codec, nil, configuredPrefix, schema.GroupResource{Resource: "widgets"}, transformer, true, newTestLeaseManagerConfig())
+		store := newStore(client, codec, nil, configuredPrefix, schema.GroupResource{Resource: "widgets"}, transformer, true)
 		if store.pathPrefix != effectivePrefix {
 			t.Errorf("configured prefix of %s, expected effective prefix of %s, got %s", configuredPrefix, effectivePrefix, store.pathPrefix)
 		}
@@ -2238,15 +2205,14 @@ func (t *fancyTransformer) createObject(ctx context.Context) error {
 	return t.store.Create(ctx, key, obj, out, 0)
 }
 
-func TestConsistentList(t *testing.T) {
-	client := testserver.RunEtcd(t, nil)
+func RunTestConsistentList(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	ctx := context.Background()
 
 	transformer := &fancyTransformer{
 		transformer: &prefixTransformer{prefix: []byte(defaultTestPrefix)},
 	}
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true, newTestLeaseManagerConfig())
+	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true)
 	transformer.store = store
 
 	for i := 0; i < 5; i++ {
@@ -2311,8 +2277,8 @@ func TestConsistentList(t *testing.T) {
 	expectNoDiff(t, "incorrect lists", result3, result4)
 }
 
-func TestCount(t *testing.T) {
-	ctx, store, _ := testSetup(t)
+func RunTestCount(t *testing.T, client InternalTestClient) {
+	ctx, store := testSetup(client)
 
 	resourceA := "/foo.bar.io/abc"
 
@@ -2345,49 +2311,6 @@ func TestCount(t *testing.T) {
 	// even though resourceA is a prefix of resourceB.
 	if int64(resourceACountExpected) != resourceACountGot {
 		t.Fatalf("store.Count for resource %s: expected %d but got %d", resourceA, resourceACountExpected, resourceACountGot)
-	}
-}
-
-func TestLeaseMaxObjectCount(t *testing.T) {
-	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	client := testserver.RunEtcd(t, nil)
-	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true, LeaseManagerConfig{
-		ReuseDurationSeconds: defaultLeaseReuseDurationSeconds,
-		MaxObjectCount:       2,
-	})
-	ctx := context.Background()
-
-	obj := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}
-	out := &example.Pod{}
-
-	testCases := []struct {
-		key                 string
-		expectAttachedCount int64
-	}{
-		{
-			key:                 "testkey1",
-			expectAttachedCount: 1,
-		},
-		{
-			key:                 "testkey2",
-			expectAttachedCount: 2,
-		},
-		{
-			key: "testkey3",
-			// We assume each time has 1 object attached to the lease
-			// so after granting a new lease, the recorded count is set to 1
-			expectAttachedCount: 1,
-		},
-	}
-
-	for _, tc := range testCases {
-		err := store.Create(ctx, tc.key, obj, out, 120)
-		if err != nil {
-			t.Fatalf("Set failed: %v", err)
-		}
-		if store.leaseManager.leaseAttachedObjectCount != tc.expectAttachedCount {
-			t.Errorf("Lease manager recorded count %v should be %v", store.leaseManager.leaseAttachedObjectCount, tc.expectAttachedCount)
-		}
 	}
 }
 

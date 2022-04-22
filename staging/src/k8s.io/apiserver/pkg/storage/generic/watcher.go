@@ -69,7 +69,7 @@ func TestOnlySetFatalOnDecodeError(b bool) {
 }
 
 type watcher struct {
-	client      *clientv3.Client
+	client      Client
 	codec       runtime.Codec
 	newFunc     func() runtime.Object
 	objectType  string
@@ -92,7 +92,7 @@ type watchChan struct {
 	errChan           chan error
 }
 
-func newWatcher(client *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
+func newWatcher(client Client, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
 	res := &watcher{
 		client:      client,
 		codec:       codec,
@@ -206,11 +206,7 @@ func (wc *watchChan) ResultChan() <-chan watch.Event {
 // The revision to watch will be set to the revision in response.
 // All events sent will have isCreated=true
 func (wc *watchChan) sync() error {
-	opts := []clientv3.OpOption{}
-	if wc.recursive {
-		opts = append(opts, clientv3.WithPrefix())
-	}
-	getResp, err := wc.watcher.client.Get(wc.ctx, wc.key, opts...)
+	getResp, err := wc.watcher.client.List(wc.ctx, wc.key, wc.key, wc.recursive, false, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -241,24 +237,17 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 			return
 		}
 	}
-	opts := []clientv3.OpOption{clientv3.WithRev(wc.initialRev + 1), clientv3.WithPrevKV()}
-	if wc.recursive {
-		opts = append(opts, clientv3.WithPrefix())
-	}
-	if wc.progressNotify {
-		opts = append(opts, clientv3.WithProgressNotify())
-	}
-	wch := wc.watcher.client.Watch(wc.ctx, wc.key, opts...)
+	wch := wc.watcher.client.Watch(wc.ctx, wc.key, wc.recursive, wc.progressNotify, wc.initialRev + 1)
 	for wres := range wch {
-		if wres.Err() != nil {
-			err := wres.Err()
+		if wres.Error != nil {
+			err := wres.Error
 			// If there is an error on server (e.g. compaction), the channel will return it before closed.
 			logWatchChannelErr(err)
 			wc.sendError(err)
 			return
 		}
-		if wres.IsProgressNotify() {
-			wc.sendEvent(progressNotifyEvent(wres.Header.GetRevision()))
+		if wres.ProgressNotify {
+			wc.sendEvent(progressNotifyEvent(wres.Header.Revision))
 			metrics.RecordEtcdBookmark(wc.watcher.objectType)
 			continue
 		}
