@@ -34,6 +34,7 @@ import (
 	openapicontroller "k8s.io/apiextensions-apiserver/pkg/controller/openapi"
 	openapiv3controller "k8s.io/apiextensions-apiserver/pkg/controller/openapiv3"
 	"k8s.io/apiextensions-apiserver/pkg/controller/status"
+	"k8s.io/apiextensions-apiserver/pkg/kcp"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresourcedefinition"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -90,6 +91,9 @@ type ExtraConfig struct {
 
 	Client    clientset.Interface
 	Informers externalinformers.SharedInformerFactory
+
+	// KCP
+	ClusterAwareCRDLister kcp.ClusterAwareCRDLister
 }
 
 type Config struct {
@@ -119,6 +123,9 @@ type CustomResourceDefinitions struct {
 	versionDiscoveryHandler *versionDiscoveryHandler
 	groupDiscoveryHandler   *groupDiscoveryHandler
 	rootDiscoveryHandler    *rootDiscoveryHandler
+
+	// KCP
+	ClusterAwareCRDLister kcp.ClusterAwareCRDLister
 }
 
 // Complete fills in any fields not set that are required to have valid data. It's mutating the receiver.
@@ -191,23 +198,25 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		s.Informers = externalinformers.NewSharedInformerFactory(crdClient, 5*time.Minute)
 	}
 
+	s.ClusterAwareCRDLister = c.ExtraConfig.ClusterAwareCRDLister
+
 	delegateHandler := delegationTarget.UnprotectedHandler()
 	if delegateHandler == nil {
 		delegateHandler = http.NotFoundHandler()
 	}
 
 	s.versionDiscoveryHandler = &versionDiscoveryHandler{
-		crdLister: s.Informers.Apiextensions().V1().CustomResourceDefinitions().Lister(),
+		crdLister: c.ExtraConfig.ClusterAwareCRDLister,
 		delegate:  delegateHandler,
 	}
 
 	s.groupDiscoveryHandler = &groupDiscoveryHandler{
-		crdLister: s.Informers.Apiextensions().V1().CustomResourceDefinitions().Lister(),
+		crdLister: c.ExtraConfig.ClusterAwareCRDLister,
 		delegate:  delegateHandler,
 	}
 
 	s.rootDiscoveryHandler = &rootDiscoveryHandler{
-		crdLister: s.Informers.Apiextensions().V1().CustomResourceDefinitions().Lister(),
+		crdLister: c.ExtraConfig.ClusterAwareCRDLister,
 		delegate:  delegateHandler,
 	}
 	s.DiscoveryGroupLister = s.rootDiscoveryHandler
@@ -236,12 +245,14 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 	}
 	s.crdHandler = crdHandler
 
+	crdHandler.clusterAwareCRDLister = c.ExtraConfig.ClusterAwareCRDLister
+
 	s.GenericAPIServer.Handler.NonGoRestfulMux.Handle("/apis", crdHandler)
 	s.GenericAPIServer.Handler.NonGoRestfulMux.HandlePrefix("/apis/", crdHandler)
 	// HACK: Added to allow serving core resources registered through CRDs (for the KCP scenario)
 	s.GenericAPIServer.Handler.NonGoRestfulMux.UnlistedHandlePrefix("/api/v1/", crdHandler)
 
-	namingController := status.NewNamingConditionController(s.Informers.Apiextensions().V1().CustomResourceDefinitions(), crdClient.ApiextensionsV1())
+	namingController := status.NewNamingConditionController(s.Informers.Apiextensions().V1().CustomResourceDefinitions(), crdClient.ApiextensionsV1(), s.ClusterAwareCRDLister)
 	nonStructuralSchemaController := nonstructuralschema.NewConditionController(s.Informers.Apiextensions().V1().CustomResourceDefinitions(), crdClient.ApiextensionsV1())
 	apiApprovalController := apiapproval.NewKubernetesAPIApprovalPolicyConformantConditionController(s.Informers.Apiextensions().V1().CustomResourceDefinitions(), crdClient.ApiextensionsV1())
 	finalizingController := finalizer.NewCRDFinalizer(

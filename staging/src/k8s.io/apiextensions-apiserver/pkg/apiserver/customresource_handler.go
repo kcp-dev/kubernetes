@@ -30,6 +30,7 @@ import (
 
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
 	apiextensionsinternal "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -45,10 +46,10 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/controller/finalizer"
 	"k8s.io/apiextensions-apiserver/pkg/controller/openapi/builder"
 	"k8s.io/apiextensions-apiserver/pkg/crdserverscheme"
+	"k8s.io/apiextensions-apiserver/pkg/kcp"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -109,7 +110,8 @@ type crdHandler struct {
 	// which is suited for most read and rarely write cases
 	customStorage atomic.Value
 
-	crdLister listers.CustomResourceDefinitionLister
+	crdLister             listers.CustomResourceDefinitionLister
+	clusterAwareCRDLister kcp.ClusterAwareCRDLister
 
 	delegate          http.Handler
 	restOptionsGetter generic.RESTOptionsGetter
@@ -263,8 +265,14 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	crdName := requestInfo.Resource + "." + requestInfo.APIGroup
-	crd, err := r.crdLister.GetWithContext(ctx, crdName)
+	group := requestInfo.APIGroup
+	if group == "" {
+		group = "core"
+	}
+
+	crdName := requestInfo.Resource + "." + group
+
+	crd, err := r.clusterAwareCRDLister.Get(req.Context(), crdName)
 	if apierrors.IsNotFound(err) {
 		r.delegate.ServeHTTP(w, req)
 		return
@@ -683,14 +691,11 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 	// If updateCustomResourceDefinition sees an update and happens later, the storage will be deleted and
 	// we will re-create the updated storage on demand. If updateCustomResourceDefinition happens before,
 	// we make sure that we observe the same up-to-date CRD.
-	key, err := cache.MetaNamespaceKeyFunc(crd)
+	crd, err := r.clusterAwareCRDLister.Refresh(crd)
 	if err != nil {
 		return nil, err
 	}
-	crd, err = r.crdLister.Get(key)
-	if err != nil {
-		return nil, err
-	}
+
 	storageMap = r.customStorage.Load().(crdStorageMap)
 	if ret, ok := storageMap[crd.UID]; ok {
 		return ret, nil
@@ -903,14 +908,17 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 				statusSpec,
 				scaleSpec,
 			),
-			crdConversionRESTOptionsGetter{
-				RESTOptionsGetter:     r.restOptionsGetter,
-				converter:             safeConverter,
-				decoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: v.Name},
-				encoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion},
-				structuralSchemas:     structuralSchemas,
-				structuralSchemaGK:    kind.GroupKind(),
-				preserveUnknownFields: crd.Spec.PreserveUnknownFields,
+			apiBindingAwareCRDRESTOptionsGetter{
+				delegate: crdConversionRESTOptionsGetter{
+					RESTOptionsGetter:     r.restOptionsGetter,
+					converter:             safeConverter,
+					decoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: v.Name},
+					encoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion},
+					structuralSchemas:     structuralSchemas,
+					structuralSchemaGK:    kind.GroupKind(),
+					preserveUnknownFields: crd.Spec.PreserveUnknownFields,
+				},
+				crd: crd,
 			},
 			crd.Status.AcceptedNames.Categories,
 			table,

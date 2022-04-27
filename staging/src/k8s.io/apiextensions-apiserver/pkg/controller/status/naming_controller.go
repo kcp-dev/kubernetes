@@ -19,6 +19,8 @@ package status
 import (
 	"context"
 	"fmt"
+	"k8s.io/apiextensions-apiserver/pkg/kcp"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	"reflect"
 	"strings"
 	"time"
@@ -50,8 +52,9 @@ import (
 type NamingConditionController struct {
 	crdClient client.CustomResourceDefinitionsGetter
 
-	crdLister listers.CustomResourceDefinitionLister
-	crdSynced cache.InformerSynced
+	crdLister             listers.CustomResourceDefinitionLister
+	clusterAwareCRDLister kcp.ClusterAwareCRDLister
+	crdSynced             cache.InformerSynced
 	// crdMutationCache backs our lister and keeps track of committed updates to avoid racy
 	// write/lookup cycles.  It's got 100 slots by default, so it unlikely to overrun
 	// TODO to revisit this if naming conflicts are found to occur in the wild
@@ -66,12 +69,14 @@ type NamingConditionController struct {
 func NewNamingConditionController(
 	crdInformer informers.CustomResourceDefinitionInformer,
 	crdClient client.CustomResourceDefinitionsGetter,
+	clusterAwareCRDLister kcp.ClusterAwareCRDLister,
 ) *NamingConditionController {
 	c := &NamingConditionController{
-		crdClient: crdClient,
-		crdLister: crdInformer.Lister(),
-		crdSynced: crdInformer.Informer().HasSynced,
-		queue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "crd_naming_condition_controller"),
+		crdClient:             crdClient,
+		crdLister:             crdInformer.Lister(),
+		clusterAwareCRDLister: clusterAwareCRDLister,
+		crdSynced:             crdInformer.Informer().HasSynced,
+		queue:                 workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "crd_naming_condition_controller"),
 	}
 
 	informerIndexer := crdInformer.Informer().GetIndexer()
@@ -88,21 +93,18 @@ func NewNamingConditionController(
 	return c
 }
 
-func (c *NamingConditionController) getAcceptedNamesForGroup(clusterName, group string) (allResources sets.String, allKinds sets.String) {
+func (c *NamingConditionController) getAcceptedNamesForGroup(clusterName logicalcluster.LogicalCluster, group string) (allResources sets.String, allKinds sets.String) {
 	allResources = sets.String{}
 	allKinds = sets.String{}
 
-	list, err := c.crdLister.List(labels.Everything())
+	ctx := request.WithCluster(context.TODO(), request.Cluster{Name: clusterName})
+	list, err := c.clusterAwareCRDLister.List(ctx, labels.Everything())
 	if err != nil {
 		panic(err)
 	}
 
 	for _, curr := range list {
 		if curr.Spec.Group != group {
-			continue
-		}
-
-		if curr.GetClusterName() != clusterName {
 			continue
 		}
 
@@ -128,7 +130,7 @@ func (c *NamingConditionController) getAcceptedNamesForGroup(clusterName, group 
 
 func (c *NamingConditionController) calculateNamesAndConditions(in *apiextensionsv1.CustomResourceDefinition) (apiextensionsv1.CustomResourceDefinitionNames, apiextensionsv1.CustomResourceDefinitionCondition, apiextensionsv1.CustomResourceDefinitionCondition) {
 	// Get the names that have already been claimed
-	allResources, allKinds := c.getAcceptedNamesForGroup(in.GetClusterName(), in.Spec.Group)
+	allResources, allKinds := c.getAcceptedNamesForGroup(logicalcluster.From(in), in.Spec.Group)
 
 	// HACK(kcp): if it's a bound CRD, reset already claimed resources and kinds to empty, because we need to support
 	// multiple bound CRDs with overlapping names. KCP admission will ensure that a workspace does not have any
@@ -400,16 +402,13 @@ func (c *NamingConditionController) requeueAllOtherGroupCRDs(name string) error 
 		groupForName = pluralGroup[1]
 	}
 
-	list, err := c.crdLister.List(labels.Everything())
+	ctx := request.WithCluster(context.TODO(), request.Cluster{Name: clusterName})
+	list, err := c.clusterAwareCRDLister.List(ctx, labels.Everything())
 	if err != nil {
 		return err
 	}
 
 	for _, curr := range list {
-		if logicalcluster.From(curr) != clusterName {
-			continue
-		}
-
 		if curr.Spec.Group == groupForName && curr.Name != name {
 			// HACK(kcp): make sure to re-encode the cluster name in the key so
 			// future sync() calls are able to have crdLister.Get() work properly.
