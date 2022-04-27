@@ -30,7 +30,6 @@ import (
 
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
 	apiextensionsinternal "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -49,6 +48,7 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -903,17 +903,14 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 				statusSpec,
 				scaleSpec,
 			),
-			apiBindingAwareCRDRESTOptionsGetter{
-				delegate: crdConversionRESTOptionsGetter{
-					RESTOptionsGetter:     r.restOptionsGetter,
-					converter:             safeConverter,
-					decoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: v.Name},
-					encoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion},
-					structuralSchemas:     structuralSchemas,
-					structuralSchemaGK:    kind.GroupKind(),
-					preserveUnknownFields: crd.Spec.PreserveUnknownFields,
-				},
-				crd: crd,
+			crdConversionRESTOptionsGetter{
+				RESTOptionsGetter:     r.restOptionsGetter,
+				converter:             safeConverter,
+				decoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: v.Name},
+				encoderVersion:        schema.GroupVersion{Group: crd.Spec.Group, Version: storageVersion},
+				structuralSchemas:     structuralSchemas,
+				structuralSchemaGK:    kind.GroupKind(),
+				preserveUnknownFields: crd.Spec.PreserveUnknownFields,
 			},
 			crd.Status.AcceptedNames.Categories,
 			table,
