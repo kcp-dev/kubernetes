@@ -109,8 +109,8 @@ type querier interface {
 }
 
 const (
-	resolveInterval = time.Second     // TODO: plumb this in
-	ttlInterval     = 5 * time.Minute // TODO: plumb this in
+	resolveInterval = 100 * time.Millisecond // TODO: plumb this in
+	ttlInterval     = 5 * time.Minute        // TODO: plumb this in
 )
 
 func newChangefeedCache(ctx context.Context, startAt time.Time, client querier) *changefeedCache {
@@ -361,10 +361,6 @@ func (c *changefeedCache) process(evt *watchEvent) {
 		c.buffer.items = append(c.buffer.items, evtNode)
 	} else {
 		c.buffer.items = append(c.buffer.items[:i], append([]*linkedListNode{evtNode}, c.buffer.items[i:]...)...)
-	}
-	var items []string
-	for i := range c.buffer.items {
-		items = append(items, c.buffer.items[i].timestamp.String())
 	}
 
 	if evt.ProgressNotify {

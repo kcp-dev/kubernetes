@@ -32,10 +32,18 @@ func InitializeDB(ctx context.Context, client pool, compactionInterval time.Dura
 				key STRING(512) NOT NULL PRIMARY KEY,
 				value BLOB NOT NULL
 			);`,
+		`CREATE TABLE IF NOT EXISTS k8s_causality_hack
+			(
+				id UUID NOT NULL PRIMARY KEY
+			);`,
 		// enable watches
 		`SET CLUSTER SETTING kv.rangefeed.enabled = true;`,
 		// set the latency floor for events
 		`SET CLUSTER SETTING changefeed.experimental_poll_interval = '0.2s';`,
+		//// ask for resolved timestamps not so far in the past
+		//`SET CLUSTER SETTING kv.closed_timestamp.target_duration = '100ms'`,
+		//// set the maximum frequency of timestamp resolution events
+		//`SET CLUSTER SETTING kv.closed_timestamp.side_transport_interval = '100ms'`,
 	} {
 		if _, err := client.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("error initializing the database: %w", err)

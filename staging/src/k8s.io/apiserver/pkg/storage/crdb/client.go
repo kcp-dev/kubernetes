@@ -21,10 +21,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/cockroachdb/apd"
 	"github.com/cockroachdb/cockroach-go/v2/crdb/crdbpgx"
+	"github.com/google/uuid"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
@@ -109,6 +111,7 @@ func (c *client) Create(ctx context.Context, key string, value []byte, ttl uint6
 		// TODO: we could try the workarounds? https://github.com/cockroachdb/cockroach/issues/20239
 		klog.Error("crdb does not support row-level TTLs")
 	}
+	thisUuid := uuid.New()
 	// we can't use INSERT ... RETURNING crdb_internal_mvcc_timestamp
 	// so we need to use a transaction here to ensure we do not race.
 	// Reading the crdb_internal_mvcc_timestamp will give us the provisional
@@ -128,7 +131,8 @@ func (c *client) Create(ctx context.Context, key string, value []byte, ttl uint6
 				}
 			}
 		}
-		return tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&hybridLogicalTimestamp)
+		_, err = tx.Exec(ctx, `INSERT INTO k8s_causality_hack (id) VALUES ($1);`, thisUuid)
+		return err
 	}); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
@@ -136,6 +140,10 @@ func (c *client) Create(ctx context.Context, key string, value []byte, ttl uint6
 				return false, nil, storage.NewKeyExistsError(key, 0)
 			}
 		}
+		return false, nil, storage.NewInternalError(err.Error())
+	}
+
+	if err := c.QueryRow(ctx, `SELECT crdb_internal_mvcc_timestamp FROM k8s_causality_hack WHERE id=$1`, thisUuid).Scan(&hybridLogicalTimestamp); err != nil {
 		return false, nil, storage.NewInternalError(err.Error())
 	}
 
@@ -202,6 +210,7 @@ func (c *client) ConditionalUpdate(ctx context.Context, key string, value []byte
 		return false, nil, storage.NewInternalError(err.Error())
 	}
 
+	thisUuid := uuid.New()
 	var retry, missing bool
 	var hybridLogicalTimestamp apd.Decimal
 	var data []byte
@@ -233,12 +242,19 @@ func (c *client) ConditionalUpdate(ctx context.Context, key string, value []byte
 		}
 
 		// read the updated timestamp so we know the new resourceVersion
-		return tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&hybridLogicalTimestamp)
+		_, err = tx.Exec(ctx, `INSERT INTO k8s_causality_hack (id) VALUES ($1);`, thisUuid)
+		return err
+		//return tx.QueryRow(ctx, `SELECT cluster_logical_timestamp();`).Scan(&hybridLogicalTimestamp)
 	}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// this is not necessarily an error for our caller
 			missing = true
 		} else {
+			return false, nil, storage.NewInternalError(err.Error())
+		}
+	}
+	if !retry {
+		if err := c.QueryRow(ctx, `SELECT crdb_internal_mvcc_timestamp FROM k8s_causality_hack WHERE id=$1`, thisUuid).Scan(&hybridLogicalTimestamp); err != nil {
 			return false, nil, storage.NewInternalError(err.Error())
 		}
 	}
@@ -430,6 +446,7 @@ func watchFromCache(ctx context.Context, cache *changefeedCache, key string, rec
 func watchFromChangefeed(ctx context.Context, client pool, key string, recursive, progressNotify bool, revision int64) <-chan *generic.WatchResponse {
 	buffer := make(chan *watchEvent)
 	reduced := make(chan *generic.WatchResponse)
+	released := make(chan *generic.WatchResponse)
 	events := make(chan *generic.WatchResponse)
 	go func() {
 		initialWatchTimestamp := &apd.Decimal{}
@@ -451,8 +468,10 @@ func watchFromChangefeed(ctx context.Context, client pool, key string, recursive
 
 	// adapt the internal watch events to the generic ones
 	go reduce(ctx, buffer, reduced)
+	// reorder events as they come in so downstream consumers are always in order
+	go release(ctx, reduced, released)
 	// filter the watch events for those we are interested in
-	go filter(ctx, reduced, events, key, recursive, progressNotify)
+	go filter(ctx, released, events, key, recursive, progressNotify)
 
 	return events
 }
@@ -466,6 +485,43 @@ func reduce(ctx context.Context, source <-chan *watchEvent, sink chan<- *generic
 			select {
 			case <-ctx.Done():
 			case sink <- evt.WatchResponse:
+			}
+		}
+	}
+}
+
+func release(ctx context.Context, source <-chan *generic.WatchResponse, sink chan<- *generic.WatchResponse) {
+	var buffer []*generic.WatchResponse
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-source:
+			if evt.ProgressNotify {
+				for _, item := range buffer {
+					select {
+					case <-ctx.Done():
+					case sink <- item:
+					}
+				}
+				select {
+				case <-ctx.Done():
+				case sink <- evt:
+				}
+				buffer = []*generic.WatchResponse{}
+				continue
+			} else {
+				i := sort.Search(len(buffer), func(i int) bool { return buffer[i].Header.Revision > evt.Header.Revision })
+				if i < len(buffer) && buffer[i].Header.Revision == evt.Header.Revision {
+					// this is a duplicate event, ignore it
+					return
+				}
+				// append into buffer, sorted
+				if i == len(buffer) {
+					buffer = append(buffer, evt)
+				} else {
+					buffer = append(buffer[:i], append([]*generic.WatchResponse{evt}, buffer[i:]...)...)
+				}
 			}
 		}
 	}
