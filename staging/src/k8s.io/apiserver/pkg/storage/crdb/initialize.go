@@ -19,17 +19,14 @@ package crdb
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"time"
-
-	"k8s.io/apiserver/pkg/storage"
 )
 
 func InitializeDB(ctx context.Context, client pool, compactionInterval time.Duration) error {
 	for _, stmt := range []string{
 		`CREATE TABLE IF NOT EXISTS k8s
 			(
-				key STRING(512) NOT NULL PRIMARY KEY,
+				key VARCHAR(512) NOT NULL PRIMARY KEY,
 				value BLOB NOT NULL
 			);`,
 		`CREATE TABLE IF NOT EXISTS k8s_causality_hack
@@ -53,41 +50,6 @@ func InitializeDB(ctx context.Context, client pool, compactionInterval time.Dura
 	if compactionInterval != 0 {
 		if _, err := client.Exec(ctx, `ALTER TABLE k8s CONFIGURE ZONE USING gc.ttlseconds = $1;`, compactionInterval.Round(time.Second).Seconds()); err != nil {
 			return fmt.Errorf("failed to configure compaction interval: %w", err)
-		}
-	}
-
-	return nil
-}
-
-var invalidRe = regexp.MustCompile(`[^a-zA-Z_]`)
-
-// SanitizeIdentifier replaces all invalid characters in the value, so that the result may be used as a SQL identifier,
-// as for a table, column, constraint or index name.
-func SanitizeIdentifier(value string) string {
-	return invalidRe.ReplaceAllString(value, "_")
-}
-
-func AddIndices(ctx context.Context, schemaName string, client pool, indexers storage.IndexerFuncs) error {
-	if indexers == nil {
-		return nil
-	}
-	statements := []string{
-		fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s;`, schemaName),
-	}
-	for rawIndexName := range indexers {
-		indexName := SanitizeIdentifier(storage.FieldIndex(rawIndexName)) // TODO: why doesn't this let us know if it's a label or field ?
-		statements = append(statements,
-			fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s
-			(
-				key STRING(512) PRIMARY KEY REFERENCES k8s(key) ON DELETE CASCADE,
-				value STRING,
-				INDEX (value)
-			);`, schemaName, indexName),
-		)
-	}
-	for _, stmt := range statements {
-		if _, err := client.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("error adding indices: %w", err)
 		}
 	}
 

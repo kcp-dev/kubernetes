@@ -29,7 +29,7 @@ import (
 
 func NewTestClient(ctx context.Context, c pool) generic.TestClient {
 	return &testClient{
-		client: NewClient(ctx, false, c, ""),
+		client: NewClient(ctx, false, c),
 	}
 }
 

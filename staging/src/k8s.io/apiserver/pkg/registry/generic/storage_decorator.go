@@ -47,7 +47,7 @@ func UndecoratedStorage(
 	getAttrsFunc storage.AttrFunc,
 	trigger storage.IndexerFuncs,
 	indexers *cache.Indexers) (storage.Interface, factory.DestroyFunc, error) {
-	return NewIndexedStorage(config, false, newFunc, trigger)
+	return NewRawStorage(config, false, newFunc)
 }
 
 // NewRawStorage creates the low level kv storage. This is a work-around for current
@@ -55,8 +55,4 @@ func UndecoratedStorage(
 // TODO: Once cacher is enabled on all registries (event registry is special), we will remove this method.
 func NewRawStorage(config *storagebackend.ConfigForResource, enableCaching bool, newFunc func() runtime.Object) (storage.Interface, factory.DestroyFunc, error) {
 	return factory.Create(*config, enableCaching, newFunc)
-}
-
-func NewIndexedStorage(config *storagebackend.ConfigForResource, enableCaching bool, newFunc func() runtime.Object, indexers storage.IndexerFuncs) (storage.Interface, factory.DestroyFunc, error) {
-	return factory.CreateWithIndices(*config, enableCaching, newFunc, indexers)
 }

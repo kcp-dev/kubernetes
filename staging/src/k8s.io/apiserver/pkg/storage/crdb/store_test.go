@@ -25,7 +25,6 @@ import (
 	"github.com/cockroachdb/cockroach-go/v2/testserver"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"k8s.io/apiserver/pkg/storage"
 
 	"k8s.io/apiserver/pkg/storage/generic"
 )
@@ -42,10 +41,6 @@ type internalTestClient struct {
 var _ generic.InternalTestClient = &internalTestClient{}
 
 func newTestClient(t *testing.T) *internalTestClient {
-	return newTestClientWithIndexers(t, nil)
-}
-
-func newTestClientWithIndexers(t *testing.T, indexers storage.IndexerFuncs) *internalTestClient {
 	ts, err := testserver.NewTestServer()
 	if err != nil {
 		t.Fatalf("failed to start crdb: %v", err)
@@ -73,20 +68,12 @@ func newTestClientWithIndexers(t *testing.T, indexers storage.IndexerFuncs) *int
 		t.Fatal(err)
 	}
 
-	const indexSchema = "indices"
-	if indexers != nil {
-		if err := AddIndices(ctx, indexSchema, pool, indexers); err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	recordingClient := &recordingRowQuerier{pool: pool}
 
 	return &internalTestClient{
 		testClient: &testClient{
 			client: &client{
 				pool:            recordingClient,
-				indexSchema:     indexSchema,
 				changefeedCache: initialize(ctx, pool),
 			},
 		},

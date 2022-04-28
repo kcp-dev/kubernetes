@@ -24,6 +24,6 @@ import (
 	"k8s.io/apiserver/pkg/storage/value"
 )
 
-func New(c generic.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, indexers storage.IndexerFuncs) storage.Interface {
-	return generic.NewWithIndexers(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled, indexers)
+func New(c generic.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool) storage.Interface {
+	return generic.New(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled)
 }
