@@ -23,8 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/klog/v2"
 	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+
+	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -236,16 +237,33 @@ func (o *operationNotSupportedCache) setNotSupported(key operationKey) {
 
 // isSupported returns true if the operation is supported
 func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.LogicalCluster, key operationKey) bool {
+	// Quick read-only check to see if the cache already exists
 	d.opCachesMutex.RLock()
-	defer d.opCachesMutex.RUnlock()
 	cache, exists := d.opCaches[clusterName]
-	if !exists {
-		cache = &operationNotSupportedCache{
-			m: make(map[operationKey]bool),
-		}
-		d.opCaches[clusterName] = cache
-		d.initOpCache(clusterName)
+	d.opCachesMutex.RUnlock()
+
+	if exists {
+		return cache.isSupported(key)
 	}
+
+	// Doesn't exist - may need to create
+	d.opCachesMutex.Lock()
+	defer d.opCachesMutex.Unlock()
+
+	// Check again, with the write lock held, to see if it exists. It's possible another goroutine set it in between
+	// when we checked with the read lock held, and now.
+	cache, exists = d.opCaches[clusterName]
+	if exists {
+		return cache.isSupported(key)
+	}
+
+	// Definitely doesn't exist - need to create it.
+	cache = &operationNotSupportedCache{
+		m: make(map[operationKey]bool),
+	}
+	d.opCaches[clusterName] = cache
+
+	d.initOpCache(clusterName)
 
 	return cache.isSupported(key)
 }
