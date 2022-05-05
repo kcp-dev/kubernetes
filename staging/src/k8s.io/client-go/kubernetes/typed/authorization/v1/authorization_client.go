@@ -21,7 +21,7 @@ package v1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1 "k8s.io/api/authorization/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -38,7 +38,7 @@ type AuthorizationV1Interface interface {
 // AuthorizationV1Client is used to interact with features provided by the authorization.k8s.io group.
 type AuthorizationV1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *AuthorizationV1Client) LocalSubjectAccessReviews(namespace string) LocalSubjectAccessReviewInterface {
@@ -102,7 +102,7 @@ func New(c rest.Interface) *AuthorizationV1Client {
 }
 
 // NewWithCluster creates a new AuthorizationV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *AuthorizationV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *AuthorizationV1Client {
 	return &AuthorizationV1Client{restClient: c, cluster: cluster}
 }
 

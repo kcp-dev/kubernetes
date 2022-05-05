@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,7 +46,7 @@ func NewClusterForConfig(c *rest.Config) (*Cluster, error) {
 }
 
 type ClusterInterface interface {
-	Cluster(name logicalcluster.LogicalCluster) Interface
+	Cluster(name logicalcluster.Name) Interface
 }
 
 type Cluster struct {
@@ -54,7 +54,7 @@ type Cluster struct {
 }
 
 // Cluster sets the cluster for a Clientset.
-func (c *Cluster) Cluster(name logicalcluster.LogicalCluster) Interface {
+func (c *Cluster) Cluster(name logicalcluster.Name) Interface {
 	return &DynamicClient{
 		scopedClient: c.scopedClient,
 		cluster:      name,
@@ -63,7 +63,7 @@ func (c *Cluster) Cluster(name logicalcluster.LogicalCluster) Interface {
 
 type DynamicClient struct {
 	*scopedClient
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 }
 
 type scopedClient struct {

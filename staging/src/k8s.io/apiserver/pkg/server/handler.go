@@ -26,7 +26,7 @@ import (
 
 	"github.com/emicklei/go-restful"
 	"k8s.io/klog/v2"
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -66,7 +66,7 @@ type APIServerHandler struct {
 	// Other servers should only use this opaquely to delegate to an API server.
 	Director http.Handler
 
-	PathValidForCluster func(path string, clusterName logicalcluster.LogicalCluster) bool
+	PathValidForCluster func(path string, clusterName logicalcluster.Name) bool
 }
 
 // HandlerChainBuilderFn is used to wrap the GoRestfulContainer handler using the provided handler chain.
@@ -104,7 +104,7 @@ func NewAPIServerHandler(name string, s runtime.NegotiatedSerializer, handlerCha
 }
 
 // ListedPaths returns the paths that should be shown under /
-func (a *APIServerHandler) ListedPaths(clusterName logicalcluster.LogicalCluster) []string {
+func (a *APIServerHandler) ListedPaths(clusterName logicalcluster.Name) []string {
 	var handledPaths []string
 	// Extract the paths handled using restful.WebService
 	for _, ws := range a.GoRestfulContainer.RegisteredWebServices() {

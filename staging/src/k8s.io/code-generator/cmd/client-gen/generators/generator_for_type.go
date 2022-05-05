@@ -137,7 +137,7 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 				"ApplyOptions":   c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/apis/meta/v1", Name: "ApplyOptions"}),
 				"PatchType":      c.Universe.Type(types.Name{Package: "k8s.io/apimachinery/pkg/types", Name: "PatchType"}),
 				"jsonMarshal":    c.Universe.Type(types.Name{Package: "encoding/json", Name: "Marshal"}),
-				"LogicalCluster": c.Universe.Type(types.Name{Package: "github.com/kcp-dev/apimachinery/pkg/logicalcluster", Name: "LogicalCluster"}),
+				"LogicalCluster": c.Universe.Type(types.Name{Package: "github.com/kcp-dev/logicalcluster", Name: "LogicalCluster"}),
 			},
 		}
 		if e.HasVerb("apply") {
@@ -170,7 +170,7 @@ func (g *genClientForType) GenerateType(c *generator.Context, t *types.Type, w i
 		"RESTClientInterface":  c.Universe.Type(types.Name{Package: "k8s.io/client-go/rest", Name: "Interface"}),
 		"schemeParameterCodec": c.Universe.Variable(types.Name{Package: filepath.Join(g.clientsetPackage, "scheme"), Name: "ParameterCodec"}),
 		"jsonMarshal":          c.Universe.Type(types.Name{Package: "encoding/json", Name: "Marshal"}),
-		"LogicalCluster":       c.Universe.Type(types.Name{Package: "github.com/kcp-dev/apimachinery/pkg/logicalcluster", Name: "LogicalCluster"}),
+		"LogicalCluster":       c.Universe.Type(types.Name{Package: "github.com/kcp-dev/logicalcluster", Name: "LogicalCluster"}),
 	}
 
 	if generateApply {

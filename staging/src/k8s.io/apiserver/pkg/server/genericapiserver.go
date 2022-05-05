@@ -56,7 +56,7 @@ import (
 	openapiproto "k8s.io/kube-openapi/pkg/util/proto"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 	"k8s.io/utils/clock"
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 )
 
 // Info about an API group.
@@ -251,7 +251,7 @@ type DelegationTarget interface {
 	HealthzChecks() []healthz.HealthChecker
 
 	// ListedPaths returns the paths for supporting an index
-	ListedPaths(clusterName logicalcluster.LogicalCluster) []string
+	ListedPaths(clusterName logicalcluster.Name) []string
 
 	// NextDelegate returns the next delegationTarget in the chain of delegations
 	NextDelegate() DelegationTarget
@@ -276,7 +276,7 @@ func (s *GenericAPIServer) PreShutdownHooks() map[string]preShutdownHookEntry {
 func (s *GenericAPIServer) HealthzChecks() []healthz.HealthChecker {
 	return s.healthzChecks
 }
-func (s *GenericAPIServer) ListedPaths(clusterName logicalcluster.LogicalCluster) []string {
+func (s *GenericAPIServer) ListedPaths(clusterName logicalcluster.Name) []string {
 	return s.listedPathProvider.ListedPaths(clusterName)
 }
 
@@ -325,7 +325,7 @@ func (s emptyDelegate) PreShutdownHooks() map[string]preShutdownHookEntry {
 func (s emptyDelegate) HealthzChecks() []healthz.HealthChecker {
 	return []healthz.HealthChecker{}
 }
-func (s emptyDelegate) ListedPaths(clusterName logicalcluster.LogicalCluster) []string {
+func (s emptyDelegate) ListedPaths(clusterName logicalcluster.Name) []string {
 	return []string{}
 }
 func (s emptyDelegate) NextDelegate() DelegationTarget {

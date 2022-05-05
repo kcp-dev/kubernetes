@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"time"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1beta2 "k8s.io/api/flowcontrol/v1beta2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -59,7 +59,7 @@ type PriorityLevelConfigurationInterface interface {
 // priorityLevelConfigurations implements PriorityLevelConfigurationInterface
 type priorityLevelConfigurations struct {
 	client  rest.Interface
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 }
 
 // newPriorityLevelConfigurations returns a PriorityLevelConfigurations

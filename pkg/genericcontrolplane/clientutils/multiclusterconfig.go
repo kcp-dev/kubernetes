@@ -26,7 +26,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -95,8 +95,8 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 	contextCluster := genericapirequest.ClusterFrom(req.Context())
 	if requestInfo != nil &&
 		mcrt.enabledOn.Has(requestInfo.Resource) {
-		var resourceClusterName logicalcluster.LogicalCluster
-		var headerCluster logicalcluster.LogicalCluster
+		var resourceClusterName logicalcluster.Name
+		var headerCluster logicalcluster.Name
 		switch requestInfo.Verb {
 		case "list", "watch":
 			if contextCluster != nil && !contextCluster.Wildcard {

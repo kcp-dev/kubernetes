@@ -32,7 +32,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	openapi_v2 "github.com/googleapis/gnostic/openapiv2"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -135,10 +135,10 @@ type OpenAPISchemaInterface interface {
 // versions and resources.
 type DiscoveryClient struct {
 	*scopedClient
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 }
 
-func (d *DiscoveryClient) WithCluster(cluster logicalcluster.LogicalCluster) DiscoveryInterface {
+func (d *DiscoveryClient) WithCluster(cluster logicalcluster.Name) DiscoveryInterface {
 	return &DiscoveryClient{
 		scopedClient: d.scopedClient,
 		cluster:      cluster,

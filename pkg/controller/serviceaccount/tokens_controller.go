@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -346,7 +346,7 @@ func (e *TokensController) deleteTokens(serviceAccount *v1.ServiceAccount) ( /*r
 	return retry, utilerrors.NewAggregate(errs)
 }
 
-func (e *TokensController) deleteToken(clusterName logicalcluster.LogicalCluster, ns, name string, uid types.UID) ( /*retry*/ bool, error) {
+func (e *TokensController) deleteToken(clusterName logicalcluster.Name, ns, name string, uid types.UID) ( /*retry*/ bool, error) {
 	var opts metav1.DeleteOptions
 	if len(uid) > 0 {
 		opts.Preconditions = &metav1.Preconditions{UID: &uid}
@@ -591,7 +591,7 @@ func (e *TokensController) generateTokenIfNeeded(serviceAccount *v1.ServiceAccou
 }
 
 // removeSecretReference updates the given ServiceAccount to remove a reference to the given secretName if needed.
-func (e *TokensController) removeSecretReference(saClusterName logicalcluster.LogicalCluster, saNamespace string, saName string, saUID types.UID, secretName string) error {
+func (e *TokensController) removeSecretReference(saClusterName logicalcluster.Name, saNamespace string, saName string, saUID types.UID, secretName string) error {
 	ctx := genericapirequest.WithCluster(context.TODO(), genericapirequest.Cluster{Name: saClusterName})
 
 	// We don't want to update the cache's copy of the service account
@@ -632,7 +632,7 @@ func (e *TokensController) removeSecretReference(saClusterName logicalcluster.Lo
 	return err
 }
 
-func (e *TokensController) getServiceAccount(clusterName logicalcluster.LogicalCluster, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.ServiceAccount, error) {
+func (e *TokensController) getServiceAccount(clusterName logicalcluster.Name, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.ServiceAccount, error) {
 	// Look up in cache
 	sa, err := e.serviceAccounts.ServiceAccounts(ns).Get(clusters.ToClusterAwareKey(clusterName, name))
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -665,7 +665,7 @@ func (e *TokensController) getServiceAccount(clusterName logicalcluster.LogicalC
 	return nil, nil
 }
 
-func (e *TokensController) getSecret(clusterName logicalcluster.LogicalCluster, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.Secret, error) {
+func (e *TokensController) getSecret(clusterName logicalcluster.Name, ns string, name string, uid types.UID, fetchOnCacheMiss bool) (*v1.Secret, error) {
 	// Look up in cache
 	obj, exists, err := e.updatedSecrets.GetByKey(makeCacheKey(ns, clusters.ToClusterAwareKey(clusterName, name)))
 	if err != nil {
@@ -733,7 +733,7 @@ func getSecretReferences(serviceAccount *v1.ServiceAccount) sets.String {
 // It contains enough information to look up the cached service account,
 // or delete owned tokens if the service account no longer exists.
 type serviceAccountQueueKey struct {
-	clusterName logicalcluster.LogicalCluster // Required for kcp
+	clusterName logicalcluster.Name // Required for kcp
 
 	namespace string
 	name      string
@@ -762,7 +762,7 @@ func parseServiceAccountKey(key interface{}) (serviceAccountQueueKey, error) {
 // It contains enough information to look up the cached service account,
 // or delete the secret reference if the secret no longer exists.
 type secretQueueKey struct {
-	clusterName logicalcluster.LogicalCluster // Required for kcp
+	clusterName logicalcluster.Name // Required for kcp
 
 	namespace string
 	name      string

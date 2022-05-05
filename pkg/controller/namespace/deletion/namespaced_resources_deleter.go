@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	"k8s.io/klog/v2"
 
@@ -42,19 +42,19 @@ import (
 
 // NamespacedResourcesDeleterInterface is the interface to delete a namespace with all resources in it.
 type NamespacedResourcesDeleterInterface interface {
-	Delete(clusterName logicalcluster.LogicalCluster, nsName string) error
+	Delete(clusterName logicalcluster.Name, nsName string) error
 }
 
 // NewNamespacedResourcesDeleter returns a new NamespacedResourcesDeleter.
 func NewNamespacedResourcesDeleter(nsClient v1clientset.NamespaceInterface,
 	metadataClient metadata.Interface, podsGetter v1clientset.PodsGetter,
-	discoverResourcesFn func(clusterName logicalcluster.LogicalCluster) ([]*metav1.APIResourceList, error),
+	discoverResourcesFn func(clusterName logicalcluster.Name) ([]*metav1.APIResourceList, error),
 	finalizerToken v1.FinalizerName) NamespacedResourcesDeleterInterface {
 	d := &namespacedResourcesDeleter{
 		nsClient:            nsClient,
 		metadataClient:      metadataClient,
 		podsGetter:          podsGetter,
-		opCaches:            map[logicalcluster.LogicalCluster]*operationNotSupportedCache{},
+		opCaches:            map[logicalcluster.Name]*operationNotSupportedCache{},
 		discoverResourcesFn: discoverResourcesFn,
 		finalizerToken:      finalizerToken,
 	}
@@ -72,10 +72,10 @@ type namespacedResourcesDeleter struct {
 	// Interface to get PodInterface.
 	podsGetter v1clientset.PodsGetter
 	// Cache of what operations are not supported on each group version resource.
-	opCaches      map[logicalcluster.LogicalCluster]*operationNotSupportedCache
+	opCaches      map[logicalcluster.Name]*operationNotSupportedCache
 	opCachesMutex sync.RWMutex
 
-	discoverResourcesFn func(clusterName logicalcluster.LogicalCluster) ([]*metav1.APIResourceList, error)
+	discoverResourcesFn func(clusterName logicalcluster.Name) ([]*metav1.APIResourceList, error)
 	// The finalizer token that should be removed from the namespace
 	// when all resources in that namespace have been deleted.
 	finalizerToken v1.FinalizerName
@@ -94,7 +94,7 @@ type namespacedResourcesDeleter struct {
 // Returns ResourcesRemainingError if it deleted some resources but needs
 // to wait for them to go away.
 // Caller is expected to keep calling this until it succeeds.
-func (d *namespacedResourcesDeleter) Delete(clusterName logicalcluster.LogicalCluster, nsName string) error {
+func (d *namespacedResourcesDeleter) Delete(clusterName logicalcluster.Name, nsName string) error {
 	// Multiple controllers may edit a namespace during termination
 	// first get the latest state of the namespace before proceeding
 	// if the namespace was deleted already, don't do anything
@@ -154,7 +154,7 @@ func (d *namespacedResourcesDeleter) Delete(clusterName logicalcluster.LogicalCl
 	return nil
 }
 
-func (d *namespacedResourcesDeleter) initOpCache(clusterName logicalcluster.LogicalCluster) {
+func (d *namespacedResourcesDeleter) initOpCache(clusterName logicalcluster.Name) {
 	// pre-fill opCache with the discovery info
 	//
 	// TODO(sttts): get rid of opCache and http 405 logic around it and trust discovery info
@@ -236,7 +236,7 @@ func (o *operationNotSupportedCache) setNotSupported(key operationKey) {
 }
 
 // isSupported returns true if the operation is supported
-func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.LogicalCluster, key operationKey) bool {
+func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.Name, key operationKey) bool {
 	// Quick read-only check to see if the cache already exists
 	d.opCachesMutex.RLock()
 	cache, exists := d.opCaches[clusterName]
@@ -338,7 +338,7 @@ func (d *namespacedResourcesDeleter) finalizeNamespace(namespace *v1.Namespace) 
 // deleteCollection is a helper function that will delete the collection of resources
 // it returns true if the operation was supported on the server.
 // it returns an error if the operation was supported on the server but was unable to complete.
-func (d *namespacedResourcesDeleter) deleteCollection(clusterName logicalcluster.LogicalCluster, gvr schema.GroupVersionResource, namespace string) (bool, error) {
+func (d *namespacedResourcesDeleter) deleteCollection(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, namespace string) (bool, error) {
 	klog.V(5).Infof("namespace controller - deleteCollection - namespace: %s, gvr: %v", namespace, gvr)
 
 	key := operationKey{operation: operationDeleteCollection, gvr: gvr}
@@ -377,7 +377,7 @@ func (d *namespacedResourcesDeleter) deleteCollection(clusterName logicalcluster
 //  the list of items in the collection (if found)
 //  a boolean if the operation is supported
 //  an error if the operation is supported but could not be completed.
-func (d *namespacedResourcesDeleter) listCollection(clusterName logicalcluster.LogicalCluster, gvr schema.GroupVersionResource, namespace string) (*metav1.PartialObjectMetadataList, bool, error) {
+func (d *namespacedResourcesDeleter) listCollection(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, namespace string) (*metav1.PartialObjectMetadataList, bool, error) {
 	klog.V(5).Infof("namespace controller - listCollection - namespace: %s, gvr: %v", namespace, gvr)
 
 	key := operationKey{operation: operationList, gvr: gvr}
@@ -405,7 +405,7 @@ func (d *namespacedResourcesDeleter) listCollection(clusterName logicalcluster.L
 }
 
 // deleteEachItem is a helper function that will list the collection of resources and delete each item 1 by 1.
-func (d *namespacedResourcesDeleter) deleteEachItem(clusterName logicalcluster.LogicalCluster, gvr schema.GroupVersionResource, namespace string) error {
+func (d *namespacedResourcesDeleter) deleteEachItem(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, namespace string) error {
 	klog.V(5).Infof("namespace controller - deleteEachItem - namespace: %s, gvr: %v", namespace, gvr)
 
 	unstructuredList, listSupported, err := d.listCollection(clusterName, gvr, namespace)
@@ -439,7 +439,7 @@ type gvrDeletionMetadata struct {
 // It returns an estimate of the time remaining before the remaining resources are deleted.
 // If estimate > 0, not all resources are guaranteed to be gone.
 func (d *namespacedResourcesDeleter) deleteAllContentForGroupVersionResource(
-	clusterName logicalcluster.LogicalCluster,
+	clusterName logicalcluster.Name,
 	gvr schema.GroupVersionResource, namespace string,
 	namespaceDeletedAt metav1.Time) (gvrDeletionMetadata, error) {
 	klog.V(5).Infof("namespace controller - deleteAllContentForGroupVersionResource - namespace: %s, gvr: %v", namespace, gvr)
@@ -592,7 +592,7 @@ func (d *namespacedResourcesDeleter) deleteAllContent(ns *v1.Namespace) (int64, 
 }
 
 // estimateGracefulTermination will estimate the graceful termination required for the specific entity in the namespace
-func (d *namespacedResourcesDeleter) estimateGracefulTermination(clusterName logicalcluster.LogicalCluster, gvr schema.GroupVersionResource, ns string, namespaceDeletedAt metav1.Time) (int64, error) {
+func (d *namespacedResourcesDeleter) estimateGracefulTermination(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, ns string, namespaceDeletedAt metav1.Time) (int64, error) {
 	groupResource := gvr.GroupResource()
 	klog.V(5).Infof("namespace controller - estimateGracefulTermination - group %s, resource: %s", groupResource.Group, groupResource.Resource)
 	estimate := int64(0)
@@ -614,7 +614,7 @@ func (d *namespacedResourcesDeleter) estimateGracefulTermination(clusterName log
 }
 
 // estimateGracefulTerminationForPods determines the graceful termination period for pods in the namespace
-func (d *namespacedResourcesDeleter) estimateGracefulTerminationForPods(clusterName logicalcluster.LogicalCluster, ns string) (int64, error) {
+func (d *namespacedResourcesDeleter) estimateGracefulTerminationForPods(clusterName logicalcluster.Name, ns string) (int64, error) {
 	klog.V(5).Infof("namespace controller - estimateGracefulTerminationForPods - namespace %s", ns)
 	estimate := int64(0)
 	podsGetter := d.podsGetter

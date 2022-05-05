@@ -21,7 +21,7 @@ package v2beta2
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v2beta2 "k8s.io/api/autoscaling/v2beta2"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +35,7 @@ type AutoscalingV2beta2Interface interface {
 // AutoscalingV2beta2Client is used to interact with features provided by the autoscaling group.
 type AutoscalingV2beta2Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *AutoscalingV2beta2Client) HorizontalPodAutoscalers(namespace string) HorizontalPodAutoscalerInterface {
@@ -87,7 +87,7 @@ func New(c rest.Interface) *AutoscalingV2beta2Client {
 }
 
 // NewWithCluster creates a new AutoscalingV2beta2Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *AutoscalingV2beta2Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *AutoscalingV2beta2Client {
 	return &AutoscalingV2beta2Client{restClient: c, cluster: cluster}
 }
 

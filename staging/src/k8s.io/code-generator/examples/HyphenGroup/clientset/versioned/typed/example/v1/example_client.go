@@ -21,7 +21,7 @@ package v1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	rest "k8s.io/client-go/rest"
 	v1 "k8s.io/code-generator/examples/HyphenGroup/apis/example/v1"
 	"k8s.io/code-generator/examples/HyphenGroup/clientset/versioned/scheme"
@@ -36,7 +36,7 @@ type ExampleGroupV1Interface interface {
 // ExampleGroupV1Client is used to interact with features provided by the example-group.hyphens.code-generator.k8s.io group.
 type ExampleGroupV1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *ExampleGroupV1Client) ClusterTestTypes() ClusterTestTypeInterface {
@@ -92,7 +92,7 @@ func New(c rest.Interface) *ExampleGroupV1Client {
 }
 
 // NewWithCluster creates a new ExampleGroupV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *ExampleGroupV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *ExampleGroupV1Client {
 	return &ExampleGroupV1Client{restClient: c, cluster: cluster}
 }
 

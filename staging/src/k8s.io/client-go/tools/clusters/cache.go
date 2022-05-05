@@ -3,7 +3,7 @@ package clusters
 import (
 	"strings"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 )
 
 // ToClusterAwareKey allows combining the object name and
@@ -13,7 +13,7 @@ import (
 //
 // This is a temporary hack and should be replaced by thoughtful
 // and real support of logical cluster in the client-go layer
-func ToClusterAwareKey(clusterName logicalcluster.LogicalCluster, name string) string {
+func ToClusterAwareKey(clusterName logicalcluster.Name, name string) string {
 	if !clusterName.Empty() {
 		return clusterName.String() + "#$#" + name
 	}
@@ -23,11 +23,11 @@ func ToClusterAwareKey(clusterName logicalcluster.LogicalCluster, name string) s
 
 // SplitClusterAwareKey just allows extract the name and clusterName
 // from a Key initially created with ToClusterAwareKey
-func SplitClusterAwareKey(clusterAwareKey string) (clusterName logicalcluster.LogicalCluster, name string) {
+func SplitClusterAwareKey(clusterAwareKey string) (clusterName logicalcluster.Name, name string) {
 	parts := strings.SplitN(clusterAwareKey, "#$#", 2)
 	if len(parts) == 1 {
 		// name only, no cluster
-		return logicalcluster.LogicalCluster{}, parts[0]
+		return logicalcluster.Name{}, parts[0]
 	}
 	// clusterName and name
 	return logicalcluster.New(parts[0]), parts[1]

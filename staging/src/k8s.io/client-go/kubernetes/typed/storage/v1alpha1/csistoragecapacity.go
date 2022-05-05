@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"time"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1alpha1 "k8s.io/api/storage/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -57,7 +57,7 @@ type CSIStorageCapacityInterface interface {
 // cSIStorageCapacities implements CSIStorageCapacityInterface
 type cSIStorageCapacities struct {
 	client  rest.Interface
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 	ns      string
 }
 

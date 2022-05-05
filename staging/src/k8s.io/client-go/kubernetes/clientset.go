@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	discovery "k8s.io/client-go/discovery"
 	admissionregistrationv1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1"
 	admissionregistrationv1beta1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
@@ -74,7 +74,7 @@ import (
 )
 
 type ClusterInterface interface {
-	Cluster(name logicalcluster.LogicalCluster) Interface
+	Cluster(name logicalcluster.Name) Interface
 }
 
 type Cluster struct {
@@ -82,7 +82,7 @@ type Cluster struct {
 }
 
 // Cluster sets the cluster for a Clientset.
-func (c *Cluster) Cluster(name logicalcluster.LogicalCluster) Interface {
+func (c *Cluster) Cluster(name logicalcluster.Name) Interface {
 	return &Clientset{
 		scopedClientset: c.scopedClientset,
 		cluster:         name,
@@ -153,7 +153,7 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*scopedClientset
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 }
 
 // scopedClientset contains the clients for groups. Each group has exactly one

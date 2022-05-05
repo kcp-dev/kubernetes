@@ -21,7 +21,7 @@ package v1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -50,7 +50,7 @@ type CoreV1Interface interface {
 // CoreV1Client is used to interact with features provided by the  group.
 type CoreV1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *CoreV1Client) ComponentStatuses() ComponentStatusInterface {
@@ -162,7 +162,7 @@ func New(c rest.Interface) *CoreV1Client {
 }
 
 // NewWithCluster creates a new CoreV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *CoreV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *CoreV1Client {
 	return &CoreV1Client{restClient: c, cluster: cluster}
 }
 

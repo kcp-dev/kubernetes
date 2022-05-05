@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"time"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1alpha1 "k8s.io/api/rbac/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -57,7 +57,7 @@ type ClusterRoleInterface interface {
 // clusterRoles implements ClusterRoleInterface
 type clusterRoles struct {
 	client  rest.Interface
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 }
 
 // newClusterRoles returns a ClusterRoles

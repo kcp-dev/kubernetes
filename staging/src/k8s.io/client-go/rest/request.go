@@ -33,7 +33,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 	"golang.org/x/net/http2"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -104,7 +104,7 @@ type Request struct {
 	headers    http.Header
 
 	// structural elements of the request that are part of the Kubernetes API conventions
-	cluster      logicalcluster.LogicalCluster
+	cluster      logicalcluster.Name
 	clusterSet   bool
 	namespace    string
 	namespaceSet bool
@@ -300,7 +300,7 @@ func (r *Request) Namespace(namespace string) *Request {
 }
 
 // Cluster applies the cluster scope to a request ([clusters/<cluster>]/...)
-func (r *Request) Cluster(cluster logicalcluster.LogicalCluster) *Request {
+func (r *Request) Cluster(cluster logicalcluster.Name) *Request {
 	if r.err != nil {
 		return r
 	}

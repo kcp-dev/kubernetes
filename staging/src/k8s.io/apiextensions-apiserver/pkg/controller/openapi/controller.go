@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -58,7 +58,7 @@ type Controller struct {
 
 	// specs per cluster and per version and per CRD name
 	lock     sync.Mutex
-	crdSpecs map[logicalcluster.LogicalCluster]map[string]map[string]*spec.Swagger
+	crdSpecs map[logicalcluster.Name]map[string]map[string]*spec.Swagger
 }
 
 // NewController creates a new Controller with input CustomResourceDefinition informer
@@ -67,7 +67,7 @@ func NewController(crdInformer informers.CustomResourceDefinitionInformer) *Cont
 		crdLister:  crdInformer.Lister(),
 		crdsSynced: crdInformer.Informer().HasSynced,
 		queue:      workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "crd_openapi_controller"),
-		crdSpecs:   map[logicalcluster.LogicalCluster]map[string]map[string]*spec.Swagger{},
+		crdSpecs:   map[logicalcluster.Name]map[string]map[string]*spec.Swagger{},
 	}
 
 	crdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -89,7 +89,7 @@ func NewController(crdInformer informers.CustomResourceDefinitionInformer) *Cont
 // openapi/crd generation is expensive, so doing on a controller means that CPU and memory scale O(crds),
 // when we really want them to scale O(active_clusters).
 
-func (c *Controller) setClusterCrdSpecs(clusterName logicalcluster.LogicalCluster, crdName string, newSpecs map[string]*spec.Swagger) {
+func (c *Controller) setClusterCrdSpecs(clusterName logicalcluster.Name, crdName string, newSpecs map[string]*spec.Swagger) {
 	_, found := c.crdSpecs[clusterName]
 	if !found {
 		c.crdSpecs[clusterName] = map[string]map[string]*spec.Swagger{}
@@ -98,7 +98,7 @@ func (c *Controller) setClusterCrdSpecs(clusterName logicalcluster.LogicalCluste
 	c.openAPIServiceProvider.AddCuster(clusterName)
 }
 
-func (c *Controller) removeClusterCrdSpecs(clusterName logicalcluster.LogicalCluster, crdName string) bool {
+func (c *Controller) removeClusterCrdSpecs(clusterName logicalcluster.Name, crdName string) bool {
 	_, crdsForClusterFound := c.crdSpecs[clusterName]
 	if !crdsForClusterFound {
 		return false
@@ -114,7 +114,7 @@ func (c *Controller) removeClusterCrdSpecs(clusterName logicalcluster.LogicalClu
 	return true
 }
 
-func (c *Controller) getClusterCrdSpecs(clusterName logicalcluster.LogicalCluster, crdName string) (map[string]*spec.Swagger, bool) {
+func (c *Controller) getClusterCrdSpecs(clusterName logicalcluster.Name, crdName string) (map[string]*spec.Swagger, bool) {
 	_, specsFoundForCluster := c.crdSpecs[clusterName]
 	if !specsFoundForCluster {
 		return map[string]*spec.Swagger{}, false
@@ -211,7 +211,7 @@ func (c *Controller) sync(clusterAndName string) error {
 
 	// do we have to remove all specs of this CRD?
 	if errors.IsNotFound(err) || !apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Established) {
-		var clusterName logicalcluster.LogicalCluster
+		var clusterName logicalcluster.Name
 		crdName := clusterAndName
 		if crd != nil {
 			clusterName = logicalcluster.From(crd)

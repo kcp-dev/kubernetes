@@ -22,7 +22,7 @@ import (
 	"context"
 	"time"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
@@ -47,7 +47,7 @@ type PodMetricsInterface interface {
 // podMetricses implements PodMetricsInterface
 type podMetricses struct {
 	client  rest.Interface
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 	ns      string
 }
 

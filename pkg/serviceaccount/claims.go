@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/client-go/tools/clusters"
@@ -48,7 +48,7 @@ type privateClaims struct {
 }
 
 type kubernetes struct {
-	ClusterName logicalcluster.LogicalCluster `json:"clusterName,omitempty"`
+	ClusterName logicalcluster.Name `json:"clusterName,omitempty"`
 
 	Namespace string          `json:"namespace,omitempty"`
 	Svcacct   ref             `json:"serviceaccount,omitempty"`

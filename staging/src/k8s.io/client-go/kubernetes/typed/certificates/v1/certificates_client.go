@@ -21,7 +21,7 @@ package v1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1 "k8s.io/api/certificates/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +35,7 @@ type CertificatesV1Interface interface {
 // CertificatesV1Client is used to interact with features provided by the certificates.k8s.io group.
 type CertificatesV1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *CertificatesV1Client) CertificateSigningRequests() CertificateSigningRequestInterface {
@@ -87,7 +87,7 @@ func New(c rest.Interface) *CertificatesV1Client {
 }
 
 // NewWithCluster creates a new CertificatesV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *CertificatesV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *CertificatesV1Client {
 	return &CertificatesV1Client{restClient: c, cluster: cluster}
 }
 

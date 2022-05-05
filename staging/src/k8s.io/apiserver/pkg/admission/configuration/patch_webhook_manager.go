@@ -17,28 +17,28 @@ limitations under the License.
 package configuration
 
 import (
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	"k8s.io/apiserver/pkg/admission/plugin/webhook"
 )
 
 type WebhookClusterAccessor interface {
 	// GetLogicalCluster returns the logical cluster that provides this webhook.
-	GetLogicalCluster() logicalcluster.LogicalCluster
+	GetLogicalCluster() logicalcluster.Name
 }
 
 var _ WebhookClusterAccessor = &webhookClusterAccessorWrapper{}
 
 // WithCluster attaches the logical cluster to the webhook.
-func WithCluster(cluster logicalcluster.LogicalCluster, webhook webhook.WebhookAccessor) webhook.WebhookAccessor {
+func WithCluster(cluster logicalcluster.Name, webhook webhook.WebhookAccessor) webhook.WebhookAccessor {
 	return webhookClusterAccessorWrapper{WebhookAccessor: webhook, cluster: cluster}
 }
 
 type webhookClusterAccessorWrapper struct {
 	webhook.WebhookAccessor
-	cluster logicalcluster.LogicalCluster
+	cluster logicalcluster.Name
 }
 
-func (w webhookClusterAccessorWrapper) GetLogicalCluster() logicalcluster.LogicalCluster {
+func (w webhookClusterAccessorWrapper) GetLogicalCluster() logicalcluster.Name {
 	return w.cluster
 }

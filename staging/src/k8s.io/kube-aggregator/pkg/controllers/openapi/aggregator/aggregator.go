@@ -26,7 +26,7 @@ import (
 	restful "github.com/emicklei/go-restful"
 
 	"k8s.io/klog/v2"
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	"k8s.io/apiserver/pkg/server"
 	v1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"

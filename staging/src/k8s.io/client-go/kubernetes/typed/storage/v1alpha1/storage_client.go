@@ -21,7 +21,7 @@ package v1alpha1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1alpha1 "k8s.io/api/storage/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -36,7 +36,7 @@ type StorageV1alpha1Interface interface {
 // StorageV1alpha1Client is used to interact with features provided by the storage.k8s.io group.
 type StorageV1alpha1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *StorageV1alpha1Client) CSIStorageCapacities(namespace string) CSIStorageCapacityInterface {
@@ -92,7 +92,7 @@ func New(c rest.Interface) *StorageV1alpha1Client {
 }
 
 // NewWithCluster creates a new StorageV1alpha1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *StorageV1alpha1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *StorageV1alpha1Client {
 	return &StorageV1alpha1Client{restClient: c, cluster: cluster}
 }
 

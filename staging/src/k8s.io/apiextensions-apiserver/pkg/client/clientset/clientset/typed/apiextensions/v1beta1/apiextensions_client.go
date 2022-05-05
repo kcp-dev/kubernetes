@@ -21,7 +21,7 @@ package v1beta1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +35,7 @@ type ApiextensionsV1beta1Interface interface {
 // ApiextensionsV1beta1Client is used to interact with features provided by the apiextensions.k8s.io group.
 type ApiextensionsV1beta1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *ApiextensionsV1beta1Client) CustomResourceDefinitions() CustomResourceDefinitionInterface {
@@ -87,7 +87,7 @@ func New(c rest.Interface) *ApiextensionsV1beta1Client {
 }
 
 // NewWithCluster creates a new ApiextensionsV1beta1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *ApiextensionsV1beta1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *ApiextensionsV1beta1Client {
 	return &ApiextensionsV1beta1Client{restClient: c, cluster: cluster}
 }
 

@@ -19,7 +19,7 @@ package routes
 import (
 	"net/http"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -32,14 +32,14 @@ import (
 // ListedPathProvider is an interface for providing paths that should be reported at /.
 type ListedPathProvider interface {
 	// ListedPaths is an alphabetically sorted list of paths to be reported at /.
-	ListedPaths(clusterName logicalcluster.LogicalCluster) []string
+	ListedPaths(clusterName logicalcluster.Name) []string
 }
 
 // ListedPathProviders is a convenient way to combine multiple ListedPathProviders
 type ListedPathProviders []ListedPathProvider
 
 // ListedPaths unions and sorts the included paths.
-func (p ListedPathProviders) ListedPaths(clusterName logicalcluster.LogicalCluster) []string {
+func (p ListedPathProviders) ListedPaths(clusterName logicalcluster.Name) []string {
 	ret := sets.String{}
 	for _, provider := range p {
 		for _, path := range provider.ListedPaths(clusterName) {

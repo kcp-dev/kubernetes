@@ -21,7 +21,7 @@ package v1beta1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1beta1 "k8s.io/api/coordination/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +35,7 @@ type CoordinationV1beta1Interface interface {
 // CoordinationV1beta1Client is used to interact with features provided by the coordination.k8s.io group.
 type CoordinationV1beta1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *CoordinationV1beta1Client) Leases(namespace string) LeaseInterface {
@@ -87,7 +87,7 @@ func New(c rest.Interface) *CoordinationV1beta1Client {
 }
 
 // NewWithCluster creates a new CoordinationV1beta1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *CoordinationV1beta1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *CoordinationV1beta1Client {
 	return &CoordinationV1beta1Client{restClient: c, cluster: cluster}
 }
 

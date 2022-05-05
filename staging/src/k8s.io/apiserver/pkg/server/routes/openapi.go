@@ -21,7 +21,7 @@ import (
 
 	restful "github.com/emicklei/go-restful"
 	"k8s.io/klog/v2"
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/server/mux"
@@ -48,15 +48,15 @@ type OpenAPI struct {
 // would be to completly avoid the need of registering a OpenAPIService
 // for each logical cluster. See the addition comments below.
 type OpenAPIServiceProvider interface {
-	ForCluster(clusterName logicalcluster.LogicalCluster) *handler.OpenAPIService
-	AddCuster(clusterName logicalcluster.LogicalCluster)
-	RemoveCuster(clusterName logicalcluster.LogicalCluster)
+	ForCluster(clusterName logicalcluster.Name) *handler.OpenAPIService
+	AddCuster(clusterName logicalcluster.Name)
+	RemoveCuster(clusterName logicalcluster.Name)
 	UpdateSpec(openapiSpec *spec.Swagger) error
 }
 
 type clusterAwarePathHandler struct {
-	clusterName          logicalcluster.LogicalCluster
-	addHandlerForCluster func(clusterName logicalcluster.LogicalCluster, handler http.Handler)
+	clusterName          logicalcluster.Name
+	addHandlerForCluster func(clusterName logicalcluster.Name, handler http.Handler)
 }
 
 func (c *clusterAwarePathHandler) Handle(path string, handler http.Handler) {
@@ -79,19 +79,19 @@ type openAPIServiceProvider struct {
 	staticSpec                   *spec.Swagger
 	defaultOpenAPIServiceHandler http.Handler
 	defaultOpenAPIService        *handler.OpenAPIService
-	openAPIServices              map[logicalcluster.LogicalCluster]*handler.OpenAPIService
-	handlers                     map[logicalcluster.LogicalCluster]http.Handler
+	openAPIServices              map[logicalcluster.Name]*handler.OpenAPIService
+	handlers                     map[logicalcluster.Name]http.Handler
 	path                         string
 	mux                          *mux.PathRecorderMux
 }
 
 var _ OpenAPIServiceProvider = (*openAPIServiceProvider)(nil)
 
-func (p *openAPIServiceProvider) ForCluster(clusterName logicalcluster.LogicalCluster) *handler.OpenAPIService {
+func (p *openAPIServiceProvider) ForCluster(clusterName logicalcluster.Name) *handler.OpenAPIService {
 	return p.openAPIServices[clusterName]
 }
 
-func (p *openAPIServiceProvider) AddCuster(clusterName logicalcluster.LogicalCluster) {
+func (p *openAPIServiceProvider) AddCuster(clusterName logicalcluster.Name) {
 	if _, found := p.openAPIServices[clusterName]; !found {
 		openAPIVersionedService, err := handler.NewOpenAPIService(p.staticSpec)
 		if err != nil {
@@ -100,7 +100,7 @@ func (p *openAPIServiceProvider) AddCuster(clusterName logicalcluster.LogicalClu
 
 		if err = openAPIVersionedService.RegisterOpenAPIVersionedService(p.path, &clusterAwarePathHandler{
 			clusterName: clusterName,
-			addHandlerForCluster: func(clusterName logicalcluster.LogicalCluster, handler http.Handler) {
+			addHandlerForCluster: func(clusterName logicalcluster.Name, handler http.Handler) {
 				p.handlers[clusterName] = handler
 			},
 		}); err != nil {
@@ -110,7 +110,7 @@ func (p *openAPIServiceProvider) AddCuster(clusterName logicalcluster.LogicalClu
 	}
 }
 
-func (p *openAPIServiceProvider) RemoveCuster(clusterName logicalcluster.LogicalCluster) {
+func (p *openAPIServiceProvider) RemoveCuster(clusterName logicalcluster.Name) {
 	delete(p.openAPIServices, clusterName)
 	delete(p.handlers, clusterName)
 }
@@ -140,8 +140,8 @@ func (p *openAPIServiceProvider) Register() {
 	}
 
 	err = defaultOpenAPIService.RegisterOpenAPIVersionedService(p.path, &clusterAwarePathHandler{
-		clusterName: logicalcluster.LogicalCluster{},
-		addHandlerForCluster: func(clusterName logicalcluster.LogicalCluster, handler http.Handler) {
+		clusterName: logicalcluster.Name{},
+		addHandlerForCluster: func(clusterName logicalcluster.Name, handler http.Handler) {
 			p.defaultOpenAPIServiceHandler = handler
 		},
 	})
@@ -164,8 +164,8 @@ func (oa OpenAPI) InstallV2(c *restful.Container, mux *mux.PathRecorderMux) (Ope
 	provider := &openAPIServiceProvider{
 		mux:             mux,
 		staticSpec:      spec,
-		openAPIServices: map[logicalcluster.LogicalCluster]*handler.OpenAPIService{},
-		handlers:        map[logicalcluster.LogicalCluster]http.Handler{},
+		openAPIServices: map[logicalcluster.Name]*handler.OpenAPIService{},
+		handlers:        map[logicalcluster.Name]http.Handler{},
 		path:            "/openapi/v2",
 	}
 

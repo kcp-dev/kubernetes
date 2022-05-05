@@ -21,7 +21,7 @@ package v1beta1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -37,7 +37,7 @@ type PolicyV1beta1Interface interface {
 // PolicyV1beta1Client is used to interact with features provided by the policy group.
 type PolicyV1beta1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *PolicyV1beta1Client) Evictions(namespace string) EvictionInterface {
@@ -97,7 +97,7 @@ func New(c rest.Interface) *PolicyV1beta1Client {
 }
 
 // NewWithCluster creates a new PolicyV1beta1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *PolicyV1beta1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *PolicyV1beta1Client {
 	return &PolicyV1beta1Client{restClient: c, cluster: cluster}
 }
 

@@ -21,7 +21,7 @@ package v1alpha1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	rest "k8s.io/client-go/rest"
 	v1alpha1 "k8s.io/sample-apiserver/pkg/apis/wardle/v1alpha1"
 	"k8s.io/sample-apiserver/pkg/generated/clientset/versioned/scheme"
@@ -36,7 +36,7 @@ type WardleV1alpha1Interface interface {
 // WardleV1alpha1Client is used to interact with features provided by the wardle.example.com group.
 type WardleV1alpha1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *WardleV1alpha1Client) Fischers() FischerInterface {
@@ -92,7 +92,7 @@ func New(c rest.Interface) *WardleV1alpha1Client {
 }
 
 // NewWithCluster creates a new WardleV1alpha1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *WardleV1alpha1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *WardleV1alpha1Client {
 	return &WardleV1alpha1Client{restClient: c, cluster: cluster}
 }
 

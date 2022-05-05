@@ -25,7 +25,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	"github.com/kcp-dev/logicalcluster"
 
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"

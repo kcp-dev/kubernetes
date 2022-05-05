@@ -21,7 +21,7 @@ package v1
 import (
 	"net/http"
 
-	logicalcluster "github.com/kcp-dev/apimachinery/pkg/logicalcluster"
+	logicalcluster "github.com/kcp-dev/logicalcluster"
 	v1 "k8s.io/api/authentication/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	rest "k8s.io/client-go/rest"
@@ -35,7 +35,7 @@ type AuthenticationV1Interface interface {
 // AuthenticationV1Client is used to interact with features provided by the authentication.k8s.io group.
 type AuthenticationV1Client struct {
 	restClient rest.Interface
-	cluster    logicalcluster.LogicalCluster
+	cluster    logicalcluster.Name
 }
 
 func (c *AuthenticationV1Client) TokenReviews() TokenReviewInterface {
@@ -87,7 +87,7 @@ func New(c rest.Interface) *AuthenticationV1Client {
 }
 
 // NewWithCluster creates a new AuthenticationV1Client for the given RESTClient and cluster.
-func NewWithCluster(c rest.Interface, cluster logicalcluster.LogicalCluster) *AuthenticationV1Client {
+func NewWithCluster(c rest.Interface, cluster logicalcluster.Name) *AuthenticationV1Client {
 	return &AuthenticationV1Client{restClient: c, cluster: cluster}
 }
 
