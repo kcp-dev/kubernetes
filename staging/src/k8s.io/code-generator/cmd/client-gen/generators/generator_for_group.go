@@ -105,7 +105,7 @@ func (g *genGroup) GenerateType(c *generator.Context, t *types.Type, w io.Writer
 		"restRESTClientFor":                c.Universe.Function(types.Name{Package: "k8s.io/client-go/rest", Name: "RESTClientFor"}),
 		"restRESTClientForConfigAndClient": c.Universe.Function(types.Name{Package: "k8s.io/client-go/rest", Name: "RESTClientForConfigAndClient"}),
 		"SchemeGroupVersion":               c.Universe.Variable(types.Name{Package: path.Vendorless(g.inputPackage), Name: "SchemeGroupVersion"}),
-		"LogicalCluster":                   c.Universe.Type(types.Name{Package: "github.com/kcp-dev/logicalcluster", Name: "LogicalCluster"}),
+		"LogicalCluster":                   c.Universe.Type(types.Name{Package: "github.com/kcp-dev/logicalcluster", Name: "Name"}),
 	}
 	sw.Do(groupInterfaceTemplate, m)
 	sw.Do(groupClientTemplate, m)

@@ -84,7 +84,7 @@ func (g *genClientset) GenerateType(c *generator.Context, t *types.Type, w io.Wr
 		"NewDiscoveryClientForConfigOrDie":     c.Universe.Function(types.Name{Package: "k8s.io/client-go/discovery", Name: "NewDiscoveryClientForConfigOrDie"}),
 		"NewDiscoveryClient":                   c.Universe.Function(types.Name{Package: "k8s.io/client-go/discovery", Name: "NewDiscoveryClient"}),
 		"flowcontrolNewTokenBucketRateLimiter": c.Universe.Function(types.Name{Package: "k8s.io/client-go/util/flowcontrol", Name: "NewTokenBucketRateLimiter"}),
-		"LogicalCluster":                       c.Universe.Type(types.Name{Package: "github.com/kcp-dev/logicalcluster", Name: "LogicalCluster"}),
+		"LogicalCluster":                       c.Universe.Type(types.Name{Package: "github.com/kcp-dev/logicalcluster", Name: "Name"}),
 	}
 	sw.Do(clusterInterface, m)
 	sw.Do(clusterTemplate, m)
