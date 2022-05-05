@@ -26,6 +26,7 @@ import (
 
 	systemd "github.com/coreos/go-systemd/v22/daemon"
 
+	"github.com/kcp-dev/logicalcluster"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,7 +57,6 @@ import (
 	openapiproto "k8s.io/kube-openapi/pkg/util/proto"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 	"k8s.io/utils/clock"
-	"github.com/kcp-dev/logicalcluster"
 )
 
 // Info about an API group.

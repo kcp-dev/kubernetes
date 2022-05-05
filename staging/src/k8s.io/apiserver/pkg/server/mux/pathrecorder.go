@@ -27,9 +27,9 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/kcp-dev/logicalcluster"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"github.com/kcp-dev/logicalcluster"
 )
 
 // PathRecorderMux wraps a mux object and records the registered exposedPaths.
