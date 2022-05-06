@@ -33,7 +33,6 @@ import (
 	utilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apiserver/pkg/util/webhook"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
 
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -224,7 +223,7 @@ func validateCustomResourceDefinitionSpec(spec *apiextensions.CustomResourceDefi
 
 	// HACK: Relax naming constraints when registering legacy schema resources through CRDs
 	// for the KCP scenario
-	if legacyscheme.Scheme.IsGroupRegistered(spec.Group) {
+	if isKubernetesAPIGroup(spec.Group) {
 		// No error: these are legacy schema kubernetes types
 		// that are not added in the controlplane schema
 		// and that we want to move up to the KCP as CRDs
