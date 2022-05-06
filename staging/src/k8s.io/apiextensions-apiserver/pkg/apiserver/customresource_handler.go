@@ -49,8 +49,6 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/kcp"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -79,6 +77,7 @@ import (
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
+	"k8s.io/apiserver/pkg/registry/rest"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -142,6 +141,8 @@ type crdHandler struct {
 	// The limit on the request size that would be accepted and decoded in a write request
 	// 0 means no limit.
 	maxRequestBodyBytes int64
+
+	tableConverterProvider TableConverterProvider
 }
 
 // crdInfo stores enough information to serve the storage for the custom resource
@@ -867,30 +868,20 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 			}
 		}
 
-		columns, err := getColumnsForVersion(crd, v.Name)
-		if err != nil {
-			utilruntime.HandleError(err)
-			return nil, fmt.Errorf("the server could not properly serve the CR columns")
-		}
-		table, err := tableconvertor.New(columns)
-		if err != nil {
-			klog.V(2).Infof("The CRD for %v has an invalid printer specification, falling back to default printing: %v", kind, err)
+		var table rest.TableConvertor
+		if r.tableConverterProvider != nil {
+			table = r.tableConverterProvider.GetTableConverter(crd.Spec.Group, crd.Status.AcceptedNames.Kind, crd.Status.AcceptedNames.ListKind)
 		}
 
-		// HACK: Currently CRDs only allow defining custom table column based on a single basic JsonPath expression.
-		// This is not sufficient to reproduce the various colum definitions of legacy scheme objects like
-		// deployments, etc ..., since those definitions are implemented in Go code.
-		// So for example in KCP, when deployments are brought back under the form of a CRD, the table columns
-		// shown from a `kubectl get deployments` command are not the ones typically expected.
-		//
-		// The call to `replaceTableConverterForLegacySchemaResources` is a temporary hack to replace the table converter of CRDs that are
-		// related to legacy-schema resources, with the default table converter of the related legacy scheme resource.
-		//
-		// In the future this should probably be replaced by some new mechanism that would allow customizing some
-		// behaviors of resources defined by CRDs.
-		if legacyscheme.Scheme.IsVersionRegistered(kind.GroupVersion()) {
-			if lecacySchemeTableConvertor := replaceTableConverterForLegacySchemaResources(kind, crd); lecacySchemeTableConvertor != nil {
-				table = lecacySchemeTableConvertor
+		if table == nil {
+			columns, err := getColumnsForVersion(crd, v.Name)
+			if err != nil {
+				utilruntime.HandleError(err)
+				return nil, fmt.Errorf("the server could not properly serve the CR columns")
+			}
+			table, err = tableconvertor.New(columns)
+			if err != nil {
+				klog.V(2).Infof("The CRD for %v has an invalid printer specification, falling back to default printing: %v", kind, err)
 			}
 		}
 

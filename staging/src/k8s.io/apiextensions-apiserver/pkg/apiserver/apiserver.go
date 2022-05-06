@@ -93,7 +93,8 @@ type ExtraConfig struct {
 	Informers externalinformers.SharedInformerFactory
 
 	// KCP
-	ClusterAwareCRDLister kcp.ClusterAwareCRDLister
+	ClusterAwareCRDLister  kcp.ClusterAwareCRDLister
+	TableConverterProvider TableConverterProvider
 }
 
 type Config struct {
@@ -245,7 +246,10 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 	}
 	s.crdHandler = crdHandler
 
+	// Begin kcp additions
 	crdHandler.clusterAwareCRDLister = c.ExtraConfig.ClusterAwareCRDLister
+	crdHandler.tableConverterProvider = c.ExtraConfig.TableConverterProvider
+	// End kcp additions
 
 	s.GenericAPIServer.Handler.NonGoRestfulMux.Handle("/apis", crdHandler)
 	s.GenericAPIServer.Handler.NonGoRestfulMux.HandlePrefix("/apis/", crdHandler)
