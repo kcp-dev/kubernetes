@@ -323,7 +323,6 @@ replace (
 	github.com/julienschmidt/httprouter => github.com/julienschmidt/httprouter v1.3.0
 	github.com/jung-kurt/gofpdf => github.com/jung-kurt/gofpdf v1.0.3-0.20190309125859-24315acbbda5
 	github.com/karrick/godirwalk => github.com/karrick/godirwalk v1.16.1
-	github.com/kcp-dev/apimachinery => github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
 	github.com/kcp-dev/logicalcluster => github.com/kcp-dev/logicalcluster v1.0.0
 	github.com/kisielk/errcheck => github.com/kisielk/errcheck v1.5.0
 	github.com/kisielk/gotool => github.com/kisielk/gotool v1.0.0
