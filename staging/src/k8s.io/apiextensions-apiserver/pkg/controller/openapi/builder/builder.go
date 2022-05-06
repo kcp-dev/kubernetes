@@ -48,7 +48,6 @@ import (
 	"k8s.io/kube-openapi/pkg/spec3"
 	"k8s.io/kube-openapi/pkg/util"
 	"k8s.io/kube-openapi/pkg/validation/spec"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
 )
 
 const (
@@ -229,18 +228,6 @@ type CRDCanonicalTypeNamer struct {
 	group   string
 	version string
 	kind    string
-}
-
-// HACK: support the case when we add core or other legacy scheme resources through CRDs (KCP scenario)
-func packagePrefix(group string) string {
-	if !strings.Contains(group, ".") &&
-		legacyscheme.Scheme.IsGroupRegistered(group) {
-		if group == "" {
-			group = "core"
-		}
-		return "k8s.io/api/" + group
-	}
-	return group
 }
 
 // OpenAPICanonicalTypeName returns canonical type name for given CRD
