@@ -22,7 +22,7 @@ import (
 	"strings"
 )
 
-// LogicalCluster is the name of a logical cluster. A logical cluster is
+// Name is the name of a logical cluster. A logical cluster is
 // 1. a (part of) etcd prefix to store objects in that cluster
 // 2. a (part of) a http path which serves a Kubernetes-cluster-like API with
 //    discovery, OpenAPI and the actual API groups.
@@ -31,35 +31,35 @@ import (
 //
 // A logical cluster is a colon separated list of words. In other words, it is
 // like a path, but with colons instead of slashes.
-type LogicalCluster struct {
+type Name struct {
 	value string
 }
 
-const seperator = ":"
+const separator = ":"
 
 var (
-	// Wildcard is the logical cluster indicating cross-workspace requests.
+	// Wildcard is the name indicating cross-workspace requests.
 	Wildcard = New("*")
 )
 
-// New returns a logical cluster from a string.
-func New(value string) LogicalCluster {
-	return LogicalCluster{value}
+// New returns a Name from a string.
+func New(value string) Name {
+	return Name{value}
 }
 
-// Empty returns true if the logical cluster is unset.
-func (l LogicalCluster) Empty() bool {
-	return l.value == ""
+// Empty returns true if the logical cluster value is unset.
+func (n Name) Empty() bool {
+	return n.value == ""
 }
 
 // Path returns a path segment for the logical cluster to access its API.
-func (cn LogicalCluster) Path() string {
-	return path.Join("/clusters", cn.value)
+func (n Name) Path() string {
+	return path.Join("/clusters", n.value)
 }
 
 // String returns the string representation of the logical cluster name.
-func (cn LogicalCluster) String() string {
-	return cn.value
+func (n Name) String() string {
+	return n.value
 }
 
 // Object is a local interface representation of the Kubernetes metav1.Object, to avoid dependencies on
@@ -68,15 +68,14 @@ type Object interface {
 	GetClusterName() string
 }
 
-// From returns a logical cluster name from an Object's
-// metadata.clusterName.
-func From(obj Object) LogicalCluster {
-	return LogicalCluster{obj.GetClusterName()}
+// From returns the logical cluster name for obj.
+func From(obj Object) Name {
+	return Name{obj.GetClusterName()}
 }
 
 // Parent returns the parent logical cluster name of the given logical cluster name.
-func (cn LogicalCluster) Parent() (LogicalCluster, bool) {
-	parent, _ := cn.Split()
+func (n Name) Parent() (Name, bool) {
+	parent, _ := n.Split()
 	return parent, parent.value != ""
 }
 
@@ -84,42 +83,41 @@ func (cn LogicalCluster) Parent() (LogicalCluster, bool) {
 // separating it into a parent logical cluster and name component.
 // If there is no colon in path, Split returns an empty logical cluster name
 // and name set to path.
-// The returned values have the property that lcn = dir+file.
-func (cn LogicalCluster) Split() (parent LogicalCluster, name string) {
-	i := strings.LastIndex(cn.value, seperator)
+func (n Name) Split() (parent Name, name string) {
+	i := strings.LastIndex(n.value, separator)
 	if i < 0 {
-		return LogicalCluster{}, cn.value
+		return Name{}, n.value
 	}
-	return LogicalCluster{cn.value[:i]}, cn.value[i+1:]
+	return Name{n.value[:i]}, n.value[i+1:]
 }
 
 // Base returns the last component of the logical cluster name.
-func (cn LogicalCluster) Base() string {
-	_, name := cn.Split()
+func (n Name) Base() string {
+	_, name := n.Split()
 	return name
 }
 
 // Join joins a parent logical cluster name and a name component.
-func (cn LogicalCluster) Join(name string) LogicalCluster {
-	if cn.value == "" {
-		return LogicalCluster{name}
+func (n Name) Join(name string) Name {
+	if n.value == "" {
+		return Name{name}
 	}
-	return LogicalCluster{cn.value + seperator + name}
+	return Name{n.value + separator + name}
 }
 
-func (cn LogicalCluster) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&cn.value)
+func (n Name) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&n.value)
 }
 
-func (cn *LogicalCluster) UnmarshalJSON(data []byte) error {
+func (n *Name) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	cn.value = s
+	n.value = s
 	return nil
 }
 
-func (cn LogicalCluster) HasPrefix(other LogicalCluster) bool {
-	return strings.HasPrefix(cn.value, other.value)
+func (n Name) HasPrefix(other Name) bool {
+	return strings.HasPrefix(n.value, other.value)
 }

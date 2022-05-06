@@ -6,7 +6,7 @@ go 1.16
 
 require (
 	github.com/gogo/protobuf v1.3.2
-	github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
+	github.com/kcp-dev/logicalcluster v1.0.0
 	github.com/stretchr/testify v1.7.1
 	k8s.io/api v0.0.0
 	k8s.io/apimachinery v0.0.0

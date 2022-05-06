@@ -53,8 +53,7 @@ require (
 	github.com/heketi/heketi v10.3.0+incompatible
 	github.com/heketi/tests v0.0.0-20151005000721-f3775cbcefd6 // indirect
 	github.com/ishidawataru/sctp v0.0.0-20190723014705-7c296d48a2b5
-	github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
-	github.com/kcp-dev/logicalcluster v1.0.0 // indirect
+	github.com/kcp-dev/logicalcluster v1.0.0
 	github.com/libopenstorage/openstorage v1.0.0
 	github.com/lithammer/dedent v1.1.0
 	github.com/lpabon/godbc v0.1.1 // indirect
@@ -325,6 +324,7 @@ replace (
 	github.com/jung-kurt/gofpdf => github.com/jung-kurt/gofpdf v1.0.3-0.20190309125859-24315acbbda5
 	github.com/karrick/godirwalk => github.com/karrick/godirwalk v1.16.1
 	github.com/kcp-dev/apimachinery => github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
+	github.com/kcp-dev/logicalcluster => github.com/kcp-dev/logicalcluster v1.0.0
 	github.com/kisielk/errcheck => github.com/kisielk/errcheck v1.5.0
 	github.com/kisielk/gotool => github.com/kisielk/gotool v1.0.0
 	github.com/konsorten/go-windows-terminal-sequences => github.com/konsorten/go-windows-terminal-sequences v1.0.2
@@ -537,5 +537,3 @@ replace (
 	sigs.k8s.io/structured-merge-diff/v4 => sigs.k8s.io/structured-merge-diff/v4 v4.2.1
 	sigs.k8s.io/yaml => sigs.k8s.io/yaml v1.2.0
 )
-
-replace github.com/kcp-dev/logicalcluster => github.com/kcp-dev/logicalcluster v1.0.0

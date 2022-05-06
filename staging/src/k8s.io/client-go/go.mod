@@ -21,7 +21,7 @@ require (
 	github.com/googleapis/gnostic v0.5.5
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7
 	github.com/imdario/mergo v0.3.5
-	github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
+	github.com/kcp-dev/logicalcluster v1.0.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.1

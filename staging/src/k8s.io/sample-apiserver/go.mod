@@ -6,7 +6,7 @@ go 1.16
 
 require (
 	github.com/google/gofuzz v1.1.0
-	github.com/kcp-dev/apimachinery v0.0.0-20220401165523-9ea2c4e584ad
+	github.com/kcp-dev/logicalcluster v1.0.0
 	github.com/spf13/cobra v1.2.1
 	k8s.io/apimachinery v0.0.0
 	k8s.io/apiserver v0.0.0
