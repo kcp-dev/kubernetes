@@ -37,6 +37,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kube-aggregator/pkg/controllers/openapi/aggregator"
 	"k8s.io/kube-openapi/pkg/handler"
+	"k8s.io/kube-openapi/pkg/validation/spec"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/apis"
 )
 
@@ -184,8 +185,6 @@ func (s *MiniAggregatorServer) filterAPIsRequest(req *restful.Request, resp *res
 
 // serveOpenAPI aggregates OpenAPI specs from the generic control plane and apiextensions servers.
 func (s *MiniAggregatorServer) serveOpenAPI(w http.ResponseWriter, req *http.Request) {
-	downloader := aggregator.NewDownloader()
-
 	cluster := genericapirequest.ClusterFrom(req.Context())
 
 	withCluster := func(handler http.Handler) http.HandlerFunc {
@@ -197,27 +196,11 @@ func (s *MiniAggregatorServer) serveOpenAPI(w http.ResponseWriter, req *http.Req
 		}
 	}
 
-	// Can't use withCluster here because the GenericControlPlane doesn't have APIs coming from multiple logical clusters at this time.
-	controlPlaneSpec, _, _, err := downloader.Download(s.GenericControlPlane.GenericAPIServer.Handler.Director, "")
-
-	// Use withCluster here because each logical cluster can have a distinct set of APIs coming from its CRDs.
-	crdSpecs, _, _, err := downloader.Download(withCluster(s.CustomResourceDefinitions.GenericAPIServer.Handler.Director), "")
-
-	// TODO(ncdc): merging on the fly is expensive. We may need to optimize this (e.g. caching).
-	mergedSpecs, err := builder.MergeSpecs(controlPlaneSpec, crdSpecs)
-
-	openAPIVersionedService, err := handler.NewOpenAPIService(mergedSpecs)
-	if err != nil {
-		klog.Errorf("Error while building OpenAPI schema: %v", err)
-	}
-
-	handler := &singlePathHandler{}
-
-	// In order to reuse the kube-openapi API as much as possible, we
-	// register the OpenAPI service in the singlePathHandler
-	err = openAPIVersionedService.RegisterOpenAPIVersionedService("/openapi/v2", handler)
-	if err != nil {
-		klog.Errorf("Error while building OpenAPI schema: %v", err)
+	handler := &MergedOpenAPIHandler{
+		// Can't use withCluster here because the GenericControlPlane doesn't have APIs coming from multiple logical clusters at this time.
+		mainOpenAPIHandler: s.GenericControlPlane.GenericAPIServer.Handler.Director,
+		// Use withCluster here because each logical cluster can have a distinct set of APIs coming from its CRDs.
+		additionalOpenAPIHandlers: []http.Handler{withCluster(s.CustomResourceDefinitions.GenericAPIServer.Handler.Director)},
 	}
 
 	handler.ServeHTTP(w, req)
@@ -238,4 +221,40 @@ func (sph *singlePathHandler) ServeHTTP(res http.ResponseWriter, req *http.Reque
 		res.WriteHeader(404)
 	}
 	sph.handler[0].ServeHTTP(res, req)
+}
+
+type MergedOpenAPIHandler struct {
+	mainOpenAPIHandler        http.Handler
+	additionalOpenAPIHandlers []http.Handler
+}
+
+func (h *MergedOpenAPIHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	downloader := aggregator.NewDownloader()
+
+	var additionalOpenAPISpecs []*spec.Swagger
+	mainOpenAPISpec, _, _, _ := downloader.Download(h.mainOpenAPIHandler, "")
+
+	for _, handler := range h.additionalOpenAPIHandlers {
+		spec, _, _, _ := downloader.Download(handler, "")
+		additionalOpenAPISpecs = append(additionalOpenAPISpecs, spec)
+	}
+
+	// TODO(ncdc): merging on the fly is expensive. We may need to optimize this (e.g. caching).
+	mergedSpecs, err := builder.MergeSpecs(mainOpenAPISpec, additionalOpenAPISpecs...)
+
+	openAPIVersionedService, err := handler.NewOpenAPIService(mergedSpecs)
+	if err != nil {
+		klog.Errorf("Error while building OpenAPI schema: %v", err)
+	}
+
+	handler := &singlePathHandler{}
+
+	// In order to reuse the kube-openapi API as much as possible, we
+	// register the OpenAPI service in the singlePathHandler
+	err = openAPIVersionedService.RegisterOpenAPIVersionedService("/openapi/v2", handler)
+	if err != nil {
+		klog.Errorf("Error while building OpenAPI schema: %v", err)
+	}
+
+	handler.ServeHTTP(rw, req)
 }
