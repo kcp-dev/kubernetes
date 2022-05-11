@@ -170,12 +170,6 @@ func CreateKubeAPIServerConfig(
 	o.Metrics.Apply()
 	serviceaccount.RegisterMetrics()
 
-	// TODO(ncdc,1.23) upstream has this in the Cobra RunE method and it's called as early as
-	// possible. Do we want to consider doing something similar?
-	if err := o.Logs.ValidateAndApply(); err != nil {
-		return nil, err
-	}
-
 	// Load the public keys.
 	var pubKeys []interface{}
 	for _, f := range o.Authentication.ServiceAccounts.KeyFiles {
