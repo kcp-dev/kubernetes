@@ -43,7 +43,11 @@ type CustomResourceStorage struct {
 }
 
 func NewStorage(resource schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor, replicasPathMapping fieldmanager.ResourcePathMappings) CustomResourceStorage {
-	customResourceREST, customResourceStatusREST := newREST(resource, kind, listKind, strategy, optsGetter, categories, tableConvertor)
+	return NewStorageWithCustomStore(resource, kind, listKind, strategy, optsGetter, categories, tableConvertor, replicasPathMapping, nil)
+}
+
+func NewStorageWithCustomStore(resource schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor, replicasPathMapping fieldmanager.ResourcePathMappings, newStores NewStores) CustomResourceStorage {
+	customResourceREST, customResourceStatusREST := newREST(resource, kind, listKind, strategy, optsGetter, categories, tableConvertor, newStores)
 
 	s := CustomResourceStorage{
 		CustomResource: customResourceREST,
@@ -74,12 +78,11 @@ func NewStorage(resource schema.GroupResource, kind, listKind schema.GroupVersio
 
 // REST implements a RESTStorage for API services against etcd
 type REST struct {
-	*genericregistry.Store
+	Store
 	categories []string
 }
 
-// newREST returns a RESTStorage object that will work against API services.
-func newREST(resource schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor) (*REST, *StatusREST) {
+func newStores(resource schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, tableConvertor rest.TableConvertor) (main Store, status Store) {
 	store := &genericregistry.Store{
 		NewFunc: func() runtime.Object {
 			// set the expected group/version/kind in the new object as a signal to the versioning decoder
@@ -112,7 +115,16 @@ func newREST(resource schema.GroupResource, kind, listKind schema.GroupVersionKi
 	statusStrategy := NewStatusStrategy(strategy)
 	statusStore.UpdateStrategy = statusStrategy
 	statusStore.ResetFieldsStrategy = statusStrategy
-	return &REST{store, categories}, &StatusREST{store: &statusStore}
+	return store, &statusStore
+}
+
+// newREST returns a RESTStorage object that will work against API services.
+func newREST(resource schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor, newStoresFunc NewStores) (*REST, *StatusREST) {
+	if newStoresFunc == nil {
+		newStoresFunc = newStores
+	}
+	store, statusStore := newStoresFunc(resource, kind, listKind, strategy, optsGetter, tableConvertor)
+	return &REST{store, categories}, &StatusREST{store: statusStore}
 }
 
 // Implement CategoriesProvider
@@ -178,7 +190,7 @@ func (r *REST) Categories() []string {
 
 // StatusREST implements the REST endpoint for changing the status of a CustomResource
 type StatusREST struct {
-	store *genericregistry.Store
+	store Store
 }
 
 var _ = rest.Patcher(&StatusREST{})
@@ -212,7 +224,7 @@ func (r *StatusREST) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
 }
 
 type ScaleREST struct {
-	store               *genericregistry.Store
+	store               Store
 	specReplicasPath    string
 	statusReplicasPath  string
 	labelSelectorPath   string

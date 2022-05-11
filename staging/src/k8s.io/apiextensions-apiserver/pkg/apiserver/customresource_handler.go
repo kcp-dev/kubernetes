@@ -663,7 +663,7 @@ func (r *crdHandler) tearDown(oldInfo *crdInfo) {
 
 	for _, storage := range oldInfo.storages {
 		// destroy only the main storage. Those for the subresources share cacher and etcd clients.
-		storage.CustomResource.DestroyFunc()
+		storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 	}
 }
 
