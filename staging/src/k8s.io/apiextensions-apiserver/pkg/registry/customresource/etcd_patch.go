@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Kubernetes Authors.
+Copyright 2022 The KCP Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,15 +20,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/registry/generic"
 	"k8s.io/apiserver/pkg/registry/rest"
-	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
 
+// Store is an interface used by the upstream CR registry instead of the concrete genericregistry.Store
+// in order to allow alternative implementations to be used.
 type Store interface {
 	rest.StandardStorage
-
-	GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set
+	rest.ResetFieldsStrategy
 }
 
+// NewStores is a constructor of the main and status subresource stores for custom resources.
 type NewStores func(resource schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, tableConvertor rest.TableConvertor) (main Store, status Store)
 
+// CustomResourceStrategy makes customResourceStrategy public for downstream consumers.
 type CustomResourceStrategy = customResourceStrategy
