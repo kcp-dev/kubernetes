@@ -26,18 +26,17 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/kcp-dev/logicalcluster"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/apiserver/pkg/kcp"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	"k8s.io/apiserver/pkg/storage/value"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/klog/v2"
 )
 
@@ -94,8 +93,9 @@ type watchChan struct {
 	resultChan        chan watch.Event
 	errChan           chan error
 
-	// HACK: testing watch across multiple prefixes
-	clusterName logicalcluster.Name
+	// kcp
+	cluster    *genericapirequest.Cluster
+	crdRequest bool
 }
 
 func newWatcher(client *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
@@ -121,11 +121,17 @@ func newWatcher(client *clientv3.Client, codec runtime.Codec, newFunc func() run
 // If recursive is false, it watches on given key.
 // If recursive is true, it watches any children and directories under the key, excluding the root key itself.
 // pred must be non-nil. Only if pred matches the change, it will be returned.
-func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive bool, clusterName logicalcluster.Name, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
+func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive bool, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
 	if recursive && !strings.HasSuffix(key, "/") {
 		key += "/"
 	}
-	wc := w.createWatchChan(ctx, key, rev, recursive, clusterName, progressNotify, pred)
+
+	cluster, err := genericapirequest.ValidClusterFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	wc := w.createWatchChan(ctx, key, rev, recursive, cluster, progressNotify, pred)
 	go wc.run()
 
 	// For etcd watch we don't have an easy way to answer whether the watch
@@ -138,7 +144,7 @@ func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive bo
 	return wc, nil
 }
 
-func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive bool, clusterName logicalcluster.Name, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
+func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive bool, cluster *genericapirequest.Cluster, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
 	wc := &watchChan{
 		watcher:           w,
 		key:               key,
@@ -150,8 +156,9 @@ func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, re
 		resultChan:        make(chan watch.Event, outgoingBufSize),
 		errChan:           make(chan error, 1),
 
-		// HACK: assume structure of key is <prefix><cluster>/...
-		clusterName: clusterName,
+		// kcp
+		cluster:    cluster,
+		crdRequest: kcp.CustomResourceIndicatorFrom(ctx),
 	}
 	if pred.Empty() {
 		// The filter doesn't filter out any object.
@@ -443,32 +450,10 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
-		clusterName := wc.clusterName
-		if clusterName == logicalcluster.Wildcard {
-			sub := strings.TrimPrefix(e.key, wc.key)
-			if i := strings.Index(sub, "/"); i != -1 {
-				sub = sub[:i]
-			}
-			clusterName = logicalcluster.New(sub)
-		}
-		// HACK: in order to support CRD tenancy, the clusterName, which is extracted from the object etcd key,
-		// should be set on the decoded object.
-		// This is done here since we want to set the logical cluster the object is part of,
-		// without storing the clusterName inside the etcd object itself (as it has been until now).
-		// The etcd key is ultimately the only thing that links us to a cluster
-		if !clusterName.Empty() {
-			if s, ok := curObj.(metav1.ObjectMetaAccessor); ok {
-				s.GetObjectMeta().SetClusterName(clusterName.String())
-			} else if s, ok := curObj.(metav1.Object); ok {
-				s.SetClusterName(clusterName.String())
-			} else if s, ok := curObj.(*unstructured.Unstructured); ok {
-				s.SetClusterName(clusterName.String())
-			} else {
-				klog.Infof("NO SUB: %T %s", curObj, clusterName)
-			}
-		} else {
-			klog.Errorf("Cluster should not be unknown")
-		}
+
+		// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+		clusterName := adjustClusterNameIfWildcard(wc.cluster, wc.crdRequest, wc.key, e.key)
+		setClusterNameOnDecodedObject(curObj, clusterName)
 	}
 	// We need to decode prevValue, only if this is deletion event or
 	// the underlying filter doesn't accept all objects (otherwise we
@@ -486,32 +471,10 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
-		clusterName := wc.clusterName
-		if clusterName == logicalcluster.Wildcard {
-			sub := strings.TrimPrefix(e.key, wc.key)
-			if i := strings.Index(sub, "/"); i != -1 {
-				sub = sub[:i]
-			}
-			clusterName = logicalcluster.New(sub)
-		}
-		// HACK: in order to support CRD tenancy, the clusterName, which is extracted from the object etcd key,
-		// should be set on the decoded object.
-		// This is done here since we want to set the logical cluster the object is part of,
-		// without storing the clusterName inside the etcd object itself (as it has been until now).
-		// The etcd key is ultimately the only thing that links us to a cluster
-		if !clusterName.Empty() {
-			if s, ok := oldObj.(metav1.ObjectMetaAccessor); ok {
-				s.GetObjectMeta().SetClusterName(clusterName.String())
-			} else if s, ok := oldObj.(metav1.Object); ok {
-				s.SetClusterName(clusterName.String())
-			} else if s, ok := oldObj.(*unstructured.Unstructured); ok {
-				s.SetClusterName(clusterName.String())
-			} else {
-				klog.Infof("NO SUB: %T %s", oldObj, clusterName)
-			}
-		} else {
-			klog.Errorf("Cluster should not be unknown")
-		}
+
+		// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+		clusterName := adjustClusterNameIfWildcard(wc.cluster, wc.crdRequest, wc.key, e.key)
+		setClusterNameOnDecodedObject(oldObj, clusterName)
 	}
 	return curObj, oldObj, nil
 }

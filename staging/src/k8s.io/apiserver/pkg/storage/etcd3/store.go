@@ -30,6 +30,7 @@ import (
 
 	"github.com/kcp-dev/logicalcluster"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"k8s.io/apiserver/pkg/kcp"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -754,6 +755,15 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		options = append(options, clientv3.WithRev(withRev))
 	}
 
+	// kcp
+	cluster, err := genericapirequest.ValidClusterFrom(ctx)
+	if err != nil {
+		return storage.NewInternalErrorf("unable to get cluster for list key %q: %v", keyPrefix, err)
+	}
+
+	crdIndicator := kcp.CustomResourceIndicatorFrom(ctx)
+	// end kcp
+
 	// loop until we have filled the requested limit from etcd or there are no more results
 	var lastKey []byte
 	var hasMore bool
@@ -804,20 +814,9 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 				return storage.NewInternalErrorf("unable to transform key %q: %v", kv.Key, err)
 			}
 
-			cluster, err := genericapirequest.ValidClusterFrom(ctx)
-			if err != nil {
-				return storage.NewInternalErrorf("unable to get cluster for key %q: %v", kv.Key, err)
-			}
-			clusterName := cluster.Name
-			if cluster.Wildcard {
-				sub := strings.TrimPrefix(string(kv.Key), keyPrefix)
-				if i := strings.Index(sub, "/"); i != -1 {
-					clusterName = logicalcluster.New(sub[:i])
-				}
-				if clusterName.Empty() {
-					klog.Errorf("the cluster name of extracted object should not be empty for key %q", kv.Key)
-				}
-			}
+			// kcp
+			clusterName := adjustClusterNameIfWildcard(cluster, crdIndicator, keyPrefix, string(kv.Key))
+
 			if err := appendListItem(v, data, uint64(kv.ModRevision), pred, s.codec, s.versioner, newItemFunc, clusterName); err != nil {
 				return err
 			}
@@ -920,17 +919,7 @@ func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions,
 	}
 	key = path.Join(s.pathPrefix, key)
 
-	// HACK: would need to be an argument to storage (or a change to how decoding works for key structure)
-	cluster, err := genericapirequest.ValidClusterFrom(ctx)
-	if err != nil {
-		return nil, storage.NewInternalError(fmt.Sprintf("Invalid cluster for key %s : %v", key, err))
-	}
-	clusterName := cluster.Name
-	if cluster.Wildcard {
-		clusterName = logicalcluster.Wildcard
-	}
-
-	return s.watcher.Watch(ctx, key, int64(rev), recursive, clusterName, opts.ProgressNotify, opts.Predicate)
+	return s.watcher.Watch(ctx, key, int64(rev), recursive, opts.ProgressNotify, opts.Predicate)
 }
 
 func (s *store) getState(getResp *clientv3.GetResponse, key string, v reflect.Value, ignoreNotFound bool, clusterName logicalcluster.Name) (*objState, error) {
@@ -1056,24 +1045,9 @@ func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objP
 	if err := versioner.UpdateObject(objPtr, uint64(rev)); err != nil {
 		klog.Errorf("failed to update object version: %v", err)
 	}
-	// HACK: in order to support CRD tenancy, the clusterName, which is extracted from the object etcd key,
-	// should be set on the decoded object.
-	// This is done here since we want to set the logical cluster the object is part of,
-	// without storing the clusterName inside the etcd object itself (as it has been until now).
-	// The etcd key is ultimately the only thing that links us to a cluster
-	if !clusterName.Empty() {
-		if s, ok := objPtr.(metav1.ObjectMetaAccessor); ok {
-			s.GetObjectMeta().SetClusterName(clusterName.String())
-		} else if s, ok := objPtr.(metav1.Object); ok {
-			s.SetClusterName(clusterName.String())
-		} else if s, ok := objPtr.(*unstructured.Unstructured); ok {
-			s.SetClusterName(clusterName.String())
-		} else {
-			klog.Infof("Could not set ClusterName %s in appendListItem on object: %T", clusterName, objPtr)
-		}
-	} else {
-		klog.Errorf("Cluster should not be unknown")
-	}
+
+	// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+	setClusterNameOnDecodedObject(objPtr, clusterName)
 
 	return nil
 }
@@ -1089,24 +1063,8 @@ func appendListItem(v reflect.Value, data []byte, rev uint64, pred storage.Selec
 		klog.Errorf("failed to update object version: %v", err)
 	}
 
-	// HACK: in order to support CRD tenancy, the clusterName, which is extracted from the object etcd key,
-	// should be set on the decoded object.
-	// This is done here since we want to set the logical cluster the object is part of,
-	// without storing the clusterName inside the etcd object itself (as it has been until now).
-	// The etcd key is ultimately the only thing that links us to a cluster
-	if !clusterName.Empty() {
-		if s, ok := obj.(metav1.ObjectMetaAccessor); ok {
-			s.GetObjectMeta().SetClusterName(clusterName.String())
-		} else if s, ok := obj.(metav1.Object); ok {
-			s.SetClusterName(clusterName.String())
-		} else if s, ok := obj.(*unstructured.Unstructured); ok {
-			s.SetClusterName(clusterName.String())
-		} else {
-			klog.Infof("Could not set ClusterName %s in appendListItem on object: %T", clusterName, obj)
-		}
-	} else {
-		klog.Errorf("Cluster should not be unknown")
-	}
+	// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+	setClusterNameOnDecodedObject(obj, clusterName)
 
 	if matched, err := pred.Matches(obj); err == nil && matched {
 		v.Set(reflect.Append(v, reflect.ValueOf(obj).Elem()))

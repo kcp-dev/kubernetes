@@ -28,6 +28,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 
 	"github.com/kcp-dev/logicalcluster"
@@ -75,6 +76,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
+	kcpapi "k8s.io/apiserver/pkg/kcp"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -313,6 +315,12 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		r.delegate.ServeHTTP(w, req)
 		return
 	}
+
+	// kcp: wrap the context with a custom resource indicator. This is required for the storage code to handle
+	// partial metadata wildcard requests correctly (the number of path segments varies whether the resource is
+	// a built-in type (e.g. configmaps) or a custom resource.
+	req = utilnet.CloneRequest(req)
+	req = req.WithContext(kcpapi.WithCustomResourceIndicator(req.Context()))
 
 	terminating := apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Terminating)
 

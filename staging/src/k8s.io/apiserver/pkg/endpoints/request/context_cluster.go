@@ -38,6 +38,11 @@ type Cluster struct {
 	// HACK: only for testing wildcard semantics
 	// If true the query applies to all clusters
 	Wildcard bool
+
+	// PartialMetadataRequest indicates if the incoming request is for partial metadata. This is set by the kcp
+	// server handlers and is necessary to get the right plumbing in place for wildcard partial metadata requests for
+	// custom resources.
+	PartialMetadataRequest bool
 }
 
 // WithCluster returns a context that describes the nested cluster context
