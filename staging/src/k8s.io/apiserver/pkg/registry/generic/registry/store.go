@@ -1415,17 +1415,17 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 
 	// We adapt the store's keyFunc so that we can use it with the StorageDecorator
 	// without making any assumptions about where objects are stored in etcd
-	keyFunc := func(obj runtime.Object) (string, error) {
+	keyFunc := func(ctx context.Context, obj runtime.Object) (string, error) {
 		accessor, err := meta.Accessor(obj)
 		if err != nil {
 			return "", err
 		}
 
 		if isNamespaced {
-			return e.KeyFunc(genericapirequest.WithNamespace(genericapirequest.NewContext(), accessor.GetNamespace()), accessor.GetName())
+			return e.KeyFunc(genericapirequest.WithNamespace(ctx, accessor.GetNamespace()), accessor.GetName())
 		}
 
-		return e.KeyFunc(genericapirequest.NewContext(), accessor.GetName())
+		return e.KeyFunc(ctx, accessor.GetName())
 	}
 
 	if e.DeleteCollectionWorkers == 0 {
