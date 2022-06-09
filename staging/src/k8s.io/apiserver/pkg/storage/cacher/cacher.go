@@ -73,7 +73,7 @@ type Config struct {
 	ResourcePrefix string
 
 	// KeyFunc is used to get a key in the underlying storage for a given object.
-	KeyFunc func(runtime.Object) (string, error)
+	KeyFunc func(context.Context, runtime.Object) (string, error)
 
 	// GetAttrsFunc is used to get object labels, fields
 	GetAttrsFunc func(runtime.Object) (label labels.Set, field fields.Set, err error)
