@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kcp-dev/logicalcluster"
+
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/generic"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
 )
 
 type apiBindingAwareCRDRESTOptionsGetter struct {
@@ -20,6 +24,9 @@ func (t apiBindingAwareCRDRESTOptionsGetter) GetRESTOptions(resource schema.Grou
 		return ret, err
 	}
 
+	// assign some KCP metadata that are used by the reflector from the watch cache
+	ret.StorageConfig.KcpExtraStorageMetadata = &storagebackend.KcpStorageMetadata{IsCRD: true}
+
 	// Priority 1: wildcard partial metadata requests. These have been assigned a fake UID that ends with
 	// .wildcard.partial-metadata. If this is present, we don't want to modify the ResourcePrefix, which means that
 	// a wildcard partial metadata list/watch request will return every CR from every CRD for that group-resource, which
@@ -30,9 +37,11 @@ func (t apiBindingAwareCRDRESTOptionsGetter) GetRESTOptions(resource schema.Grou
 	//   - /registry/mygroup.io/widgets/identity1234/...
 	//   - /registry/mygroup.io/widgets/identity4567/...
 	if strings.HasSuffix(string(t.crd.UID), ".wildcard.partial-metadata") {
+		ret.StorageConfig.KcpExtraStorageMetadata.Cluster = genericapirequest.Cluster{Name: logicalcluster.Wildcard, PartialMetadataRequest: true}
 		return ret, nil
 	}
 
+	ret.StorageConfig.KcpExtraStorageMetadata.Cluster = genericapirequest.Cluster{Name: logicalcluster.Wildcard}
 	// Normal CRDs (not coming from an APIBinding) are stored in e.g. /registry/mygroup.io/widgets/customresources/...
 	if _, bound := t.crd.Annotations["apis.kcp.dev/bound-crd"]; !bound {
 		ret.ResourcePrefix += "/customresources"

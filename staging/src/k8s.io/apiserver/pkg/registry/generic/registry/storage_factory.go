@@ -55,16 +55,17 @@ func StorageWithCacher() generic.StorageDecorator {
 		}
 
 		cacherConfig := cacherstorage.Config{
-			Storage:        s,
-			Versioner:      etcd3.APIObjectVersioner{},
-			ResourcePrefix: resourcePrefix,
-			KeyFunc:        keyFunc,
-			NewFunc:        newFunc,
-			NewListFunc:    newListFunc,
-			GetAttrsFunc:   getAttrsFunc,
-			IndexerFuncs:   triggerFuncs,
-			Indexers:       indexers,
-			Codec:          storageConfig.Codec,
+			Storage:                 s,
+			Versioner:               etcd3.APIObjectVersioner{},
+			ResourcePrefix:          resourcePrefix,
+			KeyFunc:                 keyFunc,
+			NewFunc:                 newFunc,
+			NewListFunc:             newListFunc,
+			GetAttrsFunc:            getAttrsFunc,
+			IndexerFuncs:            triggerFuncs,
+			Indexers:                indexers,
+			Codec:                   storageConfig.Codec,
+			KcpExtraStorageMetadata: storageConfig.KcpExtraStorageMetadata,
 		}
 		cacher, err := cacherstorage.NewCacherFromConfig(cacherConfig)
 		if err != nil {
