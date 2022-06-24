@@ -153,10 +153,10 @@ func (mcrt *multiClusterClientConfigRoundTripper) RoundTrip(req *http.Request) (
 		if headerCluster.Empty() {
 			return nil, fmt.Errorf("Cluster should not be empty for request '%s' on resource '%s' (%s)", requestInfo.Verb, requestInfo.Resource, requestInfo.Path)
 		}
-		req.Header.Add("X-Kubernetes-Cluster", headerCluster.String())
+		req.Header.Add(logicalcluster.ClusterHeader, headerCluster.String())
 	} else {
 		if contextCluster != nil && !contextCluster.Name.Empty() {
-			req.Header.Add("X-Kubernetes-Cluster", contextCluster.Name.String())
+			req.Header.Add(logicalcluster.ClusterHeader, contextCluster.Name.String())
 		}
 	}
 	return mcrt.rt.RoundTrip(req)
