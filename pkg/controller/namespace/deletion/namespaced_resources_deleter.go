@@ -154,7 +154,7 @@ func (d *namespacedResourcesDeleter) Delete(clusterName logicalcluster.Name, nsN
 	return nil
 }
 
-func (d *namespacedResourcesDeleter) initOpCache(clusterName logicalcluster.Name) {
+func (d *namespacedResourcesDeleter) initOpCache(clusterName logicalcluster.Name) error {
 	// pre-fill opCache with the discovery info
 	//
 	// TODO(sttts): get rid of opCache and http 405 logic around it and trust discovery info
@@ -163,7 +163,7 @@ func (d *namespacedResourcesDeleter) initOpCache(clusterName logicalcluster.Name
 		utilruntime.HandleError(fmt.Errorf("unable to get all supported resources from server: %v", err))
 	}
 	if len(resources) == 0 {
-		klog.Fatalf("Unable to get any supported resources from server: %v", err)
+		return fmt.Errorf("unable to get any supported resources from server: %v", err)
 	}
 
 	for _, rl := range resources {
@@ -188,6 +188,7 @@ func (d *namespacedResourcesDeleter) initOpCache(clusterName logicalcluster.Name
 			}
 		}
 	}
+	return nil
 }
 
 // ResourcesRemainingError is used to inform the caller that all resources are not yet fully removed from the namespace.
@@ -236,14 +237,14 @@ func (o *operationNotSupportedCache) setNotSupported(key operationKey) {
 }
 
 // isSupported returns true if the operation is supported
-func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.Name, key operationKey) bool {
+func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.Name, key operationKey) (bool, error) {
 	// Quick read-only check to see if the cache already exists
 	d.opCachesMutex.RLock()
 	cache, exists := d.opCaches[clusterName]
 	d.opCachesMutex.RUnlock()
 
 	if exists {
-		return cache.isSupported(key)
+		return cache.isSupported(key), nil
 	}
 
 	// Doesn't exist - may need to create
@@ -254,7 +255,7 @@ func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.Name
 	// when we checked with the read lock held, and now.
 	cache, exists = d.opCaches[clusterName]
 	if exists {
-		return cache.isSupported(key)
+		return cache.isSupported(key), nil
 	}
 
 	// Definitely doesn't exist - need to create it.
@@ -263,9 +264,11 @@ func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.Name
 	}
 	d.opCaches[clusterName] = cache
 
-	d.initOpCache(clusterName)
+	if err := d.initOpCache(clusterName); err != nil {
+		return false, err
+	}
 
-	return cache.isSupported(key)
+	return cache.isSupported(key), nil
 }
 
 // updateNamespaceFunc is a function that makes an update to a namespace
@@ -342,7 +345,9 @@ func (d *namespacedResourcesDeleter) deleteCollection(clusterName logicalcluster
 	klog.V(5).Infof("namespace controller - deleteCollection - namespace: %s, gvr: %v", namespace, gvr)
 
 	key := operationKey{operation: operationDeleteCollection, gvr: gvr}
-	if !d.isSupported(clusterName, key) {
+	if supported, err := d.isSupported(clusterName, key); err != nil {
+		return false, err
+	} else if !supported {
 		klog.V(5).Infof("namespace controller - deleteCollection ignored since not supported - namespace: %s, gvr: %v", namespace, gvr)
 		return false, nil
 	}
@@ -381,7 +386,9 @@ func (d *namespacedResourcesDeleter) listCollection(clusterName logicalcluster.N
 	klog.V(5).Infof("namespace controller - listCollection - namespace: %s, gvr: %v", namespace, gvr)
 
 	key := operationKey{operation: operationList, gvr: gvr}
-	if !d.isSupported(clusterName, key) {
+	if supported, err := d.isSupported(clusterName, key); err != nil {
+		return nil, false, err
+	} else if !supported {
 		klog.V(5).Infof("namespace controller - listCollection ignored since not supported - namespace: %s, gvr: %v", namespace, gvr)
 		return nil, false, nil
 	}
