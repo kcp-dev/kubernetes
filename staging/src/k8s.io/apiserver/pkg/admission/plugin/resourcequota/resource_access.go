@@ -21,12 +21,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apiserver/pkg/storage/etcd3"
 	"k8s.io/client-go/kubernetes"
 	corev1listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clusters"
 	"k8s.io/utils/lru"
 )
 
@@ -56,6 +58,10 @@ type quotaAccessor struct {
 	// back quota evaluations that touch the same quota doc.  This only works because we can compare etcd resourceVersions
 	// for the same resource as integers.  Before this change: 22 updates with 12 conflicts.  after this change: 15 updates with 0 conflicts
 	updatedQuotas *lru.Cache
+
+	// kcp
+	indexer     cache.Indexer
+	clusterName logicalcluster.Name
 }
 
 // newQuotaAccessor creates an object that conforms to the QuotaAccessor interface to be used to retrieve quota objects.
@@ -103,12 +109,31 @@ func (e *quotaAccessor) checkCache(quota *corev1.ResourceQuota) *corev1.Resource
 }
 
 func (e *quotaAccessor) GetQuotas(namespace string) ([]corev1.ResourceQuota, error) {
+	// ANDY need to get all quotas in kcp-system annotated with quota.kcp.dev/cluster-scoped (use an indexer, put
+	// in patch file) and then union those with the quotas in `namespace`.
+	kcpSystemQuotas, err := e.indexer.ByIndex("kcp-global-byLogicalClusterAndNamespace", clusters.ToClusterAwareKey(e.clusterName, "kcp-system"))
+	if err != nil {
+		return nil, fmt.Errorf("error getting kcp-system quotas: %w", err)
+	}
+
 	// determine if there are any quotas in this namespace
 	// if there are no quotas, we don't need to do anything
-	items, err := e.lister.ResourceQuotas(namespace).List(labels.Everything())
+	namespaceQuotas, err := e.indexer.ByIndex("kcp-global-byLogicalClusterAndNamespace", clusters.ToClusterAwareKey(e.clusterName, namespace))
 	if err != nil {
 		return nil, fmt.Errorf("error resolving quota: %v", err)
 	}
+
+	var items []*corev1.ResourceQuota
+	for i := range kcpSystemQuotas {
+		q := kcpSystemQuotas[i].(*corev1.ResourceQuota)
+		items = append(items, q)
+	}
+	for i := range namespaceQuotas {
+		q := namespaceQuotas[i].(*corev1.ResourceQuota)
+		items = append(items, q)
+	}
+
+	// TODO(kcp): maybe do the live-lookup LRU for kcp-system too
 
 	// if there are no items held in our indexer, check our live-lookup LRU, if that misses, do the live lookup to prime it.
 	if len(items) == 0 {

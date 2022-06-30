@@ -20,9 +20,11 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster"
 	"k8s.io/klog/v2"
 
 	"k8s.io/api/core/v1"
@@ -336,7 +338,17 @@ func (rq *Controller) syncResourceQuota(ctx context.Context, resourceQuota *v1.R
 
 	var errs []error
 
-	newUsage, err := quota.CalculateUsage(resourceQuota.Namespace, resourceQuota.Spec.Scopes, hardLimits, rq.registry, resourceQuota.Spec.ScopeSelector)
+	// kcp edits for cluster scoped quota
+	clusterName := logicalcluster.From(resourceQuota)
+	kcpSystemClusterName := logicalcluster.New("kcp-system")
+	clusterScoped, _ := strconv.ParseBool(resourceQuota.Annotations["quota.kcp.dev/cluster-scoped"])
+
+	namespaceToCheck := resourceQuota.Namespace
+	if clusterName == kcpSystemClusterName && clusterScoped {
+		namespaceToCheck = ""
+	}
+
+	newUsage, err := quota.CalculateUsage(namespaceToCheck, resourceQuota.Spec.Scopes, hardLimits, rq.registry, resourceQuota.Spec.ScopeSelector)
 	if err != nil {
 		// if err is non-nil, remember it to return, but continue updating status with any resources in newUsage
 		errs = append(errs, err)

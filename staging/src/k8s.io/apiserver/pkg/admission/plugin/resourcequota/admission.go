@@ -105,6 +105,8 @@ func (a *QuotaAdmission) SetExternalKubeClientSet(client kubernetes.Interface) {
 // SetExternalKubeInformerFactory registers an informer factory into QuotaAdmission
 func (a *QuotaAdmission) SetExternalKubeInformerFactory(f informers.SharedInformerFactory) {
 	a.quotaAccessor.lister = f.Core().V1().ResourceQuotas().Lister()
+	// kcp
+	a.quotaAccessor.indexer = f.Core().V1().ResourceQuotas().Informer().GetIndexer()
 }
 
 // SetQuotaConfiguration assigns and initializes configuration and evaluator for QuotaAdmission
@@ -139,10 +141,9 @@ func (a *QuotaAdmission) Validate(ctx context.Context, attr admission.Attributes
 	if attr.GetSubresource() != "" {
 		return nil
 	}
-	// ignore all operations that are not namespaced or creation of namespaces
-	if attr.GetNamespace() == "" || isNamespaceCreation(attr) {
-		return nil
-	}
+
+	// kcp edit: allow quota of cluster-scoped resources
+
 	return a.evaluator.Evaluate(attr)
 }
 
