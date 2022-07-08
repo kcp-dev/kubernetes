@@ -125,10 +125,6 @@ func (o *ServerRunOptions) Complete() (CompletedServerRunOptions, error) {
 		return CompletedServerRunOptions{}, err
 	}
 
-	if err := o.SecureServing.MaybeDefaultWithSelfSignedCerts(o.GenericServerRunOptions.AdvertiseAddress.String(), nil, nil); err != nil {
-		return CompletedServerRunOptions{}, fmt.Errorf("error creating self-signed certificates: %v", err)
-	}
-
 	if len(o.GenericServerRunOptions.ExternalHost) == 0 {
 		if len(o.GenericServerRunOptions.AdvertiseAddress) > 0 {
 			o.GenericServerRunOptions.ExternalHost = o.GenericServerRunOptions.AdvertiseAddress.String()
@@ -140,6 +136,10 @@ func (o *ServerRunOptions) Complete() (CompletedServerRunOptions, error) {
 			}
 		}
 		klog.Infof("external host was not specified, using %v", o.GenericServerRunOptions.ExternalHost)
+	}
+
+	if err := o.SecureServing.MaybeDefaultWithSelfSignedCerts(o.GenericServerRunOptions.AdvertiseAddress.String(), []string{o.GenericServerRunOptions.ExternalHost}, nil); err != nil {
+		return CompletedServerRunOptions{}, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
 	// Use (ServiceAccountSigningKeyFile != "") as a proxy to the user enabling
