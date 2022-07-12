@@ -116,6 +116,7 @@ func (config Config) New() (authorizer.Authorizer, authorizer.RuleResolver, erro
 			}
 			webhookAuthorizer, err := webhook.New(config.WebhookConfigFile,
 				config.WebhookVersion,
+				"",
 				config.WebhookCacheAuthorizedTTL,
 				config.WebhookCacheUnauthorizedTTL,
 				*config.WebhookRetryBackoff,
