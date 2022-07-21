@@ -17,70 +17,76 @@ limitations under the License.
 package resourcequota
 
 import (
+	"context"
 	"fmt"
 	"reflect"
-	"time"
 
+	"github.com/kcp-dev/logicalcluster"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
 
-func (rq *Controller) KCPUpdateMonitors(discoveryFunc NamespacedResourcesFunc, period time.Duration, stopCh <-chan struct{}) {
-	// Something has changed, so track the new state and perform a sync.
+func (rq *Controller) KCPUpdateMonitors(ctx context.Context, clusterName logicalcluster.Name, discoveryFunc NamespacedResourcesFunc) {
 	oldResources := make(map[schema.GroupVersionResource]struct{})
-	wait.Until(func() {
-		// Get the current resource list from discovery.
-		newResources, err := GetQuotableResources(discoveryFunc)
-		if err != nil {
-			utilruntime.HandleError(err)
+	// Get the current resource list from discovery.
+	newResources, err := GetQuotableResources(discoveryFunc)
+	if err != nil {
+		utilruntime.HandleError(err)
 
-			if discovery.IsGroupDiscoveryFailedError(err) && len(newResources) > 0 {
-				// In partial discovery cases, don't remove any existing informers, just add new ones
-				for k, v := range oldResources {
-					newResources[k] = v
-				}
-			} else {
-				// short circuit in non-discovery error cases or if discovery returned zero resources
-				return
+		if discovery.IsGroupDiscoveryFailedError(err) && len(newResources) > 0 {
+			// In partial discovery cases, don't remove any existing informers, just add new ones
+			for k, v := range oldResources {
+				newResources[k] = v
 			}
-		}
-
-		// Decide whether discovery has reported a change.
-		if reflect.DeepEqual(oldResources, newResources) {
-			klog.V(4).Infof("no resource updates from discovery, skipping resource quota sync")
+		} else {
+			// short circuit in non-discovery error cases or if discovery returned zero resources
 			return
 		}
+	}
 
-		// Ensure workers are paused to avoid processing events before informers
-		// have resynced.
-		rq.workerLock.Lock()
-		defer rq.workerLock.Unlock()
+	// Decide whether discovery has reported a change.
+	if reflect.DeepEqual(oldResources, newResources) {
+		klog.V(4).Infof("%s: no resource updates from discovery, skipping resource quota sync", clusterName)
+		return
+	}
 
-		// Something has changed, so track the new state and perform a sync.
-		if klog.V(2).Enabled() {
-			klog.Infof("syncing resource quota controller with updated resources from discovery: %s", printDiff(oldResources, newResources))
-		}
+	// Ensure workers are paused to avoid processing events before informers
+	// have resynced.
+	rq.workerLock.Lock()
+	defer rq.workerLock.Unlock()
 
-		// Perform the monitor resync and wait for controllers to report cache sync.
-		if err := rq.resyncMonitors(newResources); err != nil {
-			utilruntime.HandleError(fmt.Errorf("%s: failed to sync resource monitors: %v", rq.clusterName, err))
-			return
-		}
-		// wait for caches to fill for a while (our sync period).
-		// this protects us from deadlocks where available resources changed and one of our informer caches will never fill.
-		// informers keep attempting to sync in the background, so retrying doesn't interrupt them.
-		// the call to resyncMonitors on the reattempt will no-op for resources that still exist.
-		if rq.quotaMonitor != nil && !cache.WaitForNamedCacheSync("resource quota", waitForStopOrTimeout(stopCh, period), rq.quotaMonitor.IsSynced) {
-			utilruntime.HandleError(fmt.Errorf("%s: timed out waiting for quota monitor sync", rq.clusterName))
-			return
-		}
+	// Something has changed, so track the new state and perform a sync.
+	if klog.V(2).Enabled() {
+		klog.Infof("%s: syncing resource quota controller with updated resources from discovery: %s", clusterName, printDiff(oldResources, newResources))
+	}
 
-		// success, remember newly synced resources
-		oldResources = newResources
-		klog.V(2).Infof("synced quota controller")
-	}, period, stopCh)
+	// Perform the monitor resync and wait for controllers to report cache sync.
+	if err := rq.resyncMonitors(newResources); err != nil {
+		utilruntime.HandleError(fmt.Errorf("%s: failed to sync resource monitors: %v", clusterName, err))
+		return
+	}
+	if rq.quotaMonitor != nil && !cache.WaitForNamedCacheSync(fmt.Sprintf("%q resource quota", clusterName), ctx.Done(), rq.quotaMonitor.IsSynced) {
+		utilruntime.HandleError(fmt.Errorf("%s: timed out waiting for quota monitor sync", clusterName))
+		return
+	}
+
+	// success, remember newly synced resources
+	oldResources = newResources
+	klog.V(2).Infof("%s: synced quota controller", clusterName)
+
+	// List all the quotas (this is scoped to the workspace)
+	quotas, err := rq.rqLister.List(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("%s: error listing all resourcequotas: %v", clusterName, err))
+	}
+
+	for i := range quotas {
+		quota := quotas[i]
+		klog.V(2).Infof("%s: enqueuing resourcequota %s/%s because the list of available APIs changed", clusterName, quota.Namespace, quota.Name)
+		rq.addQuota(quota)
+	}
 }
