@@ -5,12 +5,13 @@ module k8s.io/kube-controller-manager
 go 1.16
 
 require (
-	k8s.io/apimachinery v0.0.0
+	k8s.io/apimachinery v0.24.3
 	k8s.io/cloud-provider v0.0.0
 	k8s.io/controller-manager v0.0.0
 )
 
 replace (
+	github.com/stretchr/testify => github.com/stretchr/testify v1.7.0
 	k8s.io/api => ../api
 	k8s.io/apimachinery => ../apimachinery
 	k8s.io/apiserver => ../apiserver
