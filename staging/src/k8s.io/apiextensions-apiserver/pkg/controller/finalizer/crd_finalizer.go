@@ -139,9 +139,22 @@ func (c *CRDFinalizer) sync(key string) error {
 		return err
 	}
 
+	if crd.Annotations == nil {
+		crd.SetAnnotations(map[string]string{})
+	}
+
 	// Now we can start deleting items.  We should use the REST API to ensure that all normal admission runs.
 	// Since we control the endpoints, we know that delete collection works. No need to delete if not established.
-	if OverlappingBuiltInResources()[schema.GroupResource{Group: crd.Spec.Group, Resource: crd.Spec.Names.Plural}] {
+	if _, ok := crd.Annotations["apis.kcp.dev/bound-crd"]; ok {
+		// Bound CRDs should have all their resources deleted when each corresponding APIBinding was deleted.
+		// This of course assumes all corresponding APIBindings have already been deleted.
+		apiextensionshelpers.SetCRDCondition(crd, apiextensionsv1.CustomResourceDefinitionCondition{
+			Type:    apiextensionsv1.Terminating,
+			Status:  apiextensionsv1.ConditionFalse,
+			Reason:  "BoundCRD",
+			Message: "Bound CRDs should already have bindings (and thus all instances) deleted ",
+		})
+	} else if OverlappingBuiltInResources()[schema.GroupResource{Group: crd.Spec.Group, Resource: crd.Spec.Names.Plural}] {
 		// Skip deletion, explain why, and proceed to remove the finalizer and delete the CRD
 		apiextensionshelpers.SetCRDCondition(crd, apiextensionsv1.CustomResourceDefinitionCondition{
 			Type:    apiextensionsv1.Terminating,
