@@ -43,6 +43,12 @@ func (r *TokenREST) New() runtime.Object {
 	return &authenticationapi.TokenRequest{}
 }
 
+// Destroy cleans up resources on shutdown.
+func (r *TokenREST) Destroy() {
+	// Given no underlying store, we don't destroy anything
+	// here explicitly.
+}
+
 type TokenREST struct {
 	svcaccts             getter
 	pods                 getter
@@ -130,6 +136,11 @@ func (r *TokenREST) Create(ctx context.Context, name string, obj runtime.Object,
 		gvk := schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind)
 		switch {
 		case gvk.Group == "" && gvk.Kind == "Pod":
+			if r.pods == nil {
+				// TODO(sttts): kubelet will try to create bound tokens against the pcluster, but those obviously
+				//              will not work against kcp. ¯\_(ツ)_/¯
+				return nil, errors.NewBadRequest("spec.BoundObjectRef.Kind equal to Pod is invalid")
+			}
 			newCtx := newContext(ctx, "pods", ref.Name, gvk)
 			podObj, err := r.pods.Get(newCtx, ref.Name, &metav1.GetOptions{})
 			if err != nil {

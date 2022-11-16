@@ -21,15 +21,17 @@ import (
 	"fmt"
 	"time"
 
+	kcpcache "github.com/kcp-dev/apimachinery/pkg/cache"
+	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
+	kcpcorev1informers "github.com/kcp-dev/client-go/informers/core/v1"
+	kcpcorev1listers "github.com/kcp-dev/client-go/listers/core/v1"
+	"github.com/kcp-dev/logicalcluster/v2"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
-	clientset "k8s.io/client-go/kubernetes"
-	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics/prometheus/ratelimiter"
@@ -62,14 +64,14 @@ func DefaultServiceAccountsControllerOptions() ServiceAccountsControllerOptions 
 }
 
 // NewServiceAccountsController returns a new *ServiceAccountsController.
-func NewServiceAccountsController(saInformer coreinformers.ServiceAccountInformer, nsInformer coreinformers.NamespaceInformer, cl clientset.Interface, options ServiceAccountsControllerOptions) (*ServiceAccountsController, error) {
+func NewServiceAccountsController(saInformer kcpcorev1informers.ServiceAccountClusterInformer, nsInformer kcpcorev1informers.NamespaceClusterInformer, cl kcpkubernetesclientset.ClusterInterface, options ServiceAccountsControllerOptions) (*ServiceAccountsController, error) {
 	e := &ServiceAccountsController{
 		client:                  cl,
 		serviceAccountsToEnsure: options.ServiceAccounts,
 		queue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "serviceaccount"),
 	}
-	if cl != nil && cl.CoreV1().RESTClient().GetRateLimiter() != nil {
-		if err := ratelimiter.RegisterMetricAndTrackRateLimiterUsage("serviceaccount_controller", cl.CoreV1().RESTClient().GetRateLimiter()); err != nil {
+	if cl != nil && cl.Cluster(logicalcluster.New("fake")).CoreV1().RESTClient().GetRateLimiter() != nil {
+		if err := ratelimiter.RegisterMetricAndTrackRateLimiterUsage("serviceaccount_controller", cl.Cluster(logicalcluster.New("fake")).CoreV1().RESTClient().GetRateLimiter()); err != nil {
 			return nil, err
 		}
 	}
@@ -94,16 +96,16 @@ func NewServiceAccountsController(saInformer coreinformers.ServiceAccountInforme
 
 // ServiceAccountsController manages ServiceAccount objects inside Namespaces
 type ServiceAccountsController struct {
-	client                  clientset.Interface
+	client                  kcpkubernetesclientset.ClusterInterface
 	serviceAccountsToEnsure []v1.ServiceAccount
 
 	// To allow injection for testing.
 	syncHandler func(ctx context.Context, key string) error
 
-	saLister       corelisters.ServiceAccountLister
+	saLister       kcpcorev1listers.ServiceAccountClusterLister
 	saListerSynced cache.InformerSynced
 
-	nsLister       corelisters.NamespaceLister
+	nsLister       kcpcorev1listers.NamespaceClusterLister
 	nsListerSynced cache.InformerSynced
 
 	queue workqueue.RateLimitingInterface
@@ -143,19 +145,19 @@ func (c *ServiceAccountsController) serviceAccountDeleted(obj interface{}) {
 			return
 		}
 	}
-	c.queue.Add(sa.Namespace)
+	c.enqueueNamespace(sa)
 }
 
 // namespaceAdded reacts to a Namespace creation by creating a default ServiceAccount object
 func (c *ServiceAccountsController) namespaceAdded(obj interface{}) {
 	namespace := obj.(*v1.Namespace)
-	c.queue.Add(namespace.Name)
+	c.enqueueNamespace(namespace)
 }
 
 // namespaceUpdated reacts to a Namespace update (or re-list) by creating a default ServiceAccount in the namespace if needed
 func (c *ServiceAccountsController) namespaceUpdated(oldObj interface{}, newObj interface{}) {
 	newNamespace := newObj.(*v1.Namespace)
-	c.queue.Add(newNamespace.Name)
+	c.enqueueNamespace(newNamespace)
 }
 
 func (c *ServiceAccountsController) runWorker(ctx context.Context) {
@@ -188,7 +190,13 @@ func (c *ServiceAccountsController) syncNamespace(ctx context.Context, key strin
 		klog.V(4).Infof("Finished syncing namespace %q (%v)", key, time.Since(startTime))
 	}()
 
-	ns, err := c.nsLister.Get(key)
+	clusterName, _, namespaceName, err := kcpcache.SplitMetaClusterNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return err
+	}
+
+	ns, err := c.nsLister.Cluster(clusterName).Get(namespaceName)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -202,7 +210,7 @@ func (c *ServiceAccountsController) syncNamespace(ctx context.Context, key strin
 
 	createFailures := []error{}
 	for _, sa := range c.serviceAccountsToEnsure {
-		switch _, err := c.saLister.ServiceAccounts(ns.Name).Get(sa.Name); {
+		switch _, err := c.saLister.Cluster(clusterName).ServiceAccounts(ns.Name).Get(sa.Name); {
 		case err == nil:
 			continue
 		case apierrors.IsNotFound(err):
@@ -213,7 +221,7 @@ func (c *ServiceAccountsController) syncNamespace(ctx context.Context, key strin
 		// TODO eliminate this once the fake client can handle creation without NS
 		sa.Namespace = ns.Name
 
-		if _, err := c.client.CoreV1().ServiceAccounts(ns.Name).Create(ctx, &sa, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		if _, err := c.client.Cluster(clusterName).CoreV1().ServiceAccounts(ns.Name).Create(ctx, &sa, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 			// we can safely ignore terminating namespace errors
 			if !apierrors.HasStatusCause(err, v1.NamespaceTerminatingCause) {
 				createFailures = append(createFailures, err)
@@ -222,4 +230,13 @@ func (c *ServiceAccountsController) syncNamespace(ctx context.Context, key strin
 	}
 
 	return utilerrors.Flatten(utilerrors.NewAggregate(createFailures))
+}
+
+func (c *ServiceAccountsController) enqueueNamespace(obj metav1.Object) {
+	key, err := kcpcache.MetaClusterNamespaceKeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+	}
+
+	c.queue.Add(key)
 }

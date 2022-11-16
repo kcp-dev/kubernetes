@@ -31,6 +31,7 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -694,7 +695,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 	if c.SharedInformerFactory != nil {
 		if !s.isPostStartHookRegistered(genericApiServerHookName) {
 			err := s.AddPostStartHook(genericApiServerHookName, func(context PostStartHookContext) error {
-				c.SharedInformerFactory.Start(context.StopCh)
+				informerfactoryhack.Unwrap(c.SharedInformerFactory).Start(context.StopCh)
 				return nil
 			})
 			if err != nil {
@@ -702,7 +703,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 			}
 		}
 		// TODO: Once we get rid of /healthz consider changing this to post-start-hook.
-		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(c.SharedInformerFactory))
+		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(informerfactoryhack.Unwrap(c.SharedInformerFactory)))
 		if err != nil {
 			return nil, err
 		}
@@ -785,11 +786,15 @@ func BuildHandlerChainWithStorageVersionPrecondition(apiHandler http.Handler, c 
 	return DefaultBuildHandlerChain(handler, c)
 }
 
-func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
+func DefaultBuildHandlerChainFromAuthz(apiHandler http.Handler, c *Config) http.Handler {
 	handler := filterlatency.TrackCompleted(apiHandler)
 	handler = genericapifilters.WithAuthorization(handler, c.Authorization.Authorizer, c.Serializer)
 	handler = filterlatency.TrackStarted(handler, "authorization")
+	return handler
+}
 
+func DefaultBuildHandlerChainBeforeAuthz(apiHandler http.Handler, c *Config) http.Handler {
+	handler := apiHandler
 	if c.FlowControl != nil {
 		requestWorkEstimator := flowcontrolrequest.NewWorkEstimator(c.StorageObjectCountTracker.Get, c.FlowControl.GetInterestedWatchCount)
 		handler = filterlatency.TrackCompleted(handler)

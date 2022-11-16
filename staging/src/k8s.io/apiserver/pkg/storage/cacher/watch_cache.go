@@ -17,8 +17,8 @@ limitations under the License.
 package cacher
 
 import (
+	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/client-go/tools/cache"
@@ -148,7 +149,7 @@ type watchCache struct {
 	lowerBoundCapacity int
 
 	// keyFunc is used to get a key in the underlying storage for a given object.
-	keyFunc func(runtime.Object) (string, error)
+	keyFunc func(context.Context, runtime.Object) (string, error)
 
 	// getAttrsFunc is used to get labels and fields of an object.
 	getAttrsFunc func(runtime.Object) (labels.Set, fields.Set, error)
@@ -187,21 +188,21 @@ type watchCache struct {
 	// An underlying storage.Versioner.
 	versioner storage.Versioner
 
-	// cacher's objectType.
-	objectType reflect.Type
+	// cacher's group resource
+	groupResource schema.GroupResource
 
 	// For testing cache interval invalidation.
 	indexValidator indexValidator
 }
 
 func newWatchCache(
-	keyFunc func(runtime.Object) (string, error),
+	keyFunc func(context.Context, runtime.Object) (string, error),
 	eventHandler func(*watchCacheEvent),
 	getAttrsFunc func(runtime.Object) (labels.Set, fields.Set, error),
 	versioner storage.Versioner,
 	indexers *cache.Indexers,
 	clock clock.Clock,
-	objectType reflect.Type) *watchCache {
+	groupResource schema.GroupResource) *watchCache {
 	wc := &watchCache{
 		capacity:            defaultLowerBoundCapacity,
 		keyFunc:             keyFunc,
@@ -217,10 +218,9 @@ func newWatchCache(
 		eventHandler:        eventHandler,
 		clock:               clock,
 		versioner:           versioner,
-		objectType:          objectType,
+		groupResource:       groupResource,
 	}
-	objType := objectType.String()
-	watchCacheCapacity.WithLabelValues(objType).Set(float64(wc.capacity))
+	watchCacheCapacity.WithLabelValues(groupResource.String()).Set(float64(wc.capacity))
 	wc.cond = sync.NewCond(wc.RLocker())
 	wc.indexValidator = wc.isIndexValidLocked
 
@@ -278,10 +278,11 @@ func (w *watchCache) objectToVersionedRuntimeObject(obj interface{}) (runtime.Ob
 // processEvent is safe as long as there is at most one call to it in flight
 // at any point in time.
 func (w *watchCache) processEvent(event watch.Event, resourceVersion uint64, updateFunc func(*storeElement) error) error {
-	key, err := w.keyFunc(event.Object)
+	key, err := w.keyFunc(createClusterAwareContext(event.Object), event.Object)
 	if err != nil {
 		return fmt.Errorf("couldn't compute key: %v", err)
 	}
+
 	elem := &storeElement{Key: key, Object: event.Object}
 	elem.Labels, elem.Fields, err = w.getAttrsFunc(event.Object)
 	if err != nil {
@@ -385,7 +386,7 @@ func (w *watchCache) doCacheResizeLocked(capacity int) {
 		newCache[i%capacity] = w.cache[i%w.capacity]
 	}
 	w.cache = newCache
-	recordsWatchCacheCapacityChange(w.objectType.String(), w.capacity, capacity)
+	recordsWatchCacheCapacityChange(w.groupResource.String(), w.capacity, capacity)
 	w.capacity = capacity
 }
 
@@ -507,7 +508,7 @@ func (w *watchCache) Get(obj interface{}) (interface{}, bool, error) {
 	if !ok {
 		return nil, false, fmt.Errorf("obj does not implement runtime.Object interface: %v", obj)
 	}
-	key, err := w.keyFunc(object)
+	key, err := w.keyFunc(createClusterAwareContext(object), object)
 	if err != nil {
 		return nil, false, fmt.Errorf("couldn't compute key: %v", err)
 	}
@@ -533,7 +534,7 @@ func (w *watchCache) Replace(objs []interface{}, resourceVersion string) error {
 		if !ok {
 			return fmt.Errorf("didn't get runtime.Object for replace: %#v", obj)
 		}
-		key, err := w.keyFunc(object)
+		key, err := w.keyFunc(createClusterAwareContext(object), object)
 		if err != nil {
 			return fmt.Errorf("couldn't compute key: %v", err)
 		}

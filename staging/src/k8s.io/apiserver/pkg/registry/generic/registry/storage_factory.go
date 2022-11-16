@@ -17,6 +17,7 @@ limitations under the License.
 package registry
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -38,7 +39,7 @@ func StorageWithCacher() generic.StorageDecorator {
 	return func(
 		storageConfig *storagebackend.ConfigForResource,
 		resourcePrefix string,
-		keyFunc func(obj runtime.Object) (string, error),
+		keyFunc func(ctx context.Context, obj runtime.Object) (string, error),
 		newFunc func() runtime.Object,
 		newListFunc func() runtime.Object,
 		getAttrsFunc storage.AttrFunc,
@@ -55,24 +56,29 @@ func StorageWithCacher() generic.StorageDecorator {
 		}
 
 		cacherConfig := cacherstorage.Config{
-			Storage:        s,
-			Versioner:      genericstorage.APIObjectVersioner{},
-			ResourcePrefix: resourcePrefix,
-			KeyFunc:        keyFunc,
-			NewFunc:        newFunc,
-			NewListFunc:    newListFunc,
-			GetAttrsFunc:   getAttrsFunc,
-			IndexerFuncs:   triggerFuncs,
-			Indexers:       indexers,
-			Codec:          storageConfig.Codec,
+			Storage:                 s,
+			Versioner:               genericstorage.APIObjectVersioner{},
+			GroupResource:           storageConfig.GroupResource,
+			ResourcePrefix:          resourcePrefix,
+			KeyFunc:                 keyFunc,
+			NewFunc:                 newFunc,
+			NewListFunc:             newListFunc,
+			GetAttrsFunc:            getAttrsFunc,
+			IndexerFuncs:            triggerFuncs,
+			Indexers:                indexers,
+			Codec:                   storageConfig.Codec,
+			KcpExtraStorageMetadata: storageConfig.KcpExtraStorageMetadata,
 		}
 		cacher, err := cacherstorage.NewCacherFromConfig(cacherConfig)
 		if err != nil {
 			return nil, func() {}, err
 		}
+		var once sync.Once
 		destroyFunc := func() {
-			cacher.Stop()
-			d()
+			once.Do(func() {
+				cacher.Stop()
+				d()
+			})
 		}
 
 		// TODO : Remove RegisterStorageCleanup below when PR

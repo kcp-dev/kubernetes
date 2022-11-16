@@ -17,8 +17,8 @@ limitations under the License.
 package cacher
 
 import (
+	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -31,9 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/apiserver/pkg/apis/example"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/generic"
 	"k8s.io/client-go/tools/cache"
@@ -101,7 +101,7 @@ func (w *testWatchCache) getCacheIntervalForEvents(resourceVersion uint64) (*wat
 
 // newTestWatchCache just adds a fake clock.
 func newTestWatchCache(capacity int, indexers *cache.Indexers) *testWatchCache {
-	keyFunc := func(obj runtime.Object) (string, error) {
+	keyFunc := func(_ context.Context, obj runtime.Object) (string, error) {
 		return storage.NamespaceKeyFunc("prefix", obj)
 	}
 	getAttrsFunc := func(obj runtime.Object) (labels.Set, fields.Set, error) {
@@ -113,7 +113,7 @@ func newTestWatchCache(capacity int, indexers *cache.Indexers) *testWatchCache {
 	}
 	versioner := generic.APIObjectVersioner{}
 	mockHandler := func(*watchCacheEvent) {}
-	wc := newWatchCache(keyFunc, mockHandler, getAttrsFunc, versioner, indexers, testingclock.NewFakeClock(time.Now()), reflect.TypeOf(&example.Pod{}))
+	wc := newWatchCache(keyFunc, mockHandler, getAttrsFunc, versioner, indexers, testingclock.NewFakeClock(time.Now()), schema.GroupResource{Resource: "pods"})
 	// To preserve behavior of tests that assume a given capacity,
 	// resize it to th expected size.
 	wc.capacity = capacity

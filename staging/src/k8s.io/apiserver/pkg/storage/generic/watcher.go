@@ -28,7 +28,10 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/apiserver/pkg/kcp"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	"k8s.io/apiserver/pkg/storage/value"
@@ -69,12 +72,13 @@ func TestOnlySetFatalOnDecodeError(b bool) {
 }
 
 type watcher struct {
-	client      Client
-	codec       runtime.Codec
-	newFunc     func() runtime.Object
-	objectType  string
-	versioner   storage.Versioner
-	transformer value.Transformer
+	client        Client
+	codec         runtime.Codec
+	newFunc       func() runtime.Object
+	objectType    string
+	groupResource schema.GroupResource
+	versioner     storage.Versioner
+	transformer   value.Transformer
 }
 
 // watchChan implements watch.Interface.
@@ -90,15 +94,21 @@ type watchChan struct {
 	incomingEventChan chan *event
 	resultChan        chan watch.Event
 	errChan           chan error
+
+	// kcp
+	cluster    *genericapirequest.Cluster
+	shard      genericapirequest.Shard
+	crdRequest bool
 }
 
-func newWatcher(client Client, codec runtime.Codec, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
+func newWatcher(client Client, codec runtime.Codec, groupResource schema.GroupResource, newFunc func() runtime.Object, versioner storage.Versioner, transformer value.Transformer) *watcher {
 	res := &watcher{
-		client:      client,
-		codec:       codec,
-		newFunc:     newFunc,
-		versioner:   versioner,
-		transformer: transformer,
+		client:        client,
+		codec:         codec,
+		groupResource: groupResource,
+		newFunc:       newFunc,
+		versioner:     versioner,
+		transformer:   transformer,
 	}
 	if newFunc == nil {
 		res.objectType = "<unknown>"
@@ -115,11 +125,18 @@ func newWatcher(client Client, codec runtime.Codec, newFunc func() runtime.Objec
 // If recursive is false, it watches on given key.
 // If recursive is true, it watches any children and directories under the key, excluding the root key itself.
 // pred must be non-nil. Only if pred matches the change, it will be returned.
-func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
+func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive bool, progressNotify bool, pred storage.SelectionPredicate) (watch.Interface, error) {
 	if recursive && !strings.HasSuffix(key, "/") {
 		key += "/"
 	}
-	wc := w.createWatchChan(ctx, key, rev, recursive, progressNotify, pred)
+
+	cluster, err := genericapirequest.ValidClusterFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	shard := genericapirequest.ShardFrom(ctx)
+
+	wc := w.createWatchChan(ctx, key, rev, recursive, shard, cluster, progressNotify, pred)
 	go wc.run()
 
 	// For etcd watch we don't have an easy way to answer whether the watch
@@ -132,7 +149,7 @@ func (w *watcher) Watch(ctx context.Context, key string, rev int64, recursive, p
 	return wc, nil
 }
 
-func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
+func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, recursive bool, shard genericapirequest.Shard, cluster *genericapirequest.Cluster, progressNotify bool, pred storage.SelectionPredicate) *watchChan {
 	wc := &watchChan{
 		watcher:           w,
 		key:               key,
@@ -143,6 +160,11 @@ func (w *watcher) createWatchChan(ctx context.Context, key string, rev int64, re
 		incomingEventChan: make(chan *event, incomingBufSize),
 		resultChan:        make(chan watch.Event, outgoingBufSize),
 		errChan:           make(chan error, 1),
+
+		// kcp
+		cluster:    cluster,
+		shard:      shard,
+		crdRequest: kcp.CustomResourceIndicatorFrom(ctx),
 	}
 	if pred.Empty() {
 		// The filter doesn't filter out any object.
@@ -237,7 +259,7 @@ func (wc *watchChan) startWatching(watchClosedCh chan struct{}) {
 			return
 		}
 	}
-	wch := wc.watcher.client.Watch(wc.ctx, wc.key, wc.recursive, wc.progressNotify, wc.initialRev + 1)
+	wch := wc.watcher.client.Watch(wc.ctx, wc.key, wc.recursive, wc.progressNotify, wc.initialRev+1)
 	for wres := range wch {
 		if wres.Error != nil {
 			err := wres.Error
@@ -281,7 +303,7 @@ func (wc *watchChan) processEvent(wg *sync.WaitGroup) {
 				continue
 			}
 			if len(wc.resultChan) == outgoingBufSize {
-				klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow dispatching events to watchers", "outgoingEvents", outgoingBufSize, "objectType", wc.watcher.objectType)
+				klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow dispatching events to watchers", "outgoingEvents", outgoingBufSize, "objectType", wc.watcher.objectType, "groupResource", wc.watcher.groupResource)
 			}
 			// If user couldn't receive results fast enough, we also block incoming events from watcher.
 			// Because storing events in local will cause more memory usage.
@@ -400,7 +422,7 @@ func (wc *watchChan) sendError(err error) {
 
 func (wc *watchChan) sendEvent(e *event) {
 	if len(wc.incomingEventChan) == incomingBufSize {
-		klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow decoding, user not receiving fast, or other processing logic", "incomingEvents", incomingBufSize, "objectType", wc.watcher.objectType)
+		klog.V(3).InfoS("Fast watcher, slow processing. Probably caused by slow decoding, user not receiving fast, or other processing logic", "incomingEvents", incomingBufSize, "objectType", wc.watcher.objectType, "groupResource", wc.watcher.groupResource)
 	}
 	select {
 	case wc.incomingEventChan <- e:
@@ -423,6 +445,11 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
+
+		// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+		clusterName := adjustClusterNameIfWildcard(wc.shard, wc.cluster, wc.crdRequest, wc.key, e.key)
+		shardName := adjustShardNameIfWildcard(wc.shard, wc.key, e.key)
+		annotateDecodedObjectWith(curObj, clusterName, shardName)
 	}
 	// We need to decode prevValue, only if this is deletion event or
 	// the underlying filter doesn't accept all objects (otherwise we
@@ -440,6 +467,11 @@ func (wc *watchChan) prepareObjs(e *event) (curObj runtime.Object, oldObj runtim
 		if err != nil {
 			return nil, nil, err
 		}
+
+		// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+		clusterName := adjustClusterNameIfWildcard(wc.shard, wc.cluster, wc.crdRequest, wc.key, e.key)
+		shardName := adjustShardNameIfWildcard(wc.shard, wc.key, e.key)
+		annotateDecodedObjectWith(oldObj, clusterName, shardName)
 	}
 	return curObj, oldObj, nil
 }

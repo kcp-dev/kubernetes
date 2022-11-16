@@ -36,6 +36,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/kcp-dev/logicalcluster/v2"
 	"k8s.io/apimachinery/pkg/api/apitesting"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,6 +50,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/apis/example"
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
 	storagetesting "k8s.io/apiserver/pkg/storage/testing"
@@ -172,6 +174,10 @@ func RunTestCreateWithTTL(t *testing.T, client InternalTestClient) {
 	if err := store.Create(ctx, key, input, out, 1); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
+
+	ctx = genericapirequest.WithCluster(ctx, genericapirequest.Cluster{
+		Name: logicalcluster.New("foo"),
+	})
 
 	w, err := store.Watch(ctx, key, storage.ListOptions{ResourceVersion: out.ResourceVersion, Predicate: storage.Everything})
 	if err != nil {
@@ -1034,7 +1040,7 @@ func RunTestGuaranteedUpdateWithSuggestionAndConflict(t *testing.T, client Inter
 func RunTestTransformationFailure(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	preset := []struct {
 		key       string
@@ -1114,7 +1120,7 @@ func RunTestList(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true)
 	disablePagingStore := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	// Setup storage with the following structure:
 	//  /
@@ -1627,7 +1633,7 @@ func RunTestListContinuation(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	// Setup storage with the following structure:
 	//  /
@@ -1783,7 +1789,7 @@ func RunTestListPaginationRareObject(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	podCount := 1000
 	var pods []*example.Pod
@@ -1949,7 +1955,7 @@ func RunTestListContinuationWithFilter(t *testing.T, client InternalTestClient) 
 func RunTestListInconsistentContinuation(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	// Setup storage with the following structure:
 	//  /
@@ -2112,7 +2118,7 @@ func TestSetup(client Client) (context.Context, storage.Interface) {
 func testSetup(client Client) (context.Context, *store) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, true)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 	return ctx, store
 }
 
@@ -2207,7 +2213,7 @@ func (t *fancyTransformer) createObject(ctx context.Context) error {
 
 func RunTestConsistentList(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	transformer := &fancyTransformer{
 		transformer: &prefixTransformer{prefix: []byte(defaultTestPrefix)},

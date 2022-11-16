@@ -20,8 +20,11 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
+
+	"github.com/kcp-dev/logicalcluster/v2"
 
 	"k8s.io/klog/v2"
 
@@ -73,6 +76,11 @@ type ControllerOptions struct {
 	InformerFactory informerfactory.InformerFactory
 	// Controls full resync of objects monitored for replenishment.
 	ReplenishmentResyncPeriod controller.ResyncPeriodFunc
+	// Filters update events so we only enqueue the ones where we know quota will change
+	UpdateFilter UpdateFilter
+
+	// kcp
+	ClusterName logicalcluster.Name
 }
 
 // Controller is responsible for tracking quota usage status in the system
@@ -99,6 +107,9 @@ type Controller struct {
 	// this lock is acquired to control write access to the monitors and ensures that all
 	// monitors are synced before the controller can process quotas.
 	workerLock sync.RWMutex
+
+	// kcp
+	clusterName logicalcluster.Name
 }
 
 // NewController creates a quota controller with specified options
@@ -112,6 +123,7 @@ func NewController(options *ControllerOptions) (*Controller, error) {
 		missingUsageQueue:   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resourcequota_priority"),
 		resyncPeriod:        options.ResyncPeriod,
 		registry:            options.Registry,
+		clusterName:         options.ClusterName,
 	}
 	// set the synchronization handler
 	rq.syncHandler = rq.syncResourceQuotaFromKey
@@ -152,6 +164,8 @@ func NewController(options *ControllerOptions) (*Controller, error) {
 			resyncPeriod:      options.ReplenishmentResyncPeriod,
 			replenishmentFunc: rq.replenishQuota,
 			registry:          rq.registry,
+			updateFilter:      options.UpdateFilter,
+			clusterName:       options.ClusterName,
 		}
 
 		rq.quotaMonitor = qm
@@ -159,13 +173,13 @@ func NewController(options *ControllerOptions) (*Controller, error) {
 		// do initial quota monitor setup.  If we have a discovery failure here, it's ok. We'll discover more resources when a later sync happens.
 		resources, err := GetQuotableResources(options.DiscoveryFunc)
 		if discovery.IsGroupDiscoveryFailedError(err) {
-			utilruntime.HandleError(fmt.Errorf("initial discovery check failure, continuing and counting on future sync update: %v", err))
+			utilruntime.HandleError(fmt.Errorf("%s: initial discovery check failure, continuing and counting on future sync update: %v", options.ClusterName, err))
 		} else if err != nil {
 			return nil, err
 		}
 
 		if err = qm.SyncMonitors(resources); err != nil {
-			utilruntime.HandleError(fmt.Errorf("initial monitor sync has error: %v", err))
+			utilruntime.HandleError(fmt.Errorf("%s: initial monitor sync has error: %v", options.ClusterName, err))
 		}
 
 		// only start quota once all informers synced
@@ -177,16 +191,16 @@ func NewController(options *ControllerOptions) (*Controller, error) {
 
 // enqueueAll is called at the fullResyncPeriod interval to force a full recalculation of quota usage statistics
 func (rq *Controller) enqueueAll() {
-	defer klog.V(4).Infof("Resource quota controller queued all resource quota for full calculation of usage")
+	defer klog.V(4).Infof("%s: Resource quota controller queued all resource quota for full calculation of usage", rq.clusterName)
 	rqs, err := rq.rqLister.List(labels.Everything())
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("unable to enqueue all - error listing resource quotas: %v", err))
+		utilruntime.HandleError(fmt.Errorf("%s: unable to enqueue all - error listing resource quotas: %v", rq.clusterName, err))
 		return
 	}
 	for i := range rqs {
-		key, err := controller.KeyFunc(rqs[i])
+		key, err := cache.LegacyDeletionHandlingMetaNamespaceKeyFunc(rqs[i])
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", rqs[i], err))
+			utilruntime.HandleError(fmt.Errorf("%s: couldn't get key for object %+v: %v", rq.clusterName, rqs[i], err))
 			continue
 		}
 		rq.queue.Add(key)
@@ -195,18 +209,18 @@ func (rq *Controller) enqueueAll() {
 
 // obj could be an *v1.ResourceQuota, or a DeletionFinalStateUnknown marker item.
 func (rq *Controller) enqueueResourceQuota(obj interface{}) {
-	key, err := controller.KeyFunc(obj)
+	key, err := cache.LegacyDeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		klog.Errorf("Couldn't get key for object %+v: %v", obj, err)
+		klog.Errorf("%s: Couldn't get key for object %+v: %v", rq.clusterName, obj, err)
 		return
 	}
 	rq.queue.Add(key)
 }
 
 func (rq *Controller) addQuota(obj interface{}) {
-	key, err := controller.KeyFunc(obj)
+	key, err := cache.LegacyDeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		klog.Errorf("Couldn't get key for object %+v: %v", obj, err)
+		klog.Errorf("%s: Couldn't get key for object %+v: %v", rq.clusterName, obj, err)
 		return
 	}
 
@@ -258,7 +272,7 @@ func (rq *Controller) worker(ctx context.Context, queue workqueue.RateLimitingIn
 	return func(ctx context.Context) {
 		for {
 			if quit := workFunc(ctx); quit {
-				klog.Infof("resource quota controller worker shutting down")
+				klog.Infof("%s: resource quota controller worker shutting down", rq.clusterName)
 				return
 			}
 		}
@@ -270,14 +284,14 @@ func (rq *Controller) Run(ctx context.Context, workers int) {
 	defer utilruntime.HandleCrash()
 	defer rq.queue.ShutDown()
 
-	klog.Infof("Starting resource quota controller")
-	defer klog.Infof("Shutting down resource quota controller")
+	klog.Infof("%s: Starting resource quota controller", rq.clusterName)
+	defer klog.Infof("%s: Shutting down resource quota controller", rq.clusterName)
 
 	if rq.quotaMonitor != nil {
 		go rq.quotaMonitor.Run(ctx.Done())
 	}
 
-	if !cache.WaitForNamedCacheSync("resource quota", ctx.Done(), rq.informerSyncedFuncs...) {
+	if !cache.WaitForNamedCacheSync(fmt.Sprintf("%s resource quota", rq.clusterName), ctx.Done(), rq.informerSyncedFuncs...) {
 		return
 	}
 
@@ -290,7 +304,7 @@ func (rq *Controller) Run(ctx context.Context, workers int) {
 	if rq.resyncPeriod() > 0 {
 		go wait.Until(func() { rq.enqueueAll() }, rq.resyncPeriod(), ctx.Done())
 	} else {
-		klog.Warningf("periodic quota controller resync disabled")
+		klog.Warningf("%s: periodic quota controller resync disabled", rq.clusterName)
 	}
 	<-ctx.Done()
 }
@@ -299,7 +313,7 @@ func (rq *Controller) Run(ctx context.Context, workers int) {
 func (rq *Controller) syncResourceQuotaFromKey(ctx context.Context, key string) (err error) {
 	startTime := time.Now()
 	defer func() {
-		klog.V(4).Infof("Finished syncing resource quota %q (%v)", key, time.Since(startTime))
+		klog.V(4).Infof("%s: Finished syncing resource quota %q (%v)", rq.clusterName, key, time.Since(startTime))
 	}()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -308,15 +322,20 @@ func (rq *Controller) syncResourceQuotaFromKey(ctx context.Context, key string) 
 	}
 	resourceQuota, err := rq.rqLister.ResourceQuotas(namespace).Get(name)
 	if errors.IsNotFound(err) {
-		klog.Infof("Resource quota has been deleted %v", key)
+		klog.Infof("%s: Resource quota has been deleted %v", rq.clusterName, key)
 		return nil
 	}
 	if err != nil {
-		klog.Infof("Unable to retrieve resource quota %v from store: %v", key, err)
+		klog.Infof("%s: Unable to retrieve resource quota %v from store: %v", rq.clusterName, key, err)
 		return err
 	}
 	return rq.syncResourceQuota(ctx, resourceQuota)
 }
+
+const (
+	kcpClusterScopedQuotaNamespace                 = "admin"
+	kcpExperimentalClusterScopedQuotaAnnotationKey = "experimental.quota.kcp.dev/cluster-scoped"
+)
 
 // syncResourceQuota runs a complete sync of resource quota status across all known kinds
 func (rq *Controller) syncResourceQuota(ctx context.Context, resourceQuota *v1.ResourceQuota) (err error) {
@@ -336,7 +355,15 @@ func (rq *Controller) syncResourceQuota(ctx context.Context, resourceQuota *v1.R
 
 	var errs []error
 
-	newUsage, err := quota.CalculateUsage(resourceQuota.Namespace, resourceQuota.Spec.Scopes, hardLimits, rq.registry, resourceQuota.Spec.ScopeSelector)
+	// kcp edits for cluster scoped quota
+	clusterScoped, _ := strconv.ParseBool(resourceQuota.Annotations[kcpExperimentalClusterScopedQuotaAnnotationKey])
+
+	namespaceToCheck := resourceQuota.Namespace
+	if namespaceToCheck == kcpClusterScopedQuotaNamespace && clusterScoped {
+		namespaceToCheck = ""
+	}
+
+	newUsage, err := quota.CalculateUsage(namespaceToCheck, resourceQuota.Spec.Scopes, hardLimits, rq.registry, resourceQuota.Spec.ScopeSelector)
 	if err != nil {
 		// if err is non-nil, remember it to return, but continue updating status with any resources in newUsage
 		errs = append(errs, err)
@@ -380,11 +407,11 @@ func (rq *Controller) replenishQuota(groupResource schema.GroupResource, namespa
 	// check if this namespace even has a quota...
 	resourceQuotas, err := rq.rqLister.ResourceQuotas(namespace).List(labels.Everything())
 	if errors.IsNotFound(err) {
-		utilruntime.HandleError(fmt.Errorf("quota controller could not find ResourceQuota associated with namespace: %s, could take up to %v before a quota replenishes", namespace, rq.resyncPeriod()))
+		utilruntime.HandleError(fmt.Errorf("%s: quota controller could not find ResourceQuota associated with namespace: %s, could take up to %v before a quota replenishes", rq.clusterName, namespace, rq.resyncPeriod()))
 		return
 	}
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("error checking to see if namespace %s has any ResourceQuota associated with it: %v", namespace, err))
+		utilruntime.HandleError(fmt.Errorf("%s: error checking to see if namespace %s has any ResourceQuota associated with it: %v", rq.clusterName, namespace, err))
 		return
 	}
 	if len(resourceQuotas) == 0 {
@@ -410,7 +437,7 @@ func (rq *Controller) Sync(discoveryFunc NamespacedResourcesFunc, period time.Du
 		// Get the current resource list from discovery.
 		newResources, err := GetQuotableResources(discoveryFunc)
 		if err != nil {
-			utilruntime.HandleError(err)
+			utilruntime.HandleError(fmt.Errorf("%s: %v", rq.clusterName, err))
 
 			if discovery.IsGroupDiscoveryFailedError(err) && len(newResources) > 0 {
 				// In partial discovery cases, don't remove any existing informers, just add new ones
@@ -425,7 +452,7 @@ func (rq *Controller) Sync(discoveryFunc NamespacedResourcesFunc, period time.Du
 
 		// Decide whether discovery has reported a change.
 		if reflect.DeepEqual(oldResources, newResources) {
-			klog.V(4).Infof("no resource updates from discovery, skipping resource quota sync")
+			klog.V(4).Infof("%s: no resource updates from discovery, skipping resource quota sync", rq.clusterName)
 			return
 		}
 
@@ -436,26 +463,26 @@ func (rq *Controller) Sync(discoveryFunc NamespacedResourcesFunc, period time.Du
 
 		// Something has changed, so track the new state and perform a sync.
 		if klogV := klog.V(2); klogV.Enabled() {
-			klogV.Infof("syncing resource quota controller with updated resources from discovery: %s", printDiff(oldResources, newResources))
+			klogV.Infof("%s: syncing resource quota controller with updated resources from discovery: %s", rq.clusterName, printDiff(oldResources, newResources))
 		}
 
 		// Perform the monitor resync and wait for controllers to report cache sync.
 		if err := rq.resyncMonitors(newResources); err != nil {
-			utilruntime.HandleError(fmt.Errorf("failed to sync resource monitors: %v", err))
+			utilruntime.HandleError(fmt.Errorf("%s: failed to sync resource monitors: %v", rq.clusterName, err))
 			return
 		}
 		// wait for caches to fill for a while (our sync period).
 		// this protects us from deadlocks where available resources changed and one of our informer caches will never fill.
 		// informers keep attempting to sync in the background, so retrying doesn't interrupt them.
 		// the call to resyncMonitors on the reattempt will no-op for resources that still exist.
-		if rq.quotaMonitor != nil && !cache.WaitForNamedCacheSync("resource quota", waitForStopOrTimeout(stopCh, period), rq.quotaMonitor.IsSynced) {
-			utilruntime.HandleError(fmt.Errorf("timed out waiting for quota monitor sync"))
+		if rq.quotaMonitor != nil && !cache.WaitForNamedCacheSync(fmt.Sprintf("%q resource quota", rq.clusterName), waitForStopOrTimeout(stopCh, period), rq.quotaMonitor.IsSynced) {
+			utilruntime.HandleError(fmt.Errorf("%s: timed out waiting for quota monitor sync", rq.clusterName))
 			return
 		}
 
 		// success, remember newly synced resources
 		oldResources = newResources
-		klog.V(2).Infof("synced quota controller")
+		klog.V(2).Infof("%s: synced quota controller", rq.clusterName)
 	}, period, stopCh)
 }
 

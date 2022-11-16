@@ -1354,7 +1354,7 @@ function Install_Containerd {
   New-Item $tmp_dir -ItemType 'directory' -Force | Out-Null
 
   # TODO(ibrahimab) Change this to a gcs bucket with CI maintained and accessible by community.
-  $version = '1.5.4'
+  $version = '1.6.2'
   $tar_url = ("https://github.com/containerd/containerd/releases/download/v${version}/" +
               "cri-containerd-cni-${version}-windows-amd64.tar.gz")
   $sha_url = $tar_url + ".sha256sum"
@@ -1368,7 +1368,7 @@ function Install_Containerd {
       -Algorithm SHA256
 
   tar xzvf $tmp_dir\containerd.tar.gz -C $tmp_dir
-  Move-Item -Force $tmp_dir\cni\*.exe "${env:CNI_DIR}\"
+  Move-Item -Force $tmp_dir\cni\bin\*.exe "${env:CNI_DIR}\"
   Move-Item -Force $tmp_dir\*.exe "${env:NODE_DIR}\"
   Remove-Item -Force -Recurse $tmp_dir
 

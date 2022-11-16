@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/kcp-dev/logicalcluster/v2"
 	"gopkg.in/square/go-jose.v2/jwt"
 	"k8s.io/klog/v2"
 
@@ -37,19 +38,21 @@ func LegacyClaims(serviceAccount v1.ServiceAccount, secret v1.Secret) (*jwt.Clai
 			ServiceAccountName: serviceAccount.Name,
 			ServiceAccountUID:  string(serviceAccount.UID),
 			SecretName:         secret.Name,
+			ClusterName:        logicalcluster.From(&serviceAccount),
 		}
 }
 
 const LegacyIssuer = "kubernetes/serviceaccount"
 
 type legacyPrivateClaims struct {
-	ServiceAccountName string `json:"kubernetes.io/serviceaccount/service-account.name"`
-	ServiceAccountUID  string `json:"kubernetes.io/serviceaccount/service-account.uid"`
-	SecretName         string `json:"kubernetes.io/serviceaccount/secret.name"`
-	Namespace          string `json:"kubernetes.io/serviceaccount/namespace"`
+	ServiceAccountName string              `json:"kubernetes.io/serviceaccount/service-account.name"`
+	ServiceAccountUID  string              `json:"kubernetes.io/serviceaccount/service-account.uid"`
+	SecretName         string              `json:"kubernetes.io/serviceaccount/secret.name"`
+	Namespace          string              `json:"kubernetes.io/serviceaccount/namespace"`
+	ClusterName        logicalcluster.Name `json:"kubernetes.io/serviceaccount/clusterName"`
 }
 
-func NewLegacyValidator(lookup bool, getter ServiceAccountTokenGetter) Validator {
+func NewLegacyValidator(lookup bool, getter ServiceAccountTokenClusterGetter) Validator {
 	return &legacyValidator{
 		lookup: lookup,
 		getter: getter,
@@ -58,7 +61,7 @@ func NewLegacyValidator(lookup bool, getter ServiceAccountTokenGetter) Validator
 
 type legacyValidator struct {
 	lookup bool
-	getter ServiceAccountTokenGetter
+	getter ServiceAccountTokenClusterGetter
 }
 
 var _ = Validator(&legacyValidator{})
@@ -98,7 +101,7 @@ func (v *legacyValidator) Validate(ctx context.Context, tokenData string, public
 
 	if v.lookup {
 		// Make sure token hasn't been invalidated by deletion of the secret
-		secret, err := v.getter.GetSecret(namespace, secretName)
+		secret, err := v.getter.Cluster(private.ClusterName).GetSecret(namespace, secretName)
 		if err != nil {
 			klog.V(4).Infof("Could not retrieve token %s/%s for service account %s/%s: %v", namespace, secretName, namespace, serviceAccountName, err)
 			return nil, errors.New("Token has been invalidated")
@@ -113,7 +116,7 @@ func (v *legacyValidator) Validate(ctx context.Context, tokenData string, public
 		}
 
 		// Make sure service account still exists (name and UID)
-		serviceAccount, err := v.getter.GetServiceAccount(namespace, serviceAccountName)
+		serviceAccount, err := v.getter.Cluster(private.ClusterName).GetServiceAccount(namespace, serviceAccountName)
 		if err != nil {
 			klog.V(4).Infof("Could not retrieve service account %s/%s: %v", namespace, serviceAccountName, err)
 			return nil, err
@@ -129,9 +132,10 @@ func (v *legacyValidator) Validate(ctx context.Context, tokenData string, public
 	}
 
 	return &apiserverserviceaccount.ServiceAccountInfo{
-		Namespace: private.Namespace,
-		Name:      private.ServiceAccountName,
-		UID:       private.ServiceAccountUID,
+		ClusterName: private.ClusterName,
+		Namespace:   private.Namespace,
+		Name:        private.ServiceAccountName,
+		UID:         private.ServiceAccountUID,
 	}, nil
 }
 

@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	apiserverstorage "k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
@@ -114,6 +115,10 @@ func (a customResourceStrategy) PrepareForCreate(ctx context.Context, obj runtim
 	}
 
 	accessor, _ := meta.Accessor(obj)
+	if _, found := accessor.GetAnnotations()[genericapirequest.AnnotationKey]; found {
+		// to avoid an additional UPDATE request (mismatch on the generation field) replicated objects have the generation field already set
+		return
+	}
 	accessor.SetGeneration(1)
 }
 
@@ -144,6 +149,11 @@ func (a customResourceStrategy) PrepareForUpdate(ctx context.Context, obj, old r
 	if !apiequality.Semantic.DeepEqual(newCopyContent, oldCopyContent) {
 		oldAccessor, _ := meta.Accessor(oldCustomResourceObject)
 		newAccessor, _ := meta.Accessor(newCustomResourceObject)
+		if _, found := oldAccessor.GetAnnotations()[genericapirequest.AnnotationKey]; found {
+			// the presence of the annotation indicates the object is from the cache server.
+			// since the objects from the cache should not be modified in any way, just return early.
+			return
+		}
 		newAccessor.SetGeneration(oldAccessor.GetGeneration() + 1)
 	}
 }

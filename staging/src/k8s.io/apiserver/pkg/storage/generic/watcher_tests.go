@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster/v2"
 	"k8s.io/apimachinery/pkg/api/apitesting"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -33,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/apis/example"
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/storage"
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 )
@@ -222,7 +224,7 @@ func RunTestWatchError(t *testing.T, client InternalTestClient) {
 	// this codec fails on decodes, which will bubble up so we can verify the behavior
 	invalidCodec := &testCodec{apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)}
 	invalidStore := newStore(client, invalidCodec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte("test!")}, true)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 	w, err := invalidStore.Watch(ctx, "/abc", storage.ListOptions{ResourceVersion: "0", Predicate: storage.Everything})
 	if err != nil {
 		t.Fatalf("Watch failed: %v", err)
@@ -262,7 +264,7 @@ func RunTestWatchContextCancel(t *testing.T, client InternalTestClient) {
 func RunTestWatchErrResultNotBlockAfterCancel(t *testing.T, client InternalTestClient) {
 	origCtx, store := testSetup(client)
 	ctx, cancel := context.WithCancel(origCtx)
-	w := store.watcher.createWatchChan(ctx, "/abc", 0, false, false, storage.Everything)
+	w := store.watcher.createWatchChan(ctx, "/abc", 0, false, genericapirequest.Shard(""), &genericapirequest.Cluster{}, false, storage.Everything)
 	// make resutlChan and errChan blocking to ensure ordering.
 	w.resultChan = make(chan watch.Event)
 	w.errChan = make(chan error)
@@ -356,7 +358,7 @@ func RunTestWatchInitializationSignal(t *testing.T, client InternalTestClient) {
 func RunTestProgressNotify(t *testing.T, client InternalTestClient) {
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, &prefixTransformer{prefix: []byte(defaultTestPrefix)}, false)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	key := "/somekey"
 	input := &example.Pod{ObjectMeta: metav1.ObjectMeta{Name: "name"}}

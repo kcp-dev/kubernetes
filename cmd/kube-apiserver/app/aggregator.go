@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kcp-dev/logicalcluster/v2"
 	"k8s.io/klog/v2"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -260,7 +261,6 @@ var apiVersionPriorities = map[schema.GroupVersion]priority{
 	{Group: "batch", Version: "v2alpha1"}:                        {group: 17400, version: 9},
 	{Group: "certificates.k8s.io", Version: "v1"}:                {group: 17300, version: 15},
 	{Group: "networking.k8s.io", Version: "v1"}:                  {group: 17200, version: 15},
-	{Group: "networking.k8s.io", Version: "v1alpha1"}:            {group: 17200, version: 1},
 	{Group: "policy", Version: "v1"}:                             {group: 17100, version: 15},
 	{Group: "policy", Version: "v1beta1"}:                        {group: 17100, version: 9},
 	{Group: "rbac.authorization.k8s.io", Version: "v1"}:          {group: 17000, version: 15},
@@ -288,7 +288,7 @@ var apiVersionPriorities = map[schema.GroupVersion]priority{
 func apiServicesToRegister(delegateAPIServer genericapiserver.DelegationTarget, registration autoregister.AutoAPIServiceRegistration) []*v1.APIService {
 	apiServices := []*v1.APIService{}
 
-	for _, curr := range delegateAPIServer.ListedPaths() {
+	for _, curr := range delegateAPIServer.ListedPaths(logicalcluster.New("")) {
 		if curr == "/api/v1" {
 			apiService := makeAPIService(schema.GroupVersion{Group: "", Version: "v1"})
 			registration.AddAPIServiceToSyncOnStart(apiService)
