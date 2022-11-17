@@ -1847,7 +1847,7 @@ func RunTestListContinuationWithFilter(t *testing.T, client InternalTestClient) 
 	codec := apitesting.TestCodec(codecs, examplev1.SchemeGroupVersion)
 	transformer := &prefixTransformer{prefix: []byte(defaultTestPrefix)}
 	store := newStore(client, codec, newPod, "", schema.GroupResource{Resource: "pods"}, transformer, true)
-	ctx := context.Background()
+	ctx := genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")})
 
 	preset := []struct {
 		key       string

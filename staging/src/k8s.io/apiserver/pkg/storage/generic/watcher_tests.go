@@ -342,7 +342,7 @@ func deletedRevision(ctx context.Context, watch <-chan *WatchResponse) (int64, e
 func RunTestWatchInitializationSignal(t *testing.T, client InternalTestClient) {
 	_, store := testSetup(client)
 
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, _ := context.WithTimeout(genericapirequest.WithCluster(context.Background(), genericapirequest.Cluster{Name: logicalcluster.New("root")}), 5*time.Second)
 	initSignal := utilflowcontrol.NewInitializationSignal()
 	ctx = utilflowcontrol.WithInitializationSignal(ctx, initSignal)
 
