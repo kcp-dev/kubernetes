@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metainternalversionscheme "k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1beta1 "k8s.io/apimachinery/pkg/apis/meta/v1beta1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1beta1/validation"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,6 +33,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/handlers/negotiation"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	endpointsrequest "k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/klog/v2"
 	utiltrace "k8s.io/utils/trace"
 )
 
@@ -147,6 +149,21 @@ func transformResponseObject(ctx context.Context, scope *RequestScope, trace *ut
 		return
 	}
 	kind, serializer, _ := targetEncodingForTransform(scope, mediaType, req)
+
+	// kcp 2278
+	if u, ok := result.(*unstructured.Unstructured); ok && statusCode == http.StatusCreated {
+		if u.GetName() == "syncer-test" {
+			if _, ok := u.Object["spec"]; !ok {
+				convert := ""
+				if mediaType.Convert != nil {
+					convert = "set: " + mediaType.Convert.Kind
+				}
+				klog.InfoS("kcp 2278: created syncer-test without spec", "convert", convert)
+			}
+		}
+	}
+	// kcp 2278
+
 	responsewriters.WriteObjectNegotiated(serializer, scope, kind.GroupVersion(), w, req, statusCode, obj)
 }
 

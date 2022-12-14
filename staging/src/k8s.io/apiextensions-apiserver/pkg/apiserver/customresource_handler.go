@@ -378,6 +378,23 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		string(types.MergePatchType),
 	}
 
+	// kcp 2278
+	if crd.Spec.Names.Plural == "deployments" {
+		if verb == "CREATE" {
+			if crdInfo.spec != nil && crdInfo.spec.Versions[0].Schema.OpenAPIV3Schema.Description == "" {
+				_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
+				klog.InfoS("kcp 2278: create deployment with empty crdInfo schema",
+					"cluster", logicalcluster.From(crd),
+					"name", crd.Name,
+					"uid", crd.UID,
+					"hasPartialAnnotation", hasPartialAnnotation,
+					"crdDescription", crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Description,
+				)
+			}
+		}
+	}
+	// kcp 2278
+
 	// HACK: Support resources of the client-go scheme the way existing clients expect it:
 	//   - Support Strategic Merge Patch (used by default on these resources by kubectl)
 	//   - Support the Protobuf content type on Create / Update resources
@@ -739,11 +756,36 @@ func (r *crdHandler) GetCustomResourceListerCollectionDeleter(crd *apiextensions
 func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResourceDefinition) (*crdInfo, error) {
 	storageMap := r.customStorage.Load().(crdStorageMap)
 	if ret, ok := storageMap[crd.UID]; ok {
+		if ret.spec != nil && ret.spec.Names.Plural == "deployments" {
+			if ret.spec.Versions[0].Schema.OpenAPIV3Schema.Description == "" {
+				_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
+				klog.InfoS("kcp 2278: deployments schema has no description",
+					"cluster", logicalcluster.From(crd),
+					"name", crd.Name,
+					"uid", crd.UID,
+					"hasPartialAnnotation", hasPartialAnnotation,
+				)
+			}
+		}
 		return ret, nil
 	}
 
 	r.customStorageLock.Lock()
 	defer r.customStorageLock.Unlock()
+
+	// kcp 2278
+	if crd.Spec.Names.Plural == "deployments" {
+		desc := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Description
+		_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
+		klog.InfoS("kcp 2278: deployments crd pre refresh",
+			"cluster", logicalcluster.From(crd),
+			"name", crd.Name,
+			"uid", crd.UID,
+			"description", desc,
+			"hasPartialAnnotation", hasPartialAnnotation,
+		)
+	}
+	// kcp 2278
 
 	// Get the up-to-date CRD when we have the lock, to avoid racing with updateCustomResourceDefinition.
 	// If updateCustomResourceDefinition sees an update and happens later, the storage will be deleted and
@@ -753,6 +795,20 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 	if err != nil {
 		return nil, err
 	}
+
+	// kcp 2278
+	if crd.Spec.Names.Plural == "deployments" {
+		desc := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Description
+		_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
+		klog.InfoS("kcp 2278: deployments crd post refresh",
+			"cluster", logicalcluster.From(crd),
+			"name", crd.Name,
+			"uid", crd.UID,
+			"description", desc,
+			"hasPartialAnnotation", hasPartialAnnotation,
+		)
+	}
+	// kcp 2278
 
 	storageMap = r.customStorage.Load().(crdStorageMap)
 	if ret, ok := storageMap[crd.UID]; ok {
@@ -1126,6 +1182,18 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 
 	storageMap2[crd.UID] = ret
 	r.customStorage.Store(storageMap2)
+
+	if ret.spec != nil && ret.spec.Names.Plural == "deployments" {
+		if ret.spec.Versions[0].Schema.OpenAPIV3Schema.Description == "" {
+			_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
+			klog.InfoS("kcp 2278: deployments schema has no description",
+				"cluster", logicalcluster.From(crd),
+				"name", crd.Name,
+				"uid", crd.UID,
+				"hasPartialAnnotation", hasPartialAnnotation,
+			)
+		}
+	}
 
 	return ret, nil
 }

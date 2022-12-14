@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metainternalversionscheme "k8s.io/apimachinery/pkg/apis/meta/internalversion/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -216,6 +217,18 @@ func createHandler(r rest.NamedCreater, scope *RequestScope, admit admission.Int
 			return
 		}
 		trace.Step("Object stored in database")
+
+		// kcp 2278 debugging
+		if name == "syncer-test" {
+			u, ok := obj.(*unstructured.Unstructured)
+			if ok {
+				_, ok := u.Object["spec"]
+				if !ok {
+					klog.Errorf("kcp 2278: syncer-test created without spec!")
+				}
+			}
+		}
+		// kcp 2278 debugging
 
 		code := http.StatusCreated
 		status, ok := result.(*metav1.Status)
