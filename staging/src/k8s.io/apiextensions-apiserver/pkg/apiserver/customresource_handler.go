@@ -27,7 +27,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	kcpapiextensionsv1informers "k8s.io/apiextensions-apiserver/pkg/client/kcp/informers/externalversions/apiextensions/v1"
 	kcpapiextensionsv1listers "k8s.io/apiextensions-apiserver/pkg/client/kcp/listers/apiextensions/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -378,22 +377,9 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		string(types.MergePatchType),
 	}
 
-	// kcp 2278
-	if crd.Spec.Names.Plural == "deployments" {
-		if verb == "CREATE" {
-			if crdInfo.spec != nil && crdInfo.spec.Versions[0].Schema.OpenAPIV3Schema.Description == "" {
-				_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
-				klog.InfoS("kcp 2278: create deployment with empty crdInfo schema",
-					"cluster", logicalcluster.From(crd),
-					"name", crd.Name,
-					"uid", crd.UID,
-					"hasPartialAnnotation", hasPartialAnnotation,
-					"crdDescription", crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Description,
-				)
-			}
-		}
+	if verb == "CREATE" {
+		kcp2278LogCRDInfo(crd, crdInfo, "verb=create")
 	}
-	// kcp 2278
 
 	// HACK: Support resources of the client-go scheme the way existing clients expect it:
 	//   - Support Strategic Merge Patch (used by default on these resources by kubectl)
@@ -751,41 +737,43 @@ func (r *crdHandler) GetCustomResourceListerCollectionDeleter(crd *apiextensions
 	return info.storages[info.storageVersion].CustomResource, nil
 }
 
+func kcp2278LogCRDInfo(crd *apiextensionsv1.CustomResourceDefinition, crdInfo *crdInfo, msg string) {
+	if crd.Spec.Names.Plural != "deployments" {
+		return
+	}
+
+	crdInfoDescription := "<unknown>"
+	if crdInfo != nil {
+		crdInfoDescription = crdInfo.spec.Versions[0].Schema.OpenAPIV3Schema.Description
+	}
+
+	crdDescription := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Description
+
+	_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
+	klog.InfoS("kcp 2278",
+		"msg", msg,
+		"cluster", logicalcluster.From(crd),
+		"name", crd.Name,
+		"uid", crd.UID,
+		"hasPartialAnnotation", hasPartialAnnotation,
+		"crdInfoDescription", crdInfoDescription,
+		"crdDescription", crdDescription,
+	)
+}
+
 // getOrCreateServingInfoFor gets the CRD serving info for the given CRD (by its UID) if the key exists in the storage map.
 // Otherwise the function creates CRD serving info.
 func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResourceDefinition) (*crdInfo, error) {
 	storageMap := r.customStorage.Load().(crdStorageMap)
 	if ret, ok := storageMap[crd.UID]; ok {
-		if ret.spec != nil && ret.spec.Names.Plural == "deployments" {
-			if ret.spec.Versions[0].Schema.OpenAPIV3Schema.Description == "" {
-				_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
-				klog.InfoS("kcp 2278: deployments schema has no description",
-					"cluster", logicalcluster.From(crd),
-					"name", crd.Name,
-					"uid", crd.UID,
-					"hasPartialAnnotation", hasPartialAnnotation,
-				)
-			}
-		}
+		kcp2278LogCRDInfo(crd, ret, "found in storageMap pre-lock")
 		return ret, nil
 	}
 
 	r.customStorageLock.Lock()
 	defer r.customStorageLock.Unlock()
 
-	// kcp 2278
-	if crd.Spec.Names.Plural == "deployments" {
-		desc := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Description
-		_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
-		klog.InfoS("kcp 2278: deployments crd pre refresh",
-			"cluster", logicalcluster.From(crd),
-			"name", crd.Name,
-			"uid", crd.UID,
-			"description", desc,
-			"hasPartialAnnotation", hasPartialAnnotation,
-		)
-	}
-	// kcp 2278
+	kcp2278LogCRDInfo(crd, nil, "pre-refresh")
 
 	// Get the up-to-date CRD when we have the lock, to avoid racing with updateCustomResourceDefinition.
 	// If updateCustomResourceDefinition sees an update and happens later, the storage will be deleted and
@@ -796,22 +784,12 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 		return nil, err
 	}
 
-	// kcp 2278
-	if crd.Spec.Names.Plural == "deployments" {
-		desc := crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Description
-		_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
-		klog.InfoS("kcp 2278: deployments crd post refresh",
-			"cluster", logicalcluster.From(crd),
-			"name", crd.Name,
-			"uid", crd.UID,
-			"description", desc,
-			"hasPartialAnnotation", hasPartialAnnotation,
-		)
-	}
-	// kcp 2278
+	kcp2278LogCRDInfo(crd, nil, "post-refresh")
 
 	storageMap = r.customStorage.Load().(crdStorageMap)
 	if ret, ok := storageMap[crd.UID]; ok {
+		kcp2278LogCRDInfo(crd, nil, "found in storageMap post-lock")
+
 		return ret, nil
 	}
 
@@ -1183,17 +1161,7 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 	storageMap2[crd.UID] = ret
 	r.customStorage.Store(storageMap2)
 
-	if ret.spec != nil && ret.spec.Names.Plural == "deployments" {
-		if ret.spec.Versions[0].Schema.OpenAPIV3Schema.Description == "" {
-			_, hasPartialAnnotation := crd.Annotations["crd.kcp.dev/partial-metadata"]
-			klog.InfoS("kcp 2278: deployments schema has no description",
-				"cluster", logicalcluster.From(crd),
-				"name", crd.Name,
-				"uid", crd.UID,
-				"hasPartialAnnotation", hasPartialAnnotation,
-			)
-		}
-	}
+	kcp2278LogCRDInfo(crd, ret, "just stored in storageMap")
 
 	return ret, nil
 }
@@ -1565,14 +1533,6 @@ func (v *unstructuredSchemaCoercer) apply(u *unstructured.Unstructured) (unknown
 
 			unknownFieldPaths = structuralpruning.PruneWithOptions(u.Object, v.structuralSchemas[gv.Version], false, pruneOpts)
 			structuraldefaulting.PruneNonNullableNullsWithoutDefaults(u.Object, v.structuralSchemas[gv.Version])
-
-			// kcp 2278 debugging
-			if objectMeta != nil && objectMeta.Name == "syncer-test" {
-				if _, found := u.Object["spec"]; !found {
-					klog.InfoS("kcp 2278: syncer-test is missing spec", "v.structrualSchemas", spew.Sdump(v.structuralSchemas))
-				}
-			}
-			// kcp 2278 debugging
 		}
 
 		if err := schemaobjectmeta.Coerce(nil, u.Object, v.structuralSchemas[gv.Version], false, v.dropInvalidMetadata); err != nil {
