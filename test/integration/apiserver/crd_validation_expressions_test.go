@@ -255,7 +255,7 @@ func TestCustomResourceValidators(t *testing.T) {
 	})
 	t.Run("CRD writes MUST fail for a non-structural schema containing x-kubernetes-validations", func(t *testing.T) {
 		// The only way for a non-structural schema to exist is for it to already be persisted in etcd as a non-structural CRD.
-		nonStructuralCRD, err := fixtures.CreateCRDUsingRemovedAPI(server.EtcdClient, server.EtcdStoragePrefix, nonStructuralCrdWithValidations(), apiExtensionClient, dynamicClient)
+		nonStructuralCRD, err := fixtures.CreateCRDUsingRemovedAPI(server.StorageClient, server.StoragePrefix, nonStructuralCrdWithValidations(), apiExtensionClient, dynamicClient)
 		if err != nil {
 			t.Fatalf("Unexpected error non-structural CRD by writing directly to etcd: %v", err)
 		}

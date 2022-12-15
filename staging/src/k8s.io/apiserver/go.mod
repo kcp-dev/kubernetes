@@ -7,6 +7,8 @@ go 1.16
 require (
 	cloud.google.com/go v0.81.0 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
+	github.com/cockroachdb/apd v1.1.0
+	github.com/cockroachdb/cockroach-go/v2 v2.2.8
 	github.com/coreos/go-oidc v2.1.0+incompatible
 	github.com/coreos/go-systemd/v22 v22.3.2
 	github.com/davecgh/go-spew v1.1.1
@@ -19,6 +21,10 @@ require (
 	github.com/google/gofuzz v1.1.0
 	github.com/google/uuid v1.1.2
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
+	github.com/jackc/pgconn v1.11.0
+	github.com/jackc/pgerrcode v0.0.0-20201024163028-a0d42d470451
+	github.com/jackc/pgproto3/v2 v2.2.0
+	github.com/jackc/pgx/v4 v4.15.0
 	github.com/kcp-dev/apimachinery v0.0.0-20221102195355-d65878bc16be
 	github.com/kcp-dev/client-go v0.0.0-20221025140308-a18ccea074a6
 	github.com/kcp-dev/logicalcluster/v2 v2.0.0-alpha.1

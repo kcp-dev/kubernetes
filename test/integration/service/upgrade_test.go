@@ -68,8 +68,10 @@ func Test_UpgradeService(t *testing.T) {
 		t.Fatalf("Failed creating service JSON: %v", err)
 	}
 	key := "/" + etcdOptions.Prefix + "/services/specs/" + ns + "/" + serviceName
-	if _, err := s.EtcdClient.Put(context.Background(), key, string(svcJSON)); err != nil {
+	if succeeded, _, err := s.StorageClient.Create(context.Background(), key, svcJSON, 0); err != nil {
 		t.Error(err)
+	} else if !succeeded {
+		t.Error("failed to create service using raw storage client")
 	}
 	t.Logf("Service stored in etcd %v", string(svcJSON))
 

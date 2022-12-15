@@ -32,6 +32,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"k8s.io/apiserver/pkg/storage/generic"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -110,6 +111,15 @@ func newETCD3HealthCheck(c storagebackend.Config) (func() error, error) {
 		}
 		return fmt.Errorf("error getting data from etcd: %v", err)
 	}, nil
+}
+
+func NewETCD3TestClient(c storagebackend.TransportConfig) (generic.TestClient, error) {
+	etcdClient, err := newETCD3Client(c)
+	if err != nil {
+		return nil, err
+	}
+
+	return etcd3.NewTestClient(etcdClient, etcd3.NewDefaultLeaseManagerConfig()), nil
 }
 
 func newETCD3Client(c storagebackend.TransportConfig) (*clientv3.Client, error) {

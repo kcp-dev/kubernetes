@@ -22,12 +22,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
-
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	authauthenticator "k8s.io/apiserver/pkg/authentication/authenticator"
@@ -326,6 +326,9 @@ func DefaultEtcdOptions() *options.EtcdOptions {
 	// prefix code, so please don't change without ensuring
 	// sufficient coverage in other ways.
 	etcdOptions := options.NewEtcdOptions(storagebackend.NewDefaultConfig(uuid.New().String(), nil))
+	if CRDBStorageBackendEnabled() {
+		etcdOptions.StorageConfig.Type = storagebackend.StorageTypeCRDB
+	}
 	etcdOptions.StorageConfig.Transport.ServerList = []string{GetEtcdURL()}
 	return etcdOptions
 }
@@ -340,6 +343,9 @@ func NewControlPlaneConfigWithOptions(opts *ControlPlaneConfigOptions) *controlp
 	etcdOptions := DefaultEtcdOptions()
 	if opts.EtcdOptions != nil {
 		etcdOptions = opts.EtcdOptions
+	}
+	if CRDBStorageBackendEnabled() {
+		etcdOptions.EnableWatchCache = false
 	}
 
 	storageConfig := kubeapiserver.NewStorageFactoryConfig()
@@ -405,6 +411,9 @@ func RunAnAPIServerUsingServer(controlPlaneConfig *controlplane.Config, s *httpt
 // SharedEtcd creates a storage config for a shared etcd instance, with a unique prefix.
 func SharedEtcd() *storagebackend.Config {
 	cfg := storagebackend.NewDefaultConfig(path.Join(uuid.New().String(), "registry"), nil)
+	if CRDBStorageBackendEnabled() {
+		cfg.Type = storagebackend.StorageTypeCRDB
+	}
 	cfg.Transport.ServerList = []string{GetEtcdURL()}
 	return cfg
 }
@@ -424,4 +433,8 @@ func (fakeLocalhost443Listener) Addr() net.Addr {
 		IP:   net.IPv4(127, 0, 0, 1),
 		Port: 443,
 	}
+}
+
+func CRDBStorageBackendEnabled() bool {
+	return os.Getenv("KUBE_INTEGRATION_STORAGE_BACKEND") == "crdb"
 }

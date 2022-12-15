@@ -47,6 +47,7 @@ import (
 	cacherstorage "k8s.io/apiserver/pkg/storage/cacher"
 	"k8s.io/apiserver/pkg/storage/etcd3"
 	etcd3testing "k8s.io/apiserver/pkg/storage/etcd3/testing"
+	"k8s.io/apiserver/pkg/storage/generic"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	storagetesting "k8s.io/apiserver/pkg/storage/testing"
 	"k8s.io/apiserver/pkg/storage/value"
@@ -118,7 +119,7 @@ func newTestCacher(s storage.Interface) (*cacherstorage.Cacher, storage.Versione
 
 func newTestCacherWithClock(s storage.Interface, clock clock.Clock) (*cacherstorage.Cacher, storage.Versioner, error) {
 	prefix := "pods"
-	v := etcd3.APIObjectVersioner{}
+	v := generic.APIObjectVersioner{}
 	config := cacherstorage.Config{
 		Storage:        s,
 		Versioner:      v,

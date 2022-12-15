@@ -26,9 +26,11 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/klog/v2"
-
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"k8s.io/apiserver/pkg/storage/generic"
+	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/test/integration"
+
 	"k8s.io/component-base/metrics/legacyregistry"
 	"sigs.k8s.io/yaml"
 
@@ -39,7 +41,6 @@ import (
 	"k8s.io/apiserver/pkg/storage/value"
 	"k8s.io/client-go/kubernetes"
 	kubeapiservertesting "k8s.io/kubernetes/cmd/kube-apiserver/app/testing"
-	"k8s.io/kubernetes/test/integration"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
@@ -108,7 +109,7 @@ func (e *transformTest) cleanUp() {
 }
 
 func (e *transformTest) run(unSealSecretFunc unSealSecret, expectedEnvelopePrefix string) {
-	response, err := e.readRawRecordFromETCD(e.getETCDPath())
+	response, err := e.readRawRecordFromStorage(e.getStoragePath())
 	if err != nil {
 		e.logger.Errorf("failed to read from etcd: %v", err)
 		return
@@ -122,7 +123,7 @@ func (e *transformTest) run(unSealSecretFunc unSealSecret, expectedEnvelopePrefi
 
 	// etcd path of the key is used as the authenticated context - need to pass it to decrypt
 	ctx := context.Background()
-	dataCtx := value.DefaultContext([]byte(e.getETCDPath()))
+	dataCtx := value.DefaultContext([]byte(e.getStoragePath()))
 	// Envelope header precedes the cipherTextPayload
 	sealedData := response.Kvs[0].Value[len(expectedEnvelopePrefix):]
 	transformerConfig, err := e.getEncryptionConfig()
@@ -157,15 +158,15 @@ func (e *transformTest) benchmark(b *testing.B) {
 	}
 }
 
-func (e *transformTest) getETCDPath() string {
+func (e *transformTest) getStoragePath() string {
 	return fmt.Sprintf("/%s/secrets/%s/%s", e.storageConfig.Prefix, e.ns.Name, e.secret.Name)
 }
 
-func (e *transformTest) getRawSecretFromETCD() ([]byte, error) {
-	secretETCDPath := e.getETCDPath()
-	etcdResponse, err := e.readRawRecordFromETCD(secretETCDPath)
+func (e *transformTest) getRawSecretFromStorage() ([]byte, error) {
+	secretPath := e.getStoragePath()
+	etcdResponse, err := e.readRawRecordFromStorage(secretPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %s from etcd: %v", secretETCDPath, err)
+		return nil, fmt.Errorf("failed to read %s from storage: %v", secretPath, err)
 	}
 	return etcdResponse.Kvs[0].Value, nil
 }
@@ -235,14 +236,14 @@ func (e *transformTest) createSecret(name, namespace string) (*corev1.Secret, er
 	return secret, nil
 }
 
-func (e *transformTest) readRawRecordFromETCD(path string) (*clientv3.GetResponse, error) {
-	_, etcdClient, err := integration.GetEtcdClients(e.kubeAPIServer.ServerOpts.Etcd.StorageConfig.Transport)
+func (e *transformTest) readRawRecordFromStorage(path string) (*generic.Response, error) {
+	client, err := kubeapiservertesting.GetClient(&e.kubeAPIServer.ServerOpts.Etcd.StorageConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create etcd client: %v", err)
+		return nil, fmt.Errorf("failed to create storage client: %v", err)
 	}
-	response, err := etcdClient.Get(context.Background(), path, clientv3.WithPrefix())
+	response, err := client.Get(context.Background(), path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve secret from etcd %v", err)
+		return nil, fmt.Errorf("failed to retrieve secret from storage %v", err)
 	}
 
 	return response, nil
