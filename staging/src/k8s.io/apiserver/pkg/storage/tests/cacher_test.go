@@ -47,6 +47,7 @@ import (
 	cacherstorage "k8s.io/apiserver/pkg/storage/cacher"
 	"k8s.io/apiserver/pkg/storage/etcd3"
 	etcd3testing "k8s.io/apiserver/pkg/storage/etcd3/testing"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
 	storagetesting "k8s.io/apiserver/pkg/storage/testing"
 	"k8s.io/apiserver/pkg/storage/value/encrypt/identity"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -123,12 +124,14 @@ func newTestCacherWithClock(s storage.Interface, clock clock.Clock) (*cacherstor
 		Versioner:      v,
 		GroupResource:  schema.GroupResource{Resource: "pods"},
 		ResourcePrefix: prefix,
-		KeyFunc:        func(obj runtime.Object) (string, error) { return storage.NamespaceKeyFunc(prefix, obj) },
-		GetAttrsFunc:   GetPodAttrs,
-		NewFunc:        newPod,
-		NewListFunc:    newPodList,
-		Codec:          codecs.LegacyCodec(examplev1.SchemeGroupVersion),
-		Clock:          clock,
+		KeyFunc: func(ctx context.Context, obj runtime.Object) (string, error) {
+			return storage.NamespaceKeyFunc(prefix, obj)
+		},
+		GetAttrsFunc: GetPodAttrs,
+		NewFunc:      newPod,
+		NewListFunc:  newPodList,
+		Codec:        codecs.LegacyCodec(examplev1.SchemeGroupVersion),
+		Clock:        clock,
 	}
 	cacher, err := cacherstorage.NewCacherFromConfig(config)
 	return cacher, v, err
@@ -668,7 +671,7 @@ func TestCacherListerWatcher(t *testing.T) {
 	_ = updatePod(t, store, podBar, nil)
 	_ = updatePod(t, store, podBaz, nil)
 
-	lw := cacherstorage.NewCacherListerWatcher(store, prefix, fn)
+	lw := cacherstorage.NewCacherListerWatcher(store, prefix, fn, &storagebackend.KcpStorageMetadata{})
 
 	obj, err := lw.List(metav1.ListOptions{})
 	if err != nil {
@@ -697,7 +700,7 @@ func TestCacherListerWatcherPagination(t *testing.T) {
 	_ = updatePod(t, store, podBar, nil)
 	_ = updatePod(t, store, podBaz, nil)
 
-	lw := cacherstorage.NewCacherListerWatcher(store, prefix, fn)
+	lw := cacherstorage.NewCacherListerWatcher(store, prefix, fn, &storagebackend.KcpStorageMetadata{})
 
 	obj1, err := lw.List(metav1.ListOptions{Limit: 2})
 	if err != nil {
@@ -890,7 +893,7 @@ type tearDownFunc func()
 
 type setupOptions struct {
 	resourcePrefix string
-	keyFunc        func(runtime.Object) (string, error)
+	keyFunc        func(context.Context, runtime.Object) (string, error)
 	clock          clock.Clock
 }
 
@@ -900,7 +903,9 @@ func withDefaults(options *setupOptions) {
 	prefix := "/pods"
 
 	options.resourcePrefix = prefix
-	options.keyFunc = func(obj runtime.Object) (string, error) { return storage.NamespaceKeyFunc(prefix, obj) }
+	options.keyFunc = func(ctx context.Context, obj runtime.Object) (string, error) {
+		return storage.NamespaceKeyFunc(prefix, obj)
+	}
 	options.clock = clock.RealClock{}
 }
 

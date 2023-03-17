@@ -21,6 +21,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster/v3"
+
+	kcpcache "github.com/kcp-dev/apimachinery/v2/pkg/cache"
+	kcpapiextensionsv1client "k8s.io/apiextensions-apiserver/pkg/client/kcp/clientset/versioned/typed/apiextensions/v1"
+	kcpapiextensionsv1informers "k8s.io/apiextensions-apiserver/pkg/client/kcp/informers/externalversions/apiextensions/v1"
+	kcpapiextensionsv1listers "k8s.io/apiextensions-apiserver/pkg/client/kcp/listers/apiextensions/v1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -31,15 +38,12 @@ import (
 
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	client "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
-	informers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/apiextensions/v1"
-	listers "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
 )
 
 // EstablishingController controls how and when CRD is established.
 type EstablishingController struct {
-	crdClient client.CustomResourceDefinitionsGetter
-	crdLister listers.CustomResourceDefinitionLister
+	crdClient kcpapiextensionsv1client.CustomResourceDefinitionsClusterGetter
+	crdLister kcpapiextensionsv1listers.CustomResourceDefinitionClusterLister
 	crdSynced cache.InformerSynced
 
 	// To allow injection for testing.
@@ -49,8 +53,8 @@ type EstablishingController struct {
 }
 
 // NewEstablishingController creates new EstablishingController.
-func NewEstablishingController(crdInformer informers.CustomResourceDefinitionInformer,
-	crdClient client.CustomResourceDefinitionsGetter) *EstablishingController {
+func NewEstablishingController(crdInformer kcpapiextensionsv1informers.CustomResourceDefinitionClusterInformer,
+	crdClient kcpapiextensionsv1client.CustomResourceDefinitionsClusterGetter) *EstablishingController {
 	ec := &EstablishingController{
 		crdClient: crdClient,
 		crdLister: crdInformer.Lister(),
@@ -64,8 +68,8 @@ func NewEstablishingController(crdInformer informers.CustomResourceDefinitionInf
 }
 
 // QueueCRD adds CRD into the establishing queue.
-func (ec *EstablishingController) QueueCRD(key string, timeout time.Duration) {
-	ec.queue.AddAfter(key, timeout)
+func (ec *EstablishingController) QueueCRD(name string, clusterName logicalcluster.Name, timeout time.Duration) {
+	ec.queue.AddAfter(kcpcache.ToClusterAwareKey(clusterName.String(), "", name), timeout)
 }
 
 // Run starts the EstablishingController.
@@ -114,7 +118,12 @@ func (ec *EstablishingController) processNextWorkItem() bool {
 
 // sync is used to turn CRDs into the Established state.
 func (ec *EstablishingController) sync(key string) error {
-	cachedCRD, err := ec.crdLister.Get(key)
+	clusterName, _, name, err := kcpcache.SplitMetaClusterNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return nil
+	}
+	cachedCRD, err := ec.crdLister.Cluster(clusterName).Get(name)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -137,7 +146,7 @@ func (ec *EstablishingController) sync(key string) error {
 	apiextensionshelpers.SetCRDCondition(crd, establishedCondition)
 
 	// Update server with new CRD condition.
-	_, err = ec.crdClient.CustomResourceDefinitions().UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{})
+	_, err = ec.crdClient.CustomResourceDefinitions().Cluster(clusterName.Path()).UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{})
 	if apierrors.IsNotFound(err) || apierrors.IsConflict(err) {
 		// deleted or changed in the meantime, we'll get called again
 		return nil

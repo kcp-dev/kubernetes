@@ -2320,11 +2320,13 @@ func newTestGenericStoreRegistry(t *testing.T, scheme *runtime.Scheme, hasCacheE
 			Versioner:      storage.APIObjectVersioner{},
 			GroupResource:  schema.GroupResource{Resource: "pods"},
 			ResourcePrefix: podPrefix,
-			KeyFunc:        func(obj runtime.Object) (string, error) { return storage.NoNamespaceKeyFunc(podPrefix, obj) },
-			GetAttrsFunc:   getPodAttrs,
-			NewFunc:        newFunc,
-			NewListFunc:    newListFunc,
-			Codec:          sc.Codec,
+			KeyFunc: func(ctx context.Context, obj runtime.Object) (string, error) {
+				return storage.NoNamespaceKeyFunc(podPrefix, obj)
+			},
+			GetAttrsFunc: getPodAttrs,
+			NewFunc:      newFunc,
+			NewListFunc:  newListFunc,
+			Codec:        sc.Codec,
 		}
 		cacher, err := cacherstorage.NewCacherFromConfig(config)
 		if err != nil {

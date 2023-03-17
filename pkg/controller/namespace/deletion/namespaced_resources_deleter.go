@@ -23,6 +23,9 @@ import (
 	"sync"
 	"time"
 
+	kcpcorev1client "github.com/kcp-dev/client-go/kubernetes/typed/core/v1"
+	kcpmetadata "github.com/kcp-dev/client-go/metadata"
+	"github.com/kcp-dev/logicalcluster/v3"
 	"k8s.io/klog/v2"
 
 	v1 "k8s.io/api/core/v1"
@@ -33,31 +36,26 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/discovery"
-	v1clientset "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/metadata"
 )
 
 // NamespacedResourcesDeleterInterface is the interface to delete a namespace with all resources in it.
 type NamespacedResourcesDeleterInterface interface {
-	Delete(nsName string) error
+	Delete(clusterName logicalcluster.Name, nsName string) error
 }
 
 // NewNamespacedResourcesDeleter returns a new NamespacedResourcesDeleter.
-func NewNamespacedResourcesDeleter(nsClient v1clientset.NamespaceInterface,
-	metadataClient metadata.Interface, podsGetter v1clientset.PodsGetter,
-	discoverResourcesFn func() ([]*metav1.APIResourceList, error),
+func NewNamespacedResourcesDeleter(nsClient kcpcorev1client.NamespaceClusterInterface,
+	metadataClient kcpmetadata.ClusterInterface, podsGetter kcpcorev1client.PodsClusterGetter,
+	discoverResourcesFn func(clusterName logicalcluster.Path) ([]*metav1.APIResourceList, error),
 	finalizerToken v1.FinalizerName) NamespacedResourcesDeleterInterface {
 	d := &namespacedResourcesDeleter{
-		nsClient:       nsClient,
-		metadataClient: metadataClient,
-		podsGetter:     podsGetter,
-		opCache: &operationNotSupportedCache{
-			m: make(map[operationKey]bool),
-		},
+		nsClient:            nsClient,
+		metadataClient:      metadataClient,
+		podsGetter:          podsGetter,
+		opCaches:            map[logicalcluster.Name]*operationNotSupportedCache{},
 		discoverResourcesFn: discoverResourcesFn,
 		finalizerToken:      finalizerToken,
 	}
-	d.initOpCache()
 	return d
 }
 
@@ -66,14 +64,16 @@ var _ NamespacedResourcesDeleterInterface = &namespacedResourcesDeleter{}
 // namespacedResourcesDeleter is used to delete all resources in a given namespace.
 type namespacedResourcesDeleter struct {
 	// Client to manipulate the namespace.
-	nsClient v1clientset.NamespaceInterface
+	nsClient kcpcorev1client.NamespaceClusterInterface
 	// Dynamic client to list and delete all namespaced resources.
-	metadataClient metadata.Interface
+	metadataClient kcpmetadata.ClusterInterface
 	// Interface to get PodInterface.
-	podsGetter v1clientset.PodsGetter
+	podsGetter kcpcorev1client.PodsClusterGetter
 	// Cache of what operations are not supported on each group version resource.
-	opCache             *operationNotSupportedCache
-	discoverResourcesFn func() ([]*metav1.APIResourceList, error)
+	opCaches      map[logicalcluster.Name]*operationNotSupportedCache
+	opCachesMutex sync.RWMutex
+
+	discoverResourcesFn func(clusterName logicalcluster.Path) ([]*metav1.APIResourceList, error)
 	// The finalizer token that should be removed from the namespace
 	// when all resources in that namespace have been deleted.
 	finalizerToken v1.FinalizerName
@@ -93,11 +93,11 @@ type namespacedResourcesDeleter struct {
 // Returns ResourcesRemainingError if it deleted some resources but needs
 // to wait for them to go away.
 // Caller is expected to keep calling this until it succeeds.
-func (d *namespacedResourcesDeleter) Delete(nsName string) error {
+func (d *namespacedResourcesDeleter) Delete(clusterName logicalcluster.Name, nsName string) error {
 	// Multiple controllers may edit a namespace during termination
 	// first get the latest state of the namespace before proceeding
 	// if the namespace was deleted already, don't do anything
-	namespace, err := d.nsClient.Get(context.TODO(), nsName, metav1.GetOptions{})
+	namespace, err := d.nsClient.Cluster(clusterName.Path()).Get(context.TODO(), nsName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
@@ -153,16 +153,16 @@ func (d *namespacedResourcesDeleter) Delete(nsName string) error {
 	return nil
 }
 
-func (d *namespacedResourcesDeleter) initOpCache() {
+func (d *namespacedResourcesDeleter) initOpCache(clusterName logicalcluster.Name) error {
 	// pre-fill opCache with the discovery info
 	//
 	// TODO(sttts): get rid of opCache and http 405 logic around it and trust discovery info
-	resources, err := d.discoverResourcesFn()
+	resources, err := d.discoverResourcesFn(clusterName.Path())
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("unable to get all supported resources from server: %v", err))
 	}
 	if len(resources) == 0 {
-		klog.Fatalf("Unable to get any supported resources from server: %v", err)
+		return fmt.Errorf("unable to get any supported resources from server: %v", err)
 	}
 
 	for _, rl := range resources {
@@ -182,11 +182,12 @@ func (d *namespacedResourcesDeleter) initOpCache() {
 
 			for _, op := range []operation{operationList, operationDeleteCollection} {
 				if !verbs.Has(string(op)) {
-					d.opCache.setNotSupported(operationKey{operation: op, gvr: gvr})
+					d.opCaches[clusterName].setNotSupported(operationKey{operation: op, gvr: gvr})
 				}
 			}
 		}
 	}
+	return nil
 }
 
 // ResourcesRemainingError is used to inform the caller that all resources are not yet fully removed from the namespace.
@@ -234,6 +235,41 @@ func (o *operationNotSupportedCache) setNotSupported(key operationKey) {
 	o.m[key] = true
 }
 
+// isSupported returns true if the operation is supported
+func (d *namespacedResourcesDeleter) isSupported(clusterName logicalcluster.Name, key operationKey) (bool, error) {
+	// Quick read-only check to see if the cache already exists
+	d.opCachesMutex.RLock()
+	cache, exists := d.opCaches[clusterName]
+	d.opCachesMutex.RUnlock()
+
+	if exists {
+		return cache.isSupported(key), nil
+	}
+
+	// Doesn't exist - may need to create
+	d.opCachesMutex.Lock()
+	defer d.opCachesMutex.Unlock()
+
+	// Check again, with the write lock held, to see if it exists. It's possible another goroutine set it in between
+	// when we checked with the read lock held, and now.
+	cache, exists = d.opCaches[clusterName]
+	if exists {
+		return cache.isSupported(key), nil
+	}
+
+	// Definitely doesn't exist - need to create it.
+	cache = &operationNotSupportedCache{
+		m: make(map[operationKey]bool),
+	}
+	d.opCaches[clusterName] = cache
+
+	if err := d.initOpCache(clusterName); err != nil {
+		return false, err
+	}
+
+	return cache.isSupported(key), nil
+}
+
 // updateNamespaceFunc is a function that makes an update to a namespace
 type updateNamespaceFunc func(namespace *v1.Namespace) (*v1.Namespace, error)
 
@@ -251,7 +287,7 @@ func (d *namespacedResourcesDeleter) retryOnConflictError(namespace *v1.Namespac
 			return nil, err
 		}
 		prevNamespace := latestNamespace
-		latestNamespace, err = d.nsClient.Get(context.TODO(), latestNamespace.Name, metav1.GetOptions{})
+		latestNamespace, err = d.nsClient.Cluster(logicalcluster.From(latestNamespace).Path()).Get(context.TODO(), latestNamespace.Name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -268,7 +304,7 @@ func (d *namespacedResourcesDeleter) updateNamespaceStatusFunc(namespace *v1.Nam
 	}
 	newNamespace := namespace.DeepCopy()
 	newNamespace.Status.Phase = v1.NamespaceTerminating
-	return d.nsClient.UpdateStatus(context.TODO(), newNamespace, metav1.UpdateOptions{})
+	return d.nsClient.Cluster(logicalcluster.From(namespace).Path()).UpdateStatus(context.TODO(), newNamespace, metav1.UpdateOptions{})
 }
 
 // finalized returns true if the namespace.Spec.Finalizers is an empty list
@@ -291,7 +327,7 @@ func (d *namespacedResourcesDeleter) finalizeNamespace(namespace *v1.Namespace) 
 	for _, value := range finalizerSet.List() {
 		namespaceFinalize.Spec.Finalizers = append(namespaceFinalize.Spec.Finalizers, v1.FinalizerName(value))
 	}
-	namespace, err := d.nsClient.Finalize(context.Background(), &namespaceFinalize, metav1.UpdateOptions{})
+	namespace, err := d.nsClient.Cluster(logicalcluster.From(namespace).Path()).Finalize(context.Background(), &namespaceFinalize, metav1.UpdateOptions{})
 	if err != nil {
 		// it was removed already, so life is good
 		if errors.IsNotFound(err) {
@@ -304,11 +340,13 @@ func (d *namespacedResourcesDeleter) finalizeNamespace(namespace *v1.Namespace) 
 // deleteCollection is a helper function that will delete the collection of resources
 // it returns true if the operation was supported on the server.
 // it returns an error if the operation was supported on the server but was unable to complete.
-func (d *namespacedResourcesDeleter) deleteCollection(gvr schema.GroupVersionResource, namespace string) (bool, error) {
+func (d *namespacedResourcesDeleter) deleteCollection(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, namespace string) (bool, error) {
 	klog.V(5).Infof("namespace controller - deleteCollection - namespace: %s, gvr: %v", namespace, gvr)
 
 	key := operationKey{operation: operationDeleteCollection, gvr: gvr}
-	if !d.opCache.isSupported(key) {
+	if supported, err := d.isSupported(clusterName, key); err != nil {
+		return false, err
+	} else if !supported {
 		klog.V(5).Infof("namespace controller - deleteCollection ignored since not supported - namespace: %s, gvr: %v", namespace, gvr)
 		return false, nil
 	}
@@ -318,7 +356,7 @@ func (d *namespacedResourcesDeleter) deleteCollection(gvr schema.GroupVersionRes
 	// namespace itself.
 	background := metav1.DeletePropagationBackground
 	opts := metav1.DeleteOptions{PropagationPolicy: &background}
-	err := d.metadataClient.Resource(gvr).Namespace(namespace).DeleteCollection(context.TODO(), opts, metav1.ListOptions{})
+	err := d.metadataClient.Cluster(clusterName.Path()).Resource(gvr).Namespace(namespace).DeleteCollection(context.TODO(), opts, metav1.ListOptions{})
 
 	if err == nil {
 		return true, nil
@@ -344,16 +382,18 @@ func (d *namespacedResourcesDeleter) deleteCollection(gvr schema.GroupVersionRes
 //	the list of items in the collection (if found)
 //	a boolean if the operation is supported
 //	an error if the operation is supported but could not be completed.
-func (d *namespacedResourcesDeleter) listCollection(gvr schema.GroupVersionResource, namespace string) (*metav1.PartialObjectMetadataList, bool, error) {
+func (d *namespacedResourcesDeleter) listCollection(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, namespace string) (*metav1.PartialObjectMetadataList, bool, error) {
 	klog.V(5).Infof("namespace controller - listCollection - namespace: %s, gvr: %v", namespace, gvr)
 
 	key := operationKey{operation: operationList, gvr: gvr}
-	if !d.opCache.isSupported(key) {
+	if supported, err := d.isSupported(clusterName, key); err != nil {
+		return nil, false, err
+	} else if !supported {
 		klog.V(5).Infof("namespace controller - listCollection ignored since not supported - namespace: %s, gvr: %v", namespace, gvr)
 		return nil, false, nil
 	}
 
-	partialList, err := d.metadataClient.Resource(gvr).Namespace(namespace).List(context.TODO(), metav1.ListOptions{})
+	partialList, err := d.metadataClient.Cluster(clusterName.Path()).Resource(gvr).Namespace(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err == nil {
 		return partialList, true, nil
 	}
@@ -372,10 +412,10 @@ func (d *namespacedResourcesDeleter) listCollection(gvr schema.GroupVersionResou
 }
 
 // deleteEachItem is a helper function that will list the collection of resources and delete each item 1 by 1.
-func (d *namespacedResourcesDeleter) deleteEachItem(gvr schema.GroupVersionResource, namespace string) error {
+func (d *namespacedResourcesDeleter) deleteEachItem(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, namespace string) error {
 	klog.V(5).Infof("namespace controller - deleteEachItem - namespace: %s, gvr: %v", namespace, gvr)
 
-	unstructuredList, listSupported, err := d.listCollection(gvr, namespace)
+	unstructuredList, listSupported, err := d.listCollection(clusterName, gvr, namespace)
 	if err != nil {
 		return err
 	}
@@ -385,7 +425,7 @@ func (d *namespacedResourcesDeleter) deleteEachItem(gvr schema.GroupVersionResou
 	for _, item := range unstructuredList.Items {
 		background := metav1.DeletePropagationBackground
 		opts := metav1.DeleteOptions{PropagationPolicy: &background}
-		if err = d.metadataClient.Resource(gvr).Namespace(namespace).Delete(context.TODO(), item.GetName(), opts); err != nil && !errors.IsNotFound(err) && !errors.IsMethodNotSupported(err) {
+		if err = d.metadataClient.Cluster(clusterName.Path()).Resource(gvr).Namespace(namespace).Delete(context.TODO(), item.GetName(), opts); err != nil && !errors.IsNotFound(err) && !errors.IsMethodNotSupported(err) {
 			return err
 		}
 	}
@@ -406,12 +446,13 @@ type gvrDeletionMetadata struct {
 // It returns an estimate of the time remaining before the remaining resources are deleted.
 // If estimate > 0, not all resources are guaranteed to be gone.
 func (d *namespacedResourcesDeleter) deleteAllContentForGroupVersionResource(
+	clusterName logicalcluster.Name,
 	gvr schema.GroupVersionResource, namespace string,
 	namespaceDeletedAt metav1.Time) (gvrDeletionMetadata, error) {
 	klog.V(5).Infof("namespace controller - deleteAllContentForGroupVersionResource - namespace: %s, gvr: %v", namespace, gvr)
 
 	// estimate how long it will take for the resource to be deleted (needed for objects that support graceful delete)
-	estimate, err := d.estimateGracefulTermination(gvr, namespace, namespaceDeletedAt)
+	estimate, err := d.estimateGracefulTermination(clusterName, gvr, namespace, namespaceDeletedAt)
 	if err != nil {
 		klog.V(5).Infof("namespace controller - deleteAllContentForGroupVersionResource - unable to estimate - namespace: %s, gvr: %v, err: %v", namespace, gvr, err)
 		return gvrDeletionMetadata{}, err
@@ -419,14 +460,14 @@ func (d *namespacedResourcesDeleter) deleteAllContentForGroupVersionResource(
 	klog.V(5).Infof("namespace controller - deleteAllContentForGroupVersionResource - estimate - namespace: %s, gvr: %v, estimate: %v", namespace, gvr, estimate)
 
 	// first try to delete the entire collection
-	deleteCollectionSupported, err := d.deleteCollection(gvr, namespace)
+	deleteCollectionSupported, err := d.deleteCollection(clusterName, gvr, namespace)
 	if err != nil {
 		return gvrDeletionMetadata{finalizerEstimateSeconds: estimate}, err
 	}
 
 	// delete collection was not supported, so we list and delete each item...
 	if !deleteCollectionSupported {
-		err = d.deleteEachItem(gvr, namespace)
+		err = d.deleteEachItem(clusterName, gvr, namespace)
 		if err != nil {
 			return gvrDeletionMetadata{finalizerEstimateSeconds: estimate}, err
 		}
@@ -435,7 +476,7 @@ func (d *namespacedResourcesDeleter) deleteAllContentForGroupVersionResource(
 	// verify there are no more remaining items
 	// it is not an error condition for there to be remaining items if local estimate is non-zero
 	klog.V(5).Infof("namespace controller - deleteAllContentForGroupVersionResource - checking for no more items in namespace: %s, gvr: %v", namespace, gvr)
-	unstructuredList, listSupported, err := d.listCollection(gvr, namespace)
+	unstructuredList, listSupported, err := d.listCollection(clusterName, gvr, namespace)
 	if err != nil {
 		klog.V(5).Infof("namespace controller - deleteAllContentForGroupVersionResource - error verifying no items in namespace: %s, gvr: %v, err: %v", namespace, gvr, err)
 		return gvrDeletionMetadata{finalizerEstimateSeconds: estimate}, err
@@ -501,7 +542,7 @@ func (d *namespacedResourcesDeleter) deleteAllContent(ns *v1.Namespace) (int64, 
 	estimate := int64(0)
 	klog.V(4).Infof("namespace controller - deleteAllContent - namespace: %s", namespace)
 
-	resources, err := d.discoverResourcesFn()
+	resources, err := d.discoverResourcesFn(logicalcluster.From(ns).Path())
 	if err != nil {
 		// discovery errors are not fatal.  We often have some set of resources we can operate against even if we don't have a complete list
 		errs = append(errs, err)
@@ -521,7 +562,7 @@ func (d *namespacedResourcesDeleter) deleteAllContent(ns *v1.Namespace) (int64, 
 		finalizersToNumRemaining: map[string]int{},
 	}
 	for gvr := range groupVersionResources {
-		gvrDeletionMetadata, err := d.deleteAllContentForGroupVersionResource(gvr, namespace, namespaceDeletedAt)
+		gvrDeletionMetadata, err := d.deleteAllContentForGroupVersionResource(logicalcluster.From(ns), gvr, namespace, namespaceDeletedAt)
 		if err != nil {
 			// If there is an error, hold on to it but proceed with all the remaining
 			// groupVersionResources.
@@ -547,7 +588,7 @@ func (d *namespacedResourcesDeleter) deleteAllContent(ns *v1.Namespace) (int64, 
 	// we need to reflect that information.  Recall that additional finalizers can be set on namespaces, so this finalizer may clear itself and
 	// NOT remove the resource instance.
 	if hasChanged := conditionUpdater.Update(ns); hasChanged {
-		if _, err = d.nsClient.UpdateStatus(context.TODO(), ns, metav1.UpdateOptions{}); err != nil {
+		if _, err = d.nsClient.Cluster(logicalcluster.From(ns).Path()).UpdateStatus(context.TODO(), ns, metav1.UpdateOptions{}); err != nil {
 			utilruntime.HandleError(fmt.Errorf("couldn't update status condition for namespace %q: %v", namespace, err))
 		}
 	}
@@ -558,14 +599,14 @@ func (d *namespacedResourcesDeleter) deleteAllContent(ns *v1.Namespace) (int64, 
 }
 
 // estimateGracefulTermination will estimate the graceful termination required for the specific entity in the namespace
-func (d *namespacedResourcesDeleter) estimateGracefulTermination(gvr schema.GroupVersionResource, ns string, namespaceDeletedAt metav1.Time) (int64, error) {
+func (d *namespacedResourcesDeleter) estimateGracefulTermination(clusterName logicalcluster.Name, gvr schema.GroupVersionResource, ns string, namespaceDeletedAt metav1.Time) (int64, error) {
 	groupResource := gvr.GroupResource()
 	klog.V(5).Infof("namespace controller - estimateGracefulTermination - group %s, resource: %s", groupResource.Group, groupResource.Resource)
 	estimate := int64(0)
 	var err error
 	switch groupResource {
 	case schema.GroupResource{Group: "", Resource: "pods"}:
-		estimate, err = d.estimateGracefulTerminationForPods(ns)
+		estimate, err = d.estimateGracefulTerminationForPods(clusterName, ns)
 	}
 	if err != nil {
 		return 0, err
@@ -580,14 +621,14 @@ func (d *namespacedResourcesDeleter) estimateGracefulTermination(gvr schema.Grou
 }
 
 // estimateGracefulTerminationForPods determines the graceful termination period for pods in the namespace
-func (d *namespacedResourcesDeleter) estimateGracefulTerminationForPods(ns string) (int64, error) {
+func (d *namespacedResourcesDeleter) estimateGracefulTerminationForPods(clusterName logicalcluster.Name, ns string) (int64, error) {
 	klog.V(5).Infof("namespace controller - estimateGracefulTerminationForPods - namespace %s", ns)
 	estimate := int64(0)
 	podsGetter := d.podsGetter
 	if podsGetter == nil || reflect.ValueOf(podsGetter).IsNil() {
 		return 0, fmt.Errorf("unexpected: podsGetter is nil. Cannot estimate grace period seconds for pods")
 	}
-	items, err := podsGetter.Pods(ns).List(context.TODO(), metav1.ListOptions{})
+	items, err := podsGetter.Pods().Cluster(clusterName.Path()).Namespace(ns).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return 0, err
 	}

@@ -753,7 +753,7 @@ function codegen::subprojects() {
         vendor/k8s.io/apiextensions-apiserver/examples/client-go/hack/update-codegen.sh
     )
 
-    for s in "${subs[@]}"; do 
+    for s in "${subs[@]}"; do
         CODEGEN_PKG=./vendor/k8s.io/code-generator "$s"
     done
 }

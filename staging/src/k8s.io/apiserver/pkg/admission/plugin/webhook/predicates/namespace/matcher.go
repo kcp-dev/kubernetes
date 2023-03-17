@@ -20,14 +20,14 @@ import (
 	"context"
 	"fmt"
 
+	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
+	kcpcorev1listers "github.com/kcp-dev/client-go/listers/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/admission"
-	clientset "k8s.io/client-go/kubernetes"
-	corelisters "k8s.io/client-go/listers/core/v1"
 )
 
 type NamespaceSelectorProvider interface {
@@ -38,8 +38,8 @@ type NamespaceSelectorProvider interface {
 // Matcher decides if a request is exempted by the NamespaceSelector of a
 // webhook configuration.
 type Matcher struct {
-	NamespaceLister corelisters.NamespaceLister
-	Client          clientset.Interface
+	NamespaceLister kcpcorev1listers.NamespaceClusterLister
+	Client          kcpkubernetesclientset.ClusterInterface
 }
 
 // Validate checks if the Matcher has a NamespaceLister and Client.
@@ -75,13 +75,13 @@ func (m *Matcher) GetNamespaceLabels(attr admission.Attributes) (map[string]stri
 	}
 
 	namespaceName := attr.GetNamespace()
-	namespace, err := m.NamespaceLister.Get(namespaceName)
+	namespace, err := m.NamespaceLister.Cluster(attr.GetCluster()).Get(namespaceName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return nil, err
 	}
 	if apierrors.IsNotFound(err) {
 		// in case of latency in our caches, make a call direct to storage to verify that it truly exists or not
-		namespace, err = m.Client.CoreV1().Namespaces().Get(context.TODO(), namespaceName, metav1.GetOptions{})
+		namespace, err = m.Client.Cluster(attr.GetCluster().Path()).CoreV1().Namespaces().Get(context.TODO(), namespaceName, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
