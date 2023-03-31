@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/emicklei/go-restful"
+	"github.com/emicklei/go-restful/v3"
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	"k8s.io/apiextensions-apiserver/pkg/controller/openapi/builder"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -172,7 +172,7 @@ func (s *MiniAggregatorServer) filterAPIsRequest(req *restful.Request, resp *res
 	i += copy(combined[i:], apiextensionsGroups)
 	i += copy(combined[i:], crdGroups)
 
-	responsewriters.WriteObjectNegotiated(DiscoveryCodecs, negotiation.DefaultEndpointRestrictions, schema.GroupVersion{}, resp.ResponseWriter, req.Request, http.StatusOK, &metav1.APIGroupList{Groups: combined})
+	responsewriters.WriteObjectNegotiated(DiscoveryCodecs, negotiation.DefaultEndpointRestrictions, schema.GroupVersion{}, resp.ResponseWriter, req.Request, http.StatusOK, &metav1.APIGroupList{Groups: combined}, false)
 }
 
 // serveOpenAPI aggregates OpenAPI specs from the generic control plane and apiextensions servers.

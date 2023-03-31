@@ -33,6 +33,8 @@ import (
 // for them. This is similar to Sync, but instead of polling discovery every 30 seconds, this method is invoked by kcp
 // whenever the set of APIs is known to change (CRDs added or removed).
 func (rq *Controller) UpdateMonitors(ctx context.Context, discoveryFunc NamespacedResourcesFunc) {
+	logger := klog.FromContext(ctx)
+
 	// Something has changed, so track the new state and perform a sync.
 	oldResources := make(map[schema.GroupVersionResource]struct{})
 	func() {
@@ -51,8 +53,6 @@ func (rq *Controller) UpdateMonitors(ctx context.Context, discoveryFunc Namespac
 				return
 			}
 		}
-
-		logger := klog.FromContext(ctx)
 
 		// Decide whether discovery has reported a change.
 		if reflect.DeepEqual(oldResources, newResources) {
@@ -91,20 +91,19 @@ func (rq *Controller) UpdateMonitors(ctx context.Context, discoveryFunc Namespac
 
 		// success, remember newly synced resources
 		oldResources = newResources
-
-		// List all the quotas (this is scoped to the workspace)
-		quotas, err := rq.rqLister.List(labels.Everything())
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("error listing all resourcequotas: %w", err))
-		}
-
-		// Requeue all quotas in the workspace
-		for i := range quotas {
-			quota := quotas[i]
-			logger.V(2).Info("enqueuing resourcequota %s/%s because the list of available APIs changed", quota.Namespace, quota.Name)
-			rq.addQuota(logger, quota)
-		}
-
 		logger.V(2).Info("synced quota controller")
 	}()
+
+	// List all the quotas (this is scoped to the workspace)
+	quotas, err := rq.rqLister.List(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("error listing all resourcequotas: %w", err))
+	}
+
+	// Requeue all quotas in the workspace
+	for i := range quotas {
+		quota := quotas[i]
+		logger.V(2).Info("enqueuing resourcequota %s/%s because the list of available APIs changed", quota.Namespace, quota.Name)
+		rq.addQuota(logger, quota)
+	}
 }

@@ -26,6 +26,10 @@ import (
 
 // WipeObjectMetaSystemFields erases fields that are managed by the system on ObjectMeta.
 func WipeObjectMetaSystemFields(meta metav1.Object) {
+	if _, found := meta.GetAnnotations()[genericapirequest.AnnotationKey]; found {
+		// Do not wipe system fields if we are storing a cached object
+		return
+	}
 	meta.SetCreationTimestamp(metav1.Time{})
 	meta.SetUID("")
 	meta.SetDeletionTimestamp(nil)
@@ -36,12 +40,9 @@ func WipeObjectMetaSystemFields(meta metav1.Object) {
 // FillObjectMetaSystemFields populates fields that are managed by the system on ObjectMeta.
 func FillObjectMetaSystemFields(meta metav1.Object) {
 	if _, found := meta.GetAnnotations()[genericapirequest.AnnotationKey]; found {
-		// in general the shard annotation is not attached to objects, instead, it is assigned by the storage layer on the fly
-		// to avoid an additional UPDATE request (mismatch on the creationTime and UID fields) replicated objects have those fields already set
-		// thus all we have to do is to remove the shard annotation and simply return early
-		annotations := meta.GetAnnotations()
-		delete(annotations, genericapirequest.AnnotationKey)
-		meta.SetAnnotations(annotations)
+		// In general the shard annotation is not attached to objects. Instead, it is assigned by the storage layer on the fly.
+		// To avoid an additional UPDATE request (mismatch on the creationTime and UID fields) replicated objects have those fields already set.
+		// Thus all we have to do is to simply return early.
 		return
 	}
 	meta.SetCreationTimestamp(metav1.Now())

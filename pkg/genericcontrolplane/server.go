@@ -29,6 +29,7 @@ import (
 	kcpkubernetesinformers "github.com/kcp-dev/client-go/informers"
 	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
 	"github.com/kcp-dev/logicalcluster/v3"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/admission"
@@ -47,6 +48,7 @@ import (
 	"k8s.io/client-go/util/keyutil"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"
 	"k8s.io/component-base/version"
+	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
@@ -183,6 +185,8 @@ func BuildGenericConfig(
 	lastErr error,
 ) {
 	genericConfig = genericapiserver.NewConfig(genericcontrolplanescheme.Codecs)
+	genericConfig.MergedResourceConfig = apis.DefaultAPIResourceConfigSource()
+
 	if lastErr = o.GenericServerRunOptions.ApplyTo(genericConfig); lastErr != nil {
 		return
 	}
@@ -209,6 +213,11 @@ func BuildGenericConfig(
 	getOpenAPIDefinitions := openapi.GetOpenAPIDefinitionsWithoutDisabledFeatures(generatedopenapi.GetOpenAPIDefinitions)
 	genericConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(getOpenAPIDefinitions, openapinamer.NewDefinitionNamer(legacyscheme.Scheme, extensionsapiserver.Scheme, extensionsapiserver.Scheme))
 	genericConfig.OpenAPIConfig.Info.Title = "Kubernetes"
+	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.OpenAPIV3) {
+		genericConfig.OpenAPIV3Config = genericapiserver.DefaultOpenAPIV3Config(getOpenAPIDefinitions, openapinamer.NewDefinitionNamer(legacyscheme.Scheme, extensionsapiserver.Scheme, aggregatorscheme.Scheme))
+		genericConfig.OpenAPIV3Config.Info.Title = "Kubernetes"
+	}
+
 	genericConfig.LongRunningFunc = filters.BasicLongRunningRequestCheck(
 		sets.NewString("watch", "proxy"),
 		sets.NewString("attach", "exec", "proxy", "log", "portforward"),
@@ -217,18 +226,23 @@ func BuildGenericConfig(
 	kubeVersion := version.Get()
 	genericConfig.Version = &kubeVersion
 
-	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(genericcontrolplanescheme.Scheme, genericcontrolplanescheme.Codecs)
-	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
-	completedStorageFactoryConfig := storageFactoryConfig.Complete(o.Etcd)
-	storageFactory, lastErr = completedStorageFactoryConfig.New()
-	if lastErr != nil {
+	if genericConfig.EgressSelector != nil {
+		o.Etcd.StorageConfig.Transport.EgressLookup = genericConfig.EgressSelector.Lookup
+	}
+	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIServerTracing) {
+		o.Etcd.StorageConfig.Transport.TracerProvider = genericConfig.TracerProvider
+	} else {
+		o.Etcd.StorageConfig.Transport.TracerProvider = oteltrace.NewNoopTracerProvider()
+	}
+	if lastErr = o.Etcd.Complete(genericConfig.StorageObjectCountTracker, genericConfig.DrainedNotify(), genericConfig.AddPostStartHook); lastErr != nil {
 		return
 	}
-	if genericConfig.EgressSelector != nil {
-		storageFactory.StorageConfig.Transport.EgressLookup = genericConfig.EgressSelector.Lookup
-	}
-	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIServerTracing) && genericConfig.TracerProvider != nil {
-		storageFactory.StorageConfig.Transport.TracerProvider = genericConfig.TracerProvider
+
+	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(genericcontrolplanescheme.Scheme, genericcontrolplanescheme.Codecs)
+	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
+	storageFactory, lastErr = storageFactoryConfig.Complete(o.Etcd).New()
+	if lastErr != nil {
+		return
 	}
 	if lastErr = o.Etcd.ApplyWithStorageFactoryTo(storageFactory, genericConfig); lastErr != nil {
 		return

@@ -93,7 +93,7 @@ func (s *customResourceDefinitionLister) Get(name string) (*apiextensionsv1.Cust
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(apiextensionsv1.Resource("CustomResourceDefinition"), name)
+		return nil, errors.NewNotFound(apiextensionsv1.Resource("customresourcedefinitions"), name)
 	}
 	return obj.(*apiextensionsv1.CustomResourceDefinition), nil
 }

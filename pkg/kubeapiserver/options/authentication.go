@@ -479,11 +479,11 @@ func (o *BuiltInAuthenticationOptions) ApplyTo(authInfo *genericapiserver.Authen
 		versionedInformer.Core().V1().Secrets().Lister(),
 		versionedInformer.Core().V1().ServiceAccounts().Lister(),
 	)
-	authenticatorConfig.SecretsWriter = extclient.CoreV1()
+	authenticatorConfig.SecretsWriter = extclient.CoreV1().Secrets()
 
-	authenticatorConfig.BootstrapTokenAuthenticator = bootstrap.NewTokenAuthenticator(
-		versionedInformer.Core().V1().Secrets().Lister().Secrets(metav1.NamespaceSystem),
-	)
+	//authenticatorConfig.BootstrapTokenAuthenticator = bootstrap.NewTokenAuthenticator(
+	//	versionedInformer.Core().V1().Secrets().Lister().Secrets(metav1.NamespaceSystem),
+	//)
 
 	if egressSelector != nil {
 		egressDialer, err := egressSelector.Lookup(egressselector.ControlPlane.AsNetworkContext())

@@ -401,7 +401,6 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	supportedTypes := []string{
 		string(types.JSONPatchType),
 		string(types.MergePatchType),
-		string(types.ApplyPatchType),
 	}
 
 	// HACK: Support resources of the client-go scheme the way existing clients expect it:
@@ -424,6 +423,10 @@ func (r *crdHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			)
 			return
 		}
+	}
+
+	if !r.disableServerSideApply {
+		supportedTypes = append(supportedTypes, string(types.ApplyPatchType))
 	}
 
 	var handlerFunc http.HandlerFunc
@@ -1101,15 +1104,17 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 			OpenapiModels: modelsByGKV,
 		}
 
-		resetFields := storages[v.Name].CustomResource.GetResetFields()
-		reqScope, err = scopeWithFieldManager(
-			typeConverter,
-			reqScope,
-			resetFields,
-			"",
-		)
-		if err != nil {
-			return nil, err
+		if !r.disableServerSideApply {
+			resetFields := storages[v.Name].CustomResource.GetResetFields()
+			reqScope, err = scopeWithFieldManager(
+				typeConverter,
+				reqScope,
+				resetFields,
+				"",
+			)
+			if err != nil {
+				return nil, err
+			}
 		}
 		requestScopes[v.Name] = &reqScope
 
@@ -1132,7 +1137,7 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 		}
 		scaleScope.TableConvertor = scaleTable
 
-		if subresources != nil && subresources.Scale != nil {
+		if subresources != nil && subresources.Scale != nil && !r.disableServerSideApply {
 			scaleScope, err = scopeWithFieldManager(
 				typeConverter,
 				scaleScope,
@@ -1155,7 +1160,7 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 			ClusterScoped: clusterScoped,
 		}
 
-		if subresources != nil && subresources.Status != nil {
+		if subresources != nil && subresources.Status != nil && !r.disableServerSideApply {
 			resetFields := storages[v.Name].Status.GetResetFields()
 			statusScope, err = scopeWithFieldManager(
 				typeConverter,

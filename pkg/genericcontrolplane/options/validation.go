@@ -17,23 +17,10 @@ limitations under the License.
 package options
 
 import (
-	"fmt"
-
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 
 	"k8s.io/kubernetes/pkg/api/genericcontrolplanescheme"
 )
-
-func validateAPIServerIdentity(options *CompletedServerRunOptions) []error {
-	var errs []error
-	if options.IdentityLeaseDurationSeconds <= 0 {
-		errs = append(errs, fmt.Errorf("--identity-lease-duration-seconds should be a positive number, but value '%d' provided", options.IdentityLeaseDurationSeconds))
-	}
-	if options.IdentityLeaseRenewIntervalSeconds <= 0 {
-		errs = append(errs, fmt.Errorf("--identity-lease-renew-interval-seconds should be a positive number, but value '%d' provided", options.IdentityLeaseRenewIntervalSeconds))
-	}
-	return errs
-}
 
 // Validate checks Options and return a slice of found errs.
 func (s *CompletedServerRunOptions) Validate() []error {
@@ -45,7 +32,6 @@ func (s *CompletedServerRunOptions) Validate() []error {
 	errs = append(errs, s.Admission.Validate()...)
 	errs = append(errs, s.APIEnablement.Validate(genericcontrolplanescheme.Scheme, apiextensionsapiserver.Scheme)...)
 	errs = append(errs, s.Metrics.Validate()...)
-	errs = append(errs, validateAPIServerIdentity(s)...)
 
 	return errs
 }

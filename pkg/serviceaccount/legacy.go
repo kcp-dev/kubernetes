@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"time"
 
+	kcptypedv1core "github.com/kcp-dev/client-go/kubernetes/typed/core/v1"
+	"github.com/kcp-dev/logicalcluster/v3"
 	"gopkg.in/square/go-jose.v2/jwt"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,7 +34,6 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/warning"
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
-	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 )
@@ -62,7 +63,7 @@ type legacyPrivateClaims struct {
 	ClusterName        logicalcluster.Name `json:"kubernetes.io/serviceaccount/clusterName"`
 }
 
-func NewLegacyValidator(lookup bool, getter ServiceAccountTokenClusterGetter, secretsWriter typedv1core.SecretsGetter) Validator {
+func NewLegacyValidator(lookup bool, getter ServiceAccountTokenClusterGetter, secretsWriter kcptypedv1core.SecretClusterInterface) Validator {
 	return &legacyValidator{
 		lookup:        lookup,
 		getter:        getter,
@@ -73,7 +74,7 @@ func NewLegacyValidator(lookup bool, getter ServiceAccountTokenClusterGetter, se
 type legacyValidator struct {
 	lookup        bool
 	getter        ServiceAccountTokenClusterGetter
-	secretsWriter typedv1core.SecretsGetter
+	secretsWriter kcptypedv1core.SecretClusterInterface
 }
 
 var _ = Validator(&legacyValidator{})
@@ -158,7 +159,7 @@ func (v *legacyValidator) Validate(ctx context.Context, tokenData string, public
 				if err != nil {
 					klog.Errorf("Failed to marshal legacy service account token tracking labels, err: %v", err)
 				} else {
-					if _, err := v.secretsWriter.Secrets(namespace).Patch(ctx, secret.Name, types.MergePatchType, patchContent, metav1.PatchOptions{}); err != nil {
+					if _, err := v.secretsWriter.Cluster(private.ClusterName.Path()).Namespace(namespace).Patch(ctx, secret.Name, types.MergePatchType, patchContent, metav1.PatchOptions{}); err != nil {
 						klog.Errorf("Failed to label legacy service account token secret with last-used, err: %v", err)
 					}
 				}

@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apiserver/pkg/server/options/encryptionconfig"
 	"k8s.io/apiserver/pkg/server/resourceconfig"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
@@ -103,14 +102,6 @@ func (c *completedStorageFactoryConfig) Legacy() (*serverstorage.DefaultStorageF
 		servers := strings.Split(tokens[1], ";")
 		storageFactory.SetEtcdLocation(groupResource, servers)
 	}
-	if len(c.EncryptionProviderConfigFilepath) != 0 {
-		transformerOverrides, err := encryptionconfig.GetTransformerOverrides(c.EncryptionProviderConfigFilepath)
-		if err != nil {
-			return nil, err
-		}
-		for groupResource, transformer := range transformerOverrides {
-			storageFactory.SetTransformer(groupResource, transformer)
-		}
-	}
+	
 	return storageFactory, nil
 }

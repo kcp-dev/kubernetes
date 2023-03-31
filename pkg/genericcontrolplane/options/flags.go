@@ -18,6 +18,7 @@ package options
 
 import (
 	cliflag "k8s.io/component-base/cli/flag"
+	logsapi "k8s.io/component-base/logs/api/v1"
 )
 
 // Flags returns flags for a specific APIServer by section name
@@ -34,7 +35,7 @@ func (s *ServerRunOptions) Flags() (fss cliflag.NamedFlagSets) {
 	s.Admission.AddFlags(fss.FlagSet("admission"))
 
 	s.Metrics.AddFlags(fss.FlagSet("metrics"))
-	s.Logs.AddFlags(fss.FlagSet("logs"))
+	logsapi.AddFlags(s.Logs, fss.FlagSet("logs"))
 	s.Traces.AddFlags(fss.FlagSet("traces"))
 
 	fs := fss.FlagSet("misc")
@@ -48,12 +49,6 @@ func (s *ServerRunOptions) Flags() (fss cliflag.NamedFlagSets) {
 	fs.Int64Var(&s.MaxConnectionBytesPerSec, "max-connection-bytes-per-sec", s.MaxConnectionBytesPerSec, ""+
 		"If non-zero, throttle each user connection to this number of bytes/sec. "+
 		"Currently only applies to long-running requests.")
-
-	fs.IntVar(&s.IdentityLeaseDurationSeconds, "identity-lease-duration-seconds", s.IdentityLeaseDurationSeconds,
-		"The duration of kube-apiserver lease in seconds, must be a positive number. (In use when the APIServerIdentity feature gate is enabled.)")
-
-	fs.IntVar(&s.IdentityLeaseRenewIntervalSeconds, "identity-lease-renew-interval-seconds", s.IdentityLeaseRenewIntervalSeconds,
-		"The interval of kube-apiserver renewing its lease in seconds, must be a positive number. (In use when the APIServerIdentity feature gate is enabled.)")
 
 	fs.StringVar(&s.ProxyClientCertFile, "proxy-client-cert-file", s.ProxyClientCertFile, ""+
 		"Client certificate used to prove the identity of the aggregator or kube-apiserver "+

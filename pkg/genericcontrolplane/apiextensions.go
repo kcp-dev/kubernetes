@@ -17,6 +17,7 @@ limitations under the License.
 package genericcontrolplane
 
 import (
+	kcpdynamic "github.com/kcp-dev/client-go/dynamic"
 	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
@@ -26,9 +27,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/clientsethack"
+	"k8s.io/apiserver/pkg/dynamichack"
 	"k8s.io/apiserver/pkg/features"
 	genericapiserver "k8s.io/apiserver/pkg/server"
-	genericoptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/util/feature"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	kubeexternalinformers "k8s.io/client-go/informers"
@@ -52,12 +53,18 @@ func CreateAPIExtensionsConfig(
 		return nil, err
 	}
 
+	dynamicClient, err := kcpdynamic.NewForConfig(genericConfig.LoopbackClientConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	// override genericConfig.AdmissionControl with apiextensions' scheme,
 	// because apiextensions apiserver should use its own scheme to convert resources.
 	err = commandOptions.Admission.ApplyTo(
 		&genericConfig,
 		externalInformers,
 		clientsethack.Wrap(client),
+		dynamichack.Wrap(dynamicClient),
 		feature.DefaultFeatureGate,
 		pluginInitializers...)
 	if err != nil {
@@ -71,7 +78,10 @@ func CreateAPIExtensionsConfig(
 	etcdOptions.StorageConfig.Codec = apiextensionsapiserver.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion, v1.SchemeGroupVersion)
 	// prefer the more compact serialization (v1beta1) for storage until http://issue.k8s.io/82292 is resolved for objects whose v1 serialization is too big but whose v1beta1 serialization can be stored
 	etcdOptions.StorageConfig.EncodeVersioner = runtime.NewMultiGroupVersioner(v1beta1.SchemeGroupVersion, schema.GroupKind{Group: v1beta1.GroupName})
-	genericConfig.RESTOptionsGetter = &genericoptions.SimpleRestOptionsFactory{Options: etcdOptions}
+	etcdOptions.SkipHealthEndpoints = true // avoid double wiring of health checks
+	if err := etcdOptions.ApplyTo(&genericConfig); err != nil {
+		return nil, err
+	}
 
 	// override MergedResourceConfig with apiextensions defaults and registry
 	if err := commandOptions.APIEnablement.ApplyTo(
@@ -81,13 +91,18 @@ func CreateAPIExtensionsConfig(
 		return nil, err
 	}
 
+	crdRESTOptionsGetter, err := apiextensionsoptions.NewCRDRESTOptionsGetter(etcdOptions)
+	if err != nil {
+		return nil, err
+	}
+
 	apiextensionsConfig := &apiextensionsapiserver.Config{
 		GenericConfig: &genericapiserver.RecommendedConfig{
 			Config:                genericConfig,
 			SharedInformerFactory: externalInformers,
 		},
 		ExtraConfig: apiextensionsapiserver.ExtraConfig{
-			CRDRESTOptionsGetter: apiextensionsoptions.NewCRDRESTOptionsGetter(etcdOptions),
+			CRDRESTOptionsGetter: crdRESTOptionsGetter,
 			MasterCount:          1, // TODO: pass this in correctly
 			ConversionFactory:    commandOptions.ConversionFactory,
 		},

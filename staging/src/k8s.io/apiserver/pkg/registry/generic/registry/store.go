@@ -402,7 +402,8 @@ func (e *Store) Create(ctx context.Context, obj runtime.Object, createValidation
 	var finishCreate FinishFunc = finishNothing
 
 	// Init metadata as early as possible.
-	if objectMeta, err := meta.Accessor(obj); err != nil {
+	objectMeta, err := meta.Accessor(obj)
+	if err != nil {
 		return nil, err
 	} else {
 		rest.FillObjectMetaSystemFields(objectMeta)
@@ -425,6 +426,12 @@ func (e *Store) Create(ctx context.Context, obj runtime.Object, createValidation
 	if err := rest.BeforeCreate(e.CreateStrategy, ctx, obj); err != nil {
 		return nil, err
 	}
+
+	if _, found := objectMeta.GetAnnotations()[genericapirequest.AnnotationKey]; found {
+		// Remove the shard annotation so it is not persisted
+		delete(objectMeta.GetAnnotations(), genericapirequest.AnnotationKey)
+	}
+
 	// at this point we have a fully formed object.  It is time to call the validators that the apiserver
 	// handling chain wants to enforce.
 	if createValidation != nil {
