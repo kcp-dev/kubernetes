@@ -94,6 +94,11 @@ type ExtraConfig struct {
 	// used with the embedded cache server in kcp
 	DisableServerSideApply bool
 
+	// DisableGenerationRepair allows for disabling setting a generation during an object decoding (for objects that haven't had it)
+	// this field is meant to be set by the cache server so that built-in (assuming all CRs must have it) source objects
+	// don't differ from the replicated ones.
+	DisableGenerationRepair bool
+
 	// ConversionFactory is used to provider converters for CRs.
 	ConversionFactory conversion.Factory
 }
@@ -242,6 +247,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		apiGroupInfo.StaticOpenAPISpec,
 		c.GenericConfig.MaxRequestBodyBytes,
 		c.ExtraConfig.DisableServerSideApply,
+		c.ExtraConfig.DisableGenerationRepair,
 	)
 	if err != nil {
 		return nil, err

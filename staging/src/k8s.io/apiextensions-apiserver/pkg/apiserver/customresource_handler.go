@@ -156,6 +156,11 @@ type crdHandler struct {
 	// disableServerSideApply allows to deactivate Server Side Apply for a specific API server instead of globally through the feature gate
 	// used for embedded cache server with kcp
 	disableServerSideApply bool
+
+	// disableGenerationRepair allows for disabling setting a generation during an object decoding (for objects that haven't had it)
+	// this field is meant to be set by the cache server so that built-in (assuming all CRs must have it) source objects
+	// don't differ from the replicated ones.
+	disableGenerationRepair bool
 }
 
 // crdInfo stores enough information to serve the storage for the custom resource
@@ -210,6 +215,7 @@ func NewCustomResourceDefinitionHandler(
 	staticOpenAPISpec *spec.Swagger,
 	maxRequestBodyBytes int64,
 	disableServerSideApply bool,
+	disableGenerationRepair bool,
 ) (*crdHandler, error) {
 	if converterFactory == nil {
 		return nil, fmt.Errorf("converterFactory is required")
@@ -233,6 +239,7 @@ func NewCustomResourceDefinitionHandler(
 		staticOpenAPISpec:       staticOpenAPISpec,
 		maxRequestBodyBytes:     maxRequestBodyBytes,
 		disableServerSideApply:  disableServerSideApply,
+		disableGenerationRepair: disableGenerationRepair,
 	}
 	crdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ret.createCustomResourceDefinition,
@@ -1030,6 +1037,7 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 					structuralSchemas:     structuralSchemas,
 					structuralSchemaGK:    kind.GroupKind(),
 					preserveUnknownFields: crd.Spec.PreserveUnknownFields,
+					repairGeneration:      !r.disableGenerationRepair,
 				},
 				crd: crd,
 			},
@@ -1400,6 +1408,7 @@ type crdConversionRESTOptionsGetter struct {
 	structuralSchemas     map[string]*structuralschema.Structural // by version
 	structuralSchemaGK    schema.GroupKind
 	preserveUnknownFields bool
+	repairGeneration      bool
 }
 
 func (t crdConversionRESTOptionsGetter) GetRESTOptions(resource schema.GroupResource) (generic.RESTOptions, error) {
@@ -1408,7 +1417,7 @@ func (t crdConversionRESTOptionsGetter) GetRESTOptions(resource schema.GroupReso
 		d := schemaCoercingDecoder{delegate: ret.StorageConfig.Codec, validator: unstructuredSchemaCoercer{
 			// drop invalid fields while decoding old CRs (before we haven't had any ObjectMeta validation)
 			dropInvalidMetadata:   true,
-			repairGeneration:      true,
+			repairGeneration:      t.repairGeneration,
 			structuralSchemas:     t.structuralSchemas,
 			structuralSchemaGK:    t.structuralSchemaGK,
 			preserveUnknownFields: t.preserveUnknownFields,
