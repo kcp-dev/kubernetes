@@ -25,7 +25,6 @@ import (
 
 	kcpkubernetesinformers "github.com/kcp-dev/client-go/informers"
 	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
-	"github.com/kcp-dev/logicalcluster/v3"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	admissionregistrationv1alpha1 "k8s.io/api/admissionregistration/v1alpha1"
 	apiserverinternalv1alpha1 "k8s.io/api/apiserverinternal/v1alpha1"
@@ -61,6 +60,7 @@ import (
 	"k8s.io/kubernetes/pkg/controlplane/controller/apiserverleasegc"
 	"k8s.io/kubernetes/pkg/controlplane/controller/clusterauthenticationtrust"
 	"k8s.io/kubernetes/pkg/controlplane/controller/legacytokentracking"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/localadmin"
 
 	// RESTStorage installers
 	admissionregistrationrest "k8s.io/kubernetes/pkg/registry/admissionregistration/rest"
@@ -221,10 +221,10 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		return nil, err
 	}
 
-	rootCluster := logicalcluster.Name("root")
+	localAdminCluster := localadmin.Cluster
 
 	// Have to create this outside the post-start hook to ensure the informer is started correctly
-	rootConfigMapsInformer := c.ExtraConfig.VersionedInformers.Core().V1().ConfigMaps().Cluster(rootCluster)
+	rootConfigMapsInformer := c.ExtraConfig.VersionedInformers.Core().V1().ConfigMaps().Cluster(localAdminCluster)
 	// Register the informer for starting when the factory is started in a different post-start hook
 	_ = rootConfigMapsInformer.Informer()
 
@@ -234,7 +234,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 			return err
 		}
 
-		controller := clusterauthenticationtrust.NewClusterAuthenticationTrustController(m.ClusterAuthenticationInfo, kubeClient.Cluster(rootCluster.Path()))
+		controller := clusterauthenticationtrust.NewClusterAuthenticationTrustController(m.ClusterAuthenticationInfo, kubeClient.Cluster(localAdminCluster.Path()))
 
 		// generate a context  from stopCh. This is to avoid modifying files which are relying on apiserver
 		// TODO: See if we can pass ctx to the current method
@@ -285,7 +285,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 
 			controller := lease.NewController(
 				clock.RealClock{},
-				kubeClient.Cluster(rootCluster.Path()),
+				kubeClient.Cluster(localAdminCluster.Path()),
 				holderIdentity,
 				int32(IdentityLeaseDurationSeconds),
 				nil,
@@ -302,7 +302,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 				return err
 			}
 			go apiserverleasegc.NewAPIServerLeaseGC(
-				kubeClient.Cluster(rootCluster.Path()),
+				kubeClient.Cluster(localAdminCluster.Path()),
 				IdentityLeaseGCPeriod,
 				metav1.NamespaceSystem,
 				KubeAPIServerIdentityLeaseLabelSelector,
@@ -316,7 +316,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		if err != nil {
 			return err
 		}
-		go legacytokentracking.NewController(kubeClient.Cluster(rootCluster.Path())).Run(hookContext.StopCh)
+		go legacytokentracking.NewController(kubeClient.Cluster(localAdminCluster.Path())).Run(hookContext.StopCh)
 		return nil
 	})
 
