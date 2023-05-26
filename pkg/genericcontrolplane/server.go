@@ -28,7 +28,6 @@ import (
 	"github.com/kcp-dev/client-go/dynamic"
 	kcpkubernetesinformers "github.com/kcp-dev/client-go/informers"
 	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
-	"github.com/kcp-dev/logicalcluster/v3"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	extensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -54,12 +53,13 @@ import (
 	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/aggregator"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/apis"
+	"k8s.io/kubernetes/pkg/genericcontrolplane/localadmin"
 	"k8s.io/kubernetes/pkg/genericcontrolplane/options"
 	"k8s.io/kubernetes/pkg/kubeapiserver"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 )
 
-var LocalAdminCluster = logicalcluster.Name("system:admin")
+var LocalAdminCluster = localadmin.Cluster
 
 type ServerChain struct {
 	CustomResourceDefinitions *extensionsapiserver.CustomResourceDefinitions
