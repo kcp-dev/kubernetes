@@ -31,8 +31,6 @@ import (
 
 // Test_Controller validates the garbage collection logic for the apiserverleasegc controller.
 func Test_Controller(t *testing.T) {
-	systemNamespaces := []string{metav1.NamespaceSystem, metav1.NamespacePublic, v1.NamespaceNodeLease}
-
 	tests := []struct {
 		name       string
 		namespaces []string

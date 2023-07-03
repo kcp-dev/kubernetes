@@ -39,6 +39,7 @@ import (
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	kubeapiservertesting "k8s.io/kubernetes/cmd/kube-apiserver/app/testing"
 	"k8s.io/kubernetes/pkg/controlplane"
+	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver"
 	"k8s.io/kubernetes/test/integration/framework"
 	"k8s.io/utils/pointer"
 )
@@ -84,7 +85,7 @@ func TestCreateLeaseOnStart(t *testing.T) {
 		leases, err := kubeclient.
 			CoordinationV1().
 			Leases(metav1.NamespaceSystem).
-			List(context.TODO(), metav1.ListOptions{LabelSelector: controlplane.KubeAPIServerIdentityLeaseLabelSelector})
+			List(context.TODO(), metav1.ListOptions{LabelSelector: controlplaneapiserver.DeprecatedKubeAPIServerIdentityLeaseLabelSelector})
 		if err != nil {
 			return false, err
 		}
@@ -248,7 +249,7 @@ func newTestLease(acquireTime time.Time, namespace string) *coordinationv1.Lease
 			Name:      testLeaseName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				controlplane.IdentityLeaseComponentLabelKey: controlplane.KubeAPIServer,
+				controlplaneapiserver.IdentityLeaseComponentLabelKey: controlplane.KubeAPIServer,
 			},
 		},
 		Spec: coordinationv1.LeaseSpec{

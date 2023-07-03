@@ -335,10 +335,10 @@ func CreateKubeAPIServerConfig(opts options.CompletedOptions) (
 	}
 
 	if config.ControlPlane.Generic.EgressSelector != nil {
-		// Use the config.GenericConfig.EgressSelector lookup to find the dialer to connect to the kubelet
+		// Use the config.ControlPlane.Generic.EgressSelector lookup to find the dialer to connect to the kubelet
 		config.ExtraConfig.KubeletClientConfig.Lookup = config.ControlPlane.Generic.EgressSelector.Lookup
 
-		// Use the config.GenericConfig.EgressSelector lookup as the transport used by the "proxy" subresources.
+		// Use the config.ControlPlane.Generic.EgressSelector lookup as the transport used by the "proxy" subresources.
 		networkContext := egressselector.Cluster.AsNetworkContext()
 		dialer, err := config.ControlPlane.Generic.EgressSelector.Lookup(networkContext)
 		if err != nil {
