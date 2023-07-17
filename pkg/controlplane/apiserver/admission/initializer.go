@@ -17,38 +17,28 @@ limitations under the License.
 package admission
 
 import (
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apiserver/pkg/admission"
+	"k8s.io/apiserver/pkg/admission/initializer"
+	quota "k8s.io/apiserver/pkg/quota/v1"
 )
 
-// TODO add a `WantsToRun` which takes a stopCh.  Might make it generic.
-
-// WantsCloudConfig defines a function which sets CloudConfig for admission plugins that need it.
-type WantsCloudConfig interface {
-	SetCloudConfig([]byte)
-}
-
-// PluginInitializer is used for initialization of the Kubernetes specific admission plugins.
+// PluginInitializer is used for initialization of the generic controlplane admission plugins.
 type PluginInitializer struct {
-	CloudConfig []byte
+	RESTMapper         meta.RESTMapper
+	QuotaConfiguration quota.Configuration
 }
 
 var _ admission.PluginInitializer = &PluginInitializer{}
 
-// NewPluginInitializer constructs new instance of PluginInitializer
-// TODO: switch these parameters to use the builder pattern or just make them
-// all public, this construction method is pointless boilerplate.
-func NewPluginInitializer(
-	cloudConfig []byte,
-) *PluginInitializer {
-	return &PluginInitializer{
-		CloudConfig: cloudConfig,
-	}
-}
-
 // Initialize checks the initialization interfaces implemented by each plugin
 // and provide the appropriate initialization data
 func (i *PluginInitializer) Initialize(plugin admission.Interface) {
-	if wants, ok := plugin.(WantsCloudConfig); ok {
-		wants.SetCloudConfig(i.CloudConfig)
+	if wants, ok := plugin.(initializer.WantsRESTMapper); ok {
+		wants.SetRESTMapper(i.RESTMapper)
+	}
+
+	if wants, ok := plugin.(initializer.WantsQuotaConfiguration); ok {
+		wants.SetQuotaConfiguration(i.QuotaConfiguration)
 	}
 }

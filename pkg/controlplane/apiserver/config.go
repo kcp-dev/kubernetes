@@ -17,6 +17,7 @@ limitations under the License.
 package apiserver
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
@@ -24,7 +25,9 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/endpoints/discovery/aggregated"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
@@ -40,17 +43,23 @@ import (
 	utilflowcontrol "k8s.io/apiserver/pkg/util/flowcontrol"
 	"k8s.io/apiserver/pkg/util/openapi"
 	utilpeerproxy "k8s.io/apiserver/pkg/util/peerproxy"
+	"k8s.io/client-go/dynamic"
 	clientgoinformers "k8s.io/client-go/informers"
 	clientgoclientset "k8s.io/client-go/kubernetes"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/transport"
+	"k8s.io/client-go/util/keyutil"
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
+	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	api "k8s.io/kubernetes/pkg/apis/core"
+	controlplaneadmission "k8s.io/kubernetes/pkg/controlplane/apiserver/admission"
 	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver/options"
 	"k8s.io/kubernetes/pkg/controlplane/controller/clusterauthenticationtrust"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubeapiserver"
 	"k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes"
 	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
@@ -103,7 +112,9 @@ type Extra struct {
 	VersionedInformers clientgoinformers.SharedInformerFactory
 }
 
-// BuildGenericConfig takes the master server options and produces the genericapiserver.Config associated with it
+// BuildGenericConfig takes the generic controlplane apiserver options and produces
+// the genericapiserver.Config associated with it. The genericapiserver.Config is
+// often shared between multiple delegated apiservers.
 func BuildGenericConfig(
 	s controlplaneapiserver.CompletedOptions,
 	schemes []*runtime.Scheme,
@@ -164,7 +175,7 @@ func BuildGenericConfig(
 		s.Etcd.StorageConfig.Transport.TracerProvider = oteltrace.NewNoopTracerProvider()
 	}
 
-	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig()
+	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(legacyscheme.Scheme, legacyscheme.Codecs)
 	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
 	storageFactory, lastErr = storageFactoryConfig.Complete(s.Etcd).New()
 	if lastErr != nil {
@@ -251,6 +262,126 @@ func BuildPriorityAndFairness(s controlplaneapiserver.CompletedOptions, extclien
 	), nil
 }
 
+// CreateConfig takes the generic controlplane apiserver options and
+// creates a config for the generic Kube APIs out of it.
+func CreateConfig(
+	opts controlplaneapiserver.CompletedOptions,
+	genericConfig *genericapiserver.Config,
+	versionedInformers clientgoinformers.SharedInformerFactory,
+	storageFactory *serverstorage.DefaultStorageFactory,
+	serviceResolver aggregatorapiserver.ServiceResolver,
+	additionalInitializers []admission.PluginInitializer,
+) (
+	*Config,
+	[]admission.PluginInitializer,
+	error,
+) {
+	proxyTransport := CreateProxyTransport()
+
+	opts.Metrics.Apply()
+	serviceaccount.RegisterMetrics()
+
+	config := &Config{
+		Generic: genericConfig,
+		Extra: Extra{
+			APIResourceConfigSource: storageFactory.APIResourceConfigSource,
+			StorageFactory:          storageFactory,
+			EventTTL:                opts.EventTTL,
+			EnableLogsSupport:       opts.EnableLogsHandler,
+			ProxyTransport:          proxyTransport,
+
+			ServiceAccountIssuer:        opts.ServiceAccountIssuer,
+			ServiceAccountMaxExpiration: opts.ServiceAccountTokenMaxExpiration,
+			ExtendExpiration:            opts.Authentication.ServiceAccounts.ExtendExpiration,
+
+			SystemNamespaces: opts.SystemNamespaces,
+
+			VersionedInformers: versionedInformers,
+		},
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.UnknownVersionInteroperabilityProxy) {
+		var err error
+		config.PeerEndpointLeaseReconciler, err = CreatePeerEndpointLeaseReconciler(*genericConfig, storageFactory)
+		if err != nil {
+			return nil, nil, err
+		}
+		// build peer proxy config only if peer ca file exists
+		if opts.PeerCAFile != "" {
+			config.PeerProxy, err = BuildPeerProxy(versionedInformers, genericConfig.StorageVersionManager, opts.ProxyClientCertFile,
+				opts.ProxyClientKeyFile, opts.PeerCAFile, opts.PeerAdvertiseAddress, genericConfig.APIServerID, config.Extra.PeerEndpointLeaseReconciler, config.Generic.Serializer)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+
+	clientCAProvider, err := opts.Authentication.ClientCert.GetClientCAContentProvider()
+	if err != nil {
+		return nil, nil, err
+	}
+	config.ClusterAuthenticationInfo.ClientCA = clientCAProvider
+
+	requestHeaderConfig, err := opts.Authentication.RequestHeader.ToAuthenticationRequestHeaderConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+	if requestHeaderConfig != nil {
+		config.ClusterAuthenticationInfo.RequestHeaderCA = requestHeaderConfig.CAContentProvider
+		config.ClusterAuthenticationInfo.RequestHeaderAllowedNames = requestHeaderConfig.AllowedClientNames
+		config.ClusterAuthenticationInfo.RequestHeaderExtraHeaderPrefixes = requestHeaderConfig.ExtraHeaderPrefixes
+		config.ClusterAuthenticationInfo.RequestHeaderGroupHeaders = requestHeaderConfig.GroupHeaders
+		config.ClusterAuthenticationInfo.RequestHeaderUsernameHeaders = requestHeaderConfig.UsernameHeaders
+	}
+
+	// setup admission
+	genericAdmissionConfig := controlplaneadmission.Config{
+		ExternalInformers:    versionedInformers,
+		LoopbackClientConfig: genericConfig.LoopbackClientConfig,
+	}
+	genericInitializers, admissionPostStartHook, err := genericAdmissionConfig.New(proxyTransport, genericConfig.EgressSelector, serviceResolver, genericConfig.TracerProvider)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create admission plugin initializer: %v", err)
+	}
+	clientgoExternalClient, err := clientset.NewForConfig(genericConfig.LoopbackClientConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create real client-go external client: %w", err)
+	}
+	dynamicExternalClient, err := dynamic.NewForConfig(genericConfig.LoopbackClientConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create real dynamic external client: %w", err)
+	}
+	err = opts.Admission.ApplyTo(
+		genericConfig,
+		versionedInformers,
+		clientgoExternalClient,
+		dynamicExternalClient,
+		utilfeature.DefaultFeatureGate,
+		append(genericInitializers, additionalInitializers...)...,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to apply admission: %w", err)
+	}
+	if err := config.Generic.AddPostStartHook("start-kube-apiserver-admission-initializer", admissionPostStartHook); err != nil {
+		return nil, nil, err
+	}
+
+	// Load and set the public keys.
+	var pubKeys []interface{}
+	for _, f := range opts.Authentication.ServiceAccounts.KeyFiles {
+		keys, err := keyutil.PublicKeysFromFile(f)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse key file %q: %v", f, err)
+		}
+		pubKeys = append(pubKeys, keys...)
+	}
+	config.ServiceAccountIssuerURL = opts.Authentication.ServiceAccounts.Issuers[0]
+	config.ServiceAccountJWKSURI = opts.Authentication.ServiceAccounts.JWKSURI
+	config.ServiceAccountPublicKeys = pubKeys
+
+	return config, genericInitializers, nil
+}
+
 // CreatePeerEndpointLeaseReconciler creates a apiserver endpoint lease reconciliation loop
 // The peer endpoint leases are used to find network locations of apiservers for peer proxy
 func CreatePeerEndpointLeaseReconciler(c genericapiserver.Config, storageFactory serverstorage.StorageFactory) (reconcilers.PeerEndpointLeaseReconciler, error) {
@@ -295,4 +426,16 @@ func BuildPeerProxy(versionedInformer clientgoinformers.SharedInformerFactory, s
 		reconciler,
 		serializer,
 	), nil
+}
+
+// CreateProxyTransport creates the dialer infrastructure to connect to the nodes.
+func CreateProxyTransport() *http.Transport {
+	var proxyDialerFn utilnet.DialFunc
+	// Proxying to pods and services is IP-based... don't expect to be able to verify the hostname
+	proxyTLSClientConfig := &tls.Config{InsecureSkipVerify: true}
+	proxyTransport := utilnet.SetTransportDefaults(&http.Transport{
+		DialContext:     proxyDialerFn,
+		TLSClientConfig: proxyTLSClientConfig,
+	})
+	return proxyTransport
 }

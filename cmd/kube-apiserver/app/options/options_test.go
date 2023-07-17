@@ -36,12 +36,13 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
 	"k8s.io/component-base/metrics"
+	netutils "k8s.io/utils/net"
+
 	kapi "k8s.io/kubernetes/pkg/apis/core"
 	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver/options"
 	"k8s.io/kubernetes/pkg/controlplane/reconcilers"
 	kubeoptions "k8s.io/kubernetes/pkg/kubeapiserver/options"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
-	netutils "k8s.io/utils/net"
 )
 
 func TestAddFlags(t *testing.T) {
@@ -295,6 +296,7 @@ func TestAddFlags(t *testing.T) {
 				ConfigFile: "/var/run/kubernetes/tracing_config.yaml",
 			},
 			AggregatorRejectForwardingRedirects: true,
+			SystemNamespaces:                    []string{"kube-system", "kube-public", "default", "kube-node-lease"},
 		},
 
 		Extra: Extra{

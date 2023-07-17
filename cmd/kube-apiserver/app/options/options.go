@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	cliflag "k8s.io/component-base/cli/flag"
 
@@ -29,8 +30,10 @@ import (
 	"k8s.io/kubernetes/pkg/cluster/ports"
 	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver/options"
 	"k8s.io/kubernetes/pkg/controlplane/reconcilers"
-	_ "k8s.io/kubernetes/pkg/features" // add the kubernetes feature gates
+	_ "k8s.io/kubernetes/pkg/features"
 	kubeoptions "k8s.io/kubernetes/pkg/kubeapiserver/options"
+
+	// add the kubernetes feature gates
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 )
 
@@ -91,6 +94,8 @@ func NewServerRunOptions() *ServerRunOptions {
 			MasterCount:          1,
 		},
 	}
+
+	s.Options.SystemNamespaces = append(s.Options.SystemNamespaces, v1.NamespaceNodeLease)
 
 	return &s
 }
