@@ -23,10 +23,11 @@ import (
 	"sync"
 	"time"
 
-	restful "github.com/emicklei/go-restful/v3"
+	"github.com/emicklei/go-restful/v3"
 
 	"k8s.io/klog/v2"
 
+	genericrequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/server"
 	v1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	"k8s.io/kube-openapi/pkg/aggregator"
@@ -99,7 +100,7 @@ func BuildAndRegisterAggregator(downloader *Downloader, delegationTarget server.
 			// ignore errors for the empty delegate we attach at the end the chain
 			// atm the empty delegate returns 503 when the server hasn't been fully initialized
 			// and the spec downloader only silences 404s
-			if len(delegate.ListedPaths()) == 0 && delegate.NextDelegate() == nil {
+			if len(delegate.ListedPaths(&genericrequest.Cluster{})) == 0 && delegate.NextDelegate() == nil {
 				continue
 			}
 			return nil, err
