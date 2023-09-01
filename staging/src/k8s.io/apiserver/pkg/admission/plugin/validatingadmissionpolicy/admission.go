@@ -26,6 +26,8 @@ import (
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/client-go/dynamic"
+	admissionregistrationinformers "k8s.io/client-go/informers/admissionregistration/v1alpha1"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/component-base/featuregate"
 
 	"k8s.io/apiserver/pkg/admission"
@@ -59,7 +61,7 @@ func Register(plugins *admission.Plugins) {
 // Plugin Initialization & Dependency Injection
 ////////////////////////////////////////////////////////////////////////////////
 
-type celAdmissionPlugin struct {
+type CELAdmissionPlugin struct {
 	*admission.Handler
 	evaluator CELPolicyEvaluator
 
@@ -73,47 +75,54 @@ type celAdmissionPlugin struct {
 	dynamicClient   dynamic.Interface
 	stopCh          <-chan struct{}
 	authorizer      authorizer.Authorizer
+
+	namespaceInformer                         coreinformers.NamespaceInformer
+	validatingAdmissionPoliciesInformer       admissionregistrationinformers.ValidatingAdmissionPolicyInformer
+	validatingAdmissionPolicyBindingsInformer admissionregistrationinformers.ValidatingAdmissionPolicyBindingInformer
 }
 
-var _ initializer.WantsExternalKubeInformerFactory = &celAdmissionPlugin{}
-var _ initializer.WantsExternalKubeClientSet = &celAdmissionPlugin{}
-var _ initializer.WantsRESTMapper = &celAdmissionPlugin{}
-var _ initializer.WantsDynamicClient = &celAdmissionPlugin{}
-var _ initializer.WantsDrainedNotification = &celAdmissionPlugin{}
-var _ initializer.WantsAuthorizer = &celAdmissionPlugin{}
-var _ admission.InitializationValidator = &celAdmissionPlugin{}
-var _ admission.ValidationInterface = &celAdmissionPlugin{}
+var _ initializer.WantsExternalKubeInformerFactory = &CELAdmissionPlugin{}
+var _ initializer.WantsExternalKubeClientSet = &CELAdmissionPlugin{}
+var _ initializer.WantsRESTMapper = &CELAdmissionPlugin{}
+var _ initializer.WantsDynamicClient = &CELAdmissionPlugin{}
+var _ initializer.WantsDrainedNotification = &CELAdmissionPlugin{}
+var _ initializer.WantsAuthorizer = &CELAdmissionPlugin{}
+var _ admission.InitializationValidator = &CELAdmissionPlugin{}
+var _ admission.ValidationInterface = &CELAdmissionPlugin{}
 
-func NewPlugin() (admission.Interface, error) {
-	return &celAdmissionPlugin{
+func NewPlugin() (*CELAdmissionPlugin, error) {
+	return &CELAdmissionPlugin{
 		Handler: admission.NewHandler(admission.Connect, admission.Create, admission.Delete, admission.Update),
 	}, nil
 }
 
-func (c *celAdmissionPlugin) SetExternalKubeInformerFactory(f informers.SharedInformerFactory) {
-	c.informerFactory = f
+func (c *CELAdmissionPlugin) SetExternalKubeInformerFactory(f informers.SharedInformerFactory) {
+	c.namespaceInformer = f.Core().V1().Namespaces()
+	c.validatingAdmissionPoliciesInformer = f.Admissionregistration().V1alpha1().ValidatingAdmissionPolicies()
+	c.validatingAdmissionPolicyBindingsInformer = f.Admissionregistration().V1alpha1().ValidatingAdmissionPolicyBindings()
 }
 
-func (c *celAdmissionPlugin) SetExternalKubeClientSet(client kubernetes.Interface) {
+func (c *CELAdmissionPlugin) SetExternalKubeClientSet(client kubernetes.Interface) {
 	c.client = client
 }
 
-func (c *celAdmissionPlugin) SetRESTMapper(mapper meta.RESTMapper) {
+func (c *CELAdmissionPlugin) SetRESTMapper(mapper meta.RESTMapper) {
 	c.restMapper = mapper
 }
 
-func (c *celAdmissionPlugin) SetDynamicClient(client dynamic.Interface) {
+func (c *CELAdmissionPlugin) SetDynamicClient(client dynamic.Interface) {
 	c.dynamicClient = client
 }
 
-func (c *celAdmissionPlugin) SetDrainedNotification(stopCh <-chan struct{}) {
+func (c *CELAdmissionPlugin) SetDrainedNotification(stopCh <-chan struct{}) {
 	c.stopCh = stopCh
 }
 
-func (c *celAdmissionPlugin) SetAuthorizer(authorizer authorizer.Authorizer) {
+func (c *CELAdmissionPlugin) SetAuthorizer(authorizer authorizer.Authorizer) {
 	c.authorizer = authorizer
 }
-func (c *celAdmissionPlugin) InspectFeatureGates(featureGates featuregate.FeatureGate) {
+
+func (c *CELAdmissionPlugin) InspectFeatureGates(featureGates featuregate.FeatureGate) {
 	if featureGates.Enabled(features.ValidatingAdmissionPolicy) {
 		c.enabled = true
 	}
@@ -121,15 +130,21 @@ func (c *celAdmissionPlugin) InspectFeatureGates(featureGates featuregate.Featur
 }
 
 // ValidateInitialization - once clientset and informer factory are provided, creates and starts the admission controller
-func (c *celAdmissionPlugin) ValidateInitialization() error {
+func (c *CELAdmissionPlugin) ValidateInitialization() error {
 	if !c.inspectedFeatureGates {
 		return fmt.Errorf("%s did not see feature gates", PluginName)
 	}
 	if !c.enabled {
 		return nil
 	}
-	if c.informerFactory == nil {
-		return errors.New("missing informer factory")
+	if c.namespaceInformer == nil {
+		return errors.New("missing namespace informer")
+	}
+	if c.validatingAdmissionPoliciesInformer == nil {
+		return errors.New("missing validating admission policies informer")
+	}
+	if c.validatingAdmissionPolicyBindingsInformer == nil {
+		return errors.New("missing validating admission policy bindings informer")
 	}
 	if c.client == nil {
 		return errors.New("missing kubernetes client")
@@ -143,10 +158,20 @@ func (c *celAdmissionPlugin) ValidateInitialization() error {
 	if c.stopCh == nil {
 		return errors.New("missing stop channel")
 	}
+
 	if c.authorizer == nil {
 		return errors.New("missing authorizer")
 	}
-	c.evaluator = NewAdmissionController(c.informerFactory, c.client, c.restMapper, c.dynamicClient, c.authorizer)
+	c.evaluator = NewAdmissionController(
+		c.namespaceInformer,
+		c.validatingAdmissionPoliciesInformer,
+		c.validatingAdmissionPolicyBindingsInformer,
+		c.client,
+		c.restMapper,
+		c.dynamicClient,
+		c.authorizer,
+	)
+
 	if err := c.evaluator.ValidateInitialization(); err != nil {
 		return err
 	}
@@ -160,11 +185,11 @@ func (c *celAdmissionPlugin) ValidateInitialization() error {
 // admission.ValidationInterface
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *celAdmissionPlugin) Handles(operation admission.Operation) bool {
+func (c *CELAdmissionPlugin) Handles(operation admission.Operation) bool {
 	return true
 }
 
-func (c *celAdmissionPlugin) Validate(
+func (c *CELAdmissionPlugin) Validate(
 	ctx context.Context,
 	a admission.Attributes,
 	o admission.ObjectInterfaces,

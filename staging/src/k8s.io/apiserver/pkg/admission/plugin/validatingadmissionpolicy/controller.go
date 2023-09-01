@@ -44,7 +44,8 @@ import (
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/warning"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/informers"
+	admissionregistrationinformers "k8s.io/client-go/informers/admissionregistration/v1alpha1"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -126,7 +127,9 @@ type paramInfo struct {
 
 func NewAdmissionController(
 	// Injected Dependencies
-	informerFactory informers.SharedInformerFactory,
+	namespaceInformer coreinformers.NamespaceInformer,
+	validatingAdmissionPoliciesInformer admissionregistrationinformers.ValidatingAdmissionPolicyInformer,
+	validatingAdmissionPolicyBindingsInformer admissionregistrationinformers.ValidatingAdmissionPolicyBindingInformer,
 	client kubernetes.Interface,
 	restMapper meta.RESTMapper,
 	dynamicClient dynamic.Interface,
@@ -140,11 +143,11 @@ func NewAdmissionController(
 			dynamicClient,
 			informerFactory,
 			nil,
-			NewMatcher(matching.NewMatcher(informerFactory.Core().V1().Namespaces().Lister(), client)),
+			NewMatcher(matching.NewMatcher(namespaceInformer.Lister(), client)),
 			generic.NewInformer[*v1beta1.ValidatingAdmissionPolicy](
-				informerFactory.Admissionregistration().V1beta1().ValidatingAdmissionPolicies().Informer()),
+				validatingAdmissionPoliciesInformer.Informer()),
 			generic.NewInformer[*v1beta1.ValidatingAdmissionPolicyBinding](
-				informerFactory.Admissionregistration().V1beta1().ValidatingAdmissionPolicyBindings().Informer()),
+				validatingAdmissionPolicyBindingsInformer.Informer()),
 		),
 		authz: authz,
 	}
