@@ -23,12 +23,11 @@ import (
 	"k8s.io/api/admissionregistration/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/client-go/kubernetes"
-	listersv1 "k8s.io/client-go/listers/core/v1"
-
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/namespace"
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/object"
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/rules"
+	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 )
 
 type MatchCriteria interface {
@@ -46,7 +45,7 @@ type Matcher struct {
 
 // NewMatcher initialize the matcher with dependencies requires
 func NewMatcher(
-	namespaceLister listersv1.NamespaceLister,
+	namespaceLister corelisters.NamespaceLister,
 	client kubernetes.Interface,
 ) *Matcher {
 	return &Matcher{

@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	admissionregistrationinformers "k8s.io/client-go/informers/admissionregistration/v1alpha1"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 
 	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/matching"
 
@@ -37,7 +39,6 @@ import (
 	celmetrics "k8s.io/apiserver/pkg/admission/cel"
 	"k8s.io/apiserver/pkg/admission/plugin/validatingadmissionpolicy/internal/generic"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -124,12 +125,14 @@ type paramInfo struct {
 
 func NewAdmissionController(
 	// Injected Dependencies
-	informerFactory informers.SharedInformerFactory,
+	namespaceInformer coreinformers.NamespaceInformer,
+	validatingAdmissionPoliciesInformer admissionregistrationinformers.ValidatingAdmissionPolicyInformer,
+	validatingAdmissionPolicyBindingsInformer admissionregistrationinformers.ValidatingAdmissionPolicyBindingInformer,
 	client kubernetes.Interface,
 	restMapper meta.RESTMapper,
 	dynamicClient dynamic.Interface,
 ) CELPolicyEvaluator {
-	matcher := matching.NewMatcher(informerFactory.Core().V1().Namespaces().Lister(), client)
+	matcher := matching.NewMatcher(namespaceInformer.Lister(), client)
 	validatorCompiler := &CELValidatorCompiler{
 		Matcher: matcher,
 	}
@@ -145,7 +148,7 @@ func NewAdmissionController(
 
 	c.policyDefinitionsController = generic.NewController(
 		generic.NewInformer[*v1alpha1.ValidatingAdmissionPolicy](
-			informerFactory.Admissionregistration().V1alpha1().ValidatingAdmissionPolicies().Informer()),
+			validatingAdmissionPoliciesInformer.Informer()),
 		c.reconcilePolicyDefinition,
 		generic.ControllerOptions{
 			Workers: 1,
@@ -154,7 +157,7 @@ func NewAdmissionController(
 	)
 	c.policyBindingController = generic.NewController(
 		generic.NewInformer[*v1alpha1.ValidatingAdmissionPolicyBinding](
-			informerFactory.Admissionregistration().V1alpha1().ValidatingAdmissionPolicyBindings().Informer()),
+			validatingAdmissionPolicyBindingsInformer.Informer()),
 		c.reconcilePolicyBinding,
 		generic.ControllerOptions{
 			Workers: 1,

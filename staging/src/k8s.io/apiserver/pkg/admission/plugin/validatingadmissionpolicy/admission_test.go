@@ -265,7 +265,7 @@ func setupTestCommon(t *testing.T, compiler ValidatorCompiler, shouldStartInform
 	plug, err := NewPlugin()
 	require.NoError(t, err)
 
-	handler := plug.(*celAdmissionPlugin)
+	handler := plug.(*CELAdmissionPlugin)
 	handler.enabled = true
 
 	genericInitializer := initializer.New(fakeClient, dynamicClient, fakeInformerFactory, nil, featureGate, testContext.Done())
