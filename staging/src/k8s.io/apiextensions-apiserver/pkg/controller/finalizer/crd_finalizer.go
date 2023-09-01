@@ -22,6 +22,12 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster/v3"
+
+	kcpcache "github.com/kcp-dev/apimachinery/v2/pkg/cache"
+	kcpapiextensionsv1client "k8s.io/apiextensions-apiserver/pkg/client/kcp/clientset/versioned/typed/apiextensions/v1"
+	kcpapiextensionsv1informers "k8s.io/apiextensions-apiserver/pkg/client/kcp/informers/externalversions/apiextensions/v1"
+	kcpapiextensionsv1listers "k8s.io/apiextensions-apiserver/pkg/client/kcp/listers/apiextensions/v1"
 	"k8s.io/klog/v2"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,9 +46,6 @@ import (
 
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	client "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1"
-	informers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/apiextensions/v1"
-	listers "k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1"
 )
 
 // OverlappingBuiltInResources returns the set of built-in group/resources that are persisted
@@ -57,10 +60,10 @@ func OverlappingBuiltInResources() map[schema.GroupResource]bool {
 
 // CRDFinalizer is a controller that finalizes the CRD by deleting all the CRs associated with it.
 type CRDFinalizer struct {
-	crdClient      client.CustomResourceDefinitionsGetter
+	crdClient      kcpapiextensionsv1client.CustomResourceDefinitionsClusterGetter
 	crClientGetter CRClientGetter
 
-	crdLister listers.CustomResourceDefinitionLister
+	crdLister kcpapiextensionsv1listers.CustomResourceDefinitionClusterLister
 	crdSynced cache.InformerSynced
 
 	// To allow injection for testing.
@@ -83,11 +86,7 @@ type CRClientGetter interface {
 }
 
 // NewCRDFinalizer creates a new CRDFinalizer.
-func NewCRDFinalizer(
-	crdInformer informers.CustomResourceDefinitionInformer,
-	crdClient client.CustomResourceDefinitionsGetter,
-	crClientGetter CRClientGetter,
-) *CRDFinalizer {
+func NewCRDFinalizer(crdInformer kcpapiextensionsv1informers.CustomResourceDefinitionClusterInformer, crdClient kcpapiextensionsv1client.ApiextensionsV1ClusterInterface, crClientGetter CRClientGetter) *CRDFinalizer {
 	c := &CRDFinalizer{
 		crdClient:      crdClient,
 		crdLister:      crdInformer.Lister(),
@@ -107,7 +106,12 @@ func NewCRDFinalizer(
 }
 
 func (c *CRDFinalizer) sync(key string) error {
-	cachedCRD, err := c.crdLister.Get(key)
+	clusterName, _, name, err := kcpcache.SplitMetaClusterNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return nil
+	}
+	cachedCRD, err := c.crdLister.Cluster(clusterName).Get(name)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -129,7 +133,7 @@ func (c *CRDFinalizer) sync(key string) error {
 		Reason:  "InstanceDeletionInProgress",
 		Message: "CustomResource deletion is in progress",
 	})
-	crd, err = c.crdClient.CustomResourceDefinitions().UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{})
+	crd, err = c.crdClient.CustomResourceDefinitions().Cluster(clusterName.Path()).UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{})
 	if apierrors.IsNotFound(err) || apierrors.IsConflict(err) {
 		// deleted or changed in the meantime, we'll get called again
 		return nil
@@ -152,7 +156,7 @@ func (c *CRDFinalizer) sync(key string) error {
 		cond, deleteErr := c.deleteInstances(crd)
 		apiextensionshelpers.SetCRDCondition(crd, cond)
 		if deleteErr != nil {
-			if _, err = c.crdClient.CustomResourceDefinitions().UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{}); err != nil {
+			if _, err = c.crdClient.CustomResourceDefinitions().Cluster(clusterName.Path()).UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{}); err != nil {
 				utilruntime.HandleError(err)
 			}
 			return deleteErr
@@ -167,7 +171,7 @@ func (c *CRDFinalizer) sync(key string) error {
 	}
 
 	apiextensionshelpers.CRDRemoveFinalizer(crd, apiextensionsv1.CustomResourceCleanupFinalizer)
-	_, err = c.crdClient.CustomResourceDefinitions().UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{})
+	_, err = c.crdClient.CustomResourceDefinitions().Cluster(clusterName.Path()).UpdateStatus(context.TODO(), crd, metav1.UpdateOptions{})
 	if apierrors.IsNotFound(err) || apierrors.IsConflict(err) {
 		// deleted or changed in the meantime, we'll get called again
 		return nil
@@ -190,7 +194,10 @@ func (c *CRDFinalizer) deleteInstances(crd *apiextensionsv1.CustomResourceDefini
 		}, err
 	}
 
-	ctx := genericapirequest.NewContext()
+	ctx := genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{
+		Name: logicalcluster.From(crd),
+	})
+
 	allResources, err := crClient.List(ctx, nil)
 	if err != nil {
 		return apiextensionsv1.CustomResourceDefinitionCondition{
@@ -303,7 +310,7 @@ func (c *CRDFinalizer) processNextWorkItem() bool {
 }
 
 func (c *CRDFinalizer) enqueue(obj *apiextensionsv1.CustomResourceDefinition) {
-	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+	key, err := kcpcache.DeletionHandlingMetaClusterNamespaceKeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
