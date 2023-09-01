@@ -23,24 +23,21 @@ import (
 	"strings"
 	"time"
 
+	kcpinformers "github.com/kcp-dev/client-go/informers"
+	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
 	"github.com/spf13/pflag"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/egressselector"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 	serviceaccountcontroller "k8s.io/kubernetes/pkg/controller/serviceaccount"
 	kubeauthenticator "k8s.io/kubernetes/pkg/kubeapiserver/authenticator"
 	authzmodes "k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes"
-	"k8s.io/kubernetes/plugin/pkg/auth/authenticator/token/bootstrap"
 )
 
 // BuiltInAuthenticationOptions contains all build-in authentication options for API Server
@@ -447,7 +444,7 @@ func (o *BuiltInAuthenticationOptions) ToAuthenticationConfig() (kubeauthenticat
 }
 
 // ApplyTo requires already applied OpenAPIConfig and EgressSelector if present.
-func (o *BuiltInAuthenticationOptions) ApplyTo(authInfo *genericapiserver.AuthenticationInfo, secureServing *genericapiserver.SecureServingInfo, egressSelector *egressselector.EgressSelector, openAPIConfig *openapicommon.Config, openAPIV3Config *openapicommon.Config, extclient kubernetes.Interface, versionedInformer informers.SharedInformerFactory) error {
+func (o *BuiltInAuthenticationOptions) ApplyTo(authInfo *genericapiserver.AuthenticationInfo, secureServing *genericapiserver.SecureServingInfo, egressSelector *egressselector.EgressSelector, openAPIConfig *openapicommon.Config, openAPIV3Config *openapicommon.Config, extclient kcpkubernetesclientset.ClusterInterface, versionedInformer kcpinformers.SharedInformerFactory) error {
 	if o == nil {
 		return nil
 	}
@@ -477,17 +474,16 @@ func (o *BuiltInAuthenticationOptions) ApplyTo(authInfo *genericapiserver.Authen
 		authInfo.APIAudiences = authenticator.Audiences(o.ServiceAccounts.Issuers)
 	}
 
-	authenticatorConfig.ServiceAccountTokenGetter = serviceaccountcontroller.NewGetterFromClient(
+	authenticatorConfig.ServiceAccountTokenGetter = serviceaccountcontroller.NewClusterGetterFromClient(
 		extclient,
 		versionedInformer.Core().V1().Secrets().Lister(),
 		versionedInformer.Core().V1().ServiceAccounts().Lister(),
-		versionedInformer.Core().V1().Pods().Lister(),
 	)
-	authenticatorConfig.SecretsWriter = extclient.CoreV1()
+	authenticatorConfig.SecretsWriter = extclient.CoreV1().Secrets()
 
-	authenticatorConfig.BootstrapTokenAuthenticator = bootstrap.NewTokenAuthenticator(
-		versionedInformer.Core().V1().Secrets().Lister().Secrets(metav1.NamespaceSystem),
-	)
+	//authenticatorConfig.BootstrapTokenAuthenticator = bootstrap.NewTokenAuthenticator(
+	//	versionedInformer.Core().V1().Secrets().Lister().Secrets(metav1.NamespaceSystem),
+	//)
 
 	if egressSelector != nil {
 		egressDialer, err := egressSelector.Lookup(egressselector.ControlPlane.AsNetworkContext())
