@@ -31,12 +31,19 @@ import (
 	jose "gopkg.in/go-jose/go-jose.v2"
 	"gopkg.in/go-jose/go-jose.v2/jwt"
 
+	"github.com/kcp-dev/logicalcluster/v3"
+
 	v1 "k8s.io/api/core/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	apiserverserviceaccount "k8s.io/apiserver/pkg/authentication/serviceaccount"
 )
+
+// ServiceAccountTokenClusterGetter can scope down to a ServiceAccountTokenGetter for one cluster
+type ServiceAccountTokenClusterGetter interface {
+	Cluster(logicalcluster.Name) ServiceAccountTokenGetter
+}
 
 // ServiceAccountTokenGetter defines functions to retrieve a named service account and secret
 type ServiceAccountTokenGetter interface {
