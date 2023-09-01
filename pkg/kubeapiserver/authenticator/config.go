@@ -23,6 +23,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	typedv1core "github.com/kcp-dev/client-go/kubernetes/typed/core/v1"
+
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -43,7 +45,6 @@ import (
 	webhookutil "k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/apiserver/plugin/pkg/authenticator/token/oidc"
 	"k8s.io/apiserver/plugin/pkg/authenticator/token/webhook"
-	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kube-openapi/pkg/spec3"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
@@ -80,8 +81,8 @@ type Config struct {
 	RequestHeaderConfig *authenticatorfactory.RequestHeaderConfig
 
 	// TODO, this is the only non-serializable part of the entire config.  Factor it out into a clientconfig
-	ServiceAccountTokenGetter   serviceaccount.ServiceAccountTokenGetter
-	SecretsWriter               typedv1core.SecretsGetter
+	ServiceAccountTokenGetter   serviceaccount.ServiceAccountTokenClusterGetter
+	SecretsWriter               typedv1core.SecretClusterInterface
 	BootstrapTokenAuthenticator authenticator.Token
 	// ClientCAContentProvider are the options for verifying incoming connections using mTLS and directly assigning to users.
 	// Generally this is the CA bundle file used to authenticate client certificates
@@ -338,7 +339,7 @@ func newAuthenticatorFromTokenFile(tokenAuthFile string) (authenticator.Token, e
 }
 
 // newLegacyServiceAccountAuthenticator returns an authenticator.Token or an error
-func newLegacyServiceAccountAuthenticator(keyfiles []string, lookup bool, apiAudiences authenticator.Audiences, serviceAccountGetter serviceaccount.ServiceAccountTokenGetter, secretsWriter typedv1core.SecretsGetter) (authenticator.Token, error) {
+func newLegacyServiceAccountAuthenticator(keyfiles []string, lookup bool, apiAudiences authenticator.Audiences, serviceAccountGetter serviceaccount.ServiceAccountTokenClusterGetter, secretsWriter typedv1core.SecretClusterInterface) (authenticator.Token, error) {
 	allPublicKeys := []interface{}{}
 	for _, keyfile := range keyfiles {
 		publicKeys, err := keyutil.PublicKeysFromFile(keyfile)
@@ -357,7 +358,7 @@ func newLegacyServiceAccountAuthenticator(keyfiles []string, lookup bool, apiAud
 }
 
 // newServiceAccountAuthenticator returns an authenticator.Token or an error
-func newServiceAccountAuthenticator(issuers []string, keyfiles []string, apiAudiences authenticator.Audiences, serviceAccountGetter serviceaccount.ServiceAccountTokenGetter) (authenticator.Token, error) {
+func newServiceAccountAuthenticator(issuers []string, keyfiles []string, apiAudiences authenticator.Audiences, serviceAccountGetter serviceaccount.ServiceAccountTokenClusterGetter) (authenticator.Token, error) {
 	allPublicKeys := []interface{}{}
 	for _, keyfile := range keyfiles {
 		publicKeys, err := keyutil.PublicKeysFromFile(keyfile)
