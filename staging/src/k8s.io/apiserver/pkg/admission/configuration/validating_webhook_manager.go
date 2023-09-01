@@ -29,6 +29,7 @@ import (
 	"k8s.io/apiserver/pkg/admission/plugin/webhook"
 	"k8s.io/apiserver/pkg/admission/plugin/webhook/generic"
 	"k8s.io/client-go/informers"
+	admissionregistrationinformers "k8s.io/client-go/informers/admissionregistration/v1"
 	admissionregistrationlisters "k8s.io/client-go/listers/admissionregistration/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/cache/synctrack"
@@ -55,6 +56,10 @@ var _ generic.Source = &validatingWebhookConfigurationManager{}
 
 func NewValidatingWebhookConfigurationManager(f informers.SharedInformerFactory, excludedWebhookResources sets.Set[schema.GroupResource]) generic.Source {
 	informer := f.Admissionregistration().V1().ValidatingWebhookConfigurations()
+	return NewValidatingWebhookConfigurationManagerForInformer(informer, excludedWebhookResources)
+}
+
+func NewValidatingWebhookConfigurationManagerForInformer(informer admissionregistrationinformers.ValidatingWebhookConfigurationInformer, excludedWebhookResources sets.Set[schema.GroupResource]) generic.Source {
 	manager := &validatingWebhookConfigurationManager{
 		lister:                          informer.Lister(),
 		createValidatingWebhookAccessor: webhook.NewValidatingWebhookAccessor,
