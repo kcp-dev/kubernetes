@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"k8s.io/apiserver/pkg/endpoints/discovery"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 )
 
@@ -44,7 +45,7 @@ type CompletedConfig struct {
 
 func (c *Config) Complete() CompletedConfig {
 	cfg := completedConfig{
-		c.Generic.Complete(c.VersionedInformers),
+		c.Generic.Complete(informerfactoryhack.Wrap(c.VersionedInformers)),
 		&c.Extra,
 	}
 

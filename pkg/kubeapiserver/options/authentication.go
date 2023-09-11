@@ -26,6 +26,8 @@ import (
 	kcpinformers "github.com/kcp-dev/client-go/informers"
 	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
 	"github.com/spf13/pflag"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
@@ -489,7 +491,8 @@ func (o *BuiltInAuthenticationOptions) ApplyTo(authInfo *genericapiserver.Authen
 
 	if authenticatorConfig.BootstrapToken {
 		authenticatorConfig.BootstrapTokenAuthenticator = bootstrap.NewTokenAuthenticator(
-			versionedInformer.Core().V1().Secrets().Lister().Secrets(metav1.NamespaceSystem), //TODO(kcp): This should be a cluster scoped lister?
+			// TODO(sttts): make it possible to reference LocalAdminCluster here without import cycle
+			versionedInformer.Core().V1().Secrets().Lister().Cluster("system:admin").Secrets(metav1.NamespaceSystem), //TODO(kcp): This should be a cluster scoped lister?
 		)
 	}
 
