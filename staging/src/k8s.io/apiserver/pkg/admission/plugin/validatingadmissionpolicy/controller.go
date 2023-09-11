@@ -141,7 +141,7 @@ func NewAdmissionController(
 			restMapper,
 			client,
 			dynamicClient,
-			informerFactory,
+			nil, // TODO(sttts): this was informerFactory, shouldn't be nil
 			nil,
 			NewMatcher(matching.NewMatcher(namespaceInformer.Lister(), client)),
 			generic.NewInformer[*v1beta1.ValidatingAdmissionPolicy](
