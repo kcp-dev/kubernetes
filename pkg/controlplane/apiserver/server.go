@@ -22,12 +22,15 @@ import (
 	"os"
 	"time"
 
+	"github.com/kcp-dev/client-go/kubernetes"
+
 	coordinationapiv1 "k8s.io/api/coordination/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	apiserverfeatures "k8s.io/apiserver/pkg/features"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 	peerreconcilers "k8s.io/apiserver/pkg/reconcilers"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -35,7 +38,6 @@ import (
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientgoinformers "k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	zpagesfeatures "k8s.io/component-base/zpages/features"
 	"k8s.io/component-base/zpages/flagz"
 	"k8s.io/component-base/zpages/statusz"
@@ -135,7 +137,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 		APIResourceConfigSource:   c.APIResourceConfigSource,
 		RESTOptionsGetter:         c.Generic.RESTOptionsGetter,
 		ClusterAuthenticationInfo: c.ClusterAuthenticationInfo,
-		VersionedInformers:        c.VersionedInformers,
+		VersionedInformers:        informerfactoryhack.Wrap(c.VersionedInformers),
 	}
 
 	client, err := kubernetes.NewForConfig(s.GenericAPIServer.LoopbackClientConfig)
@@ -144,7 +146,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 	}
 	if len(c.SystemNamespaces) > 0 {
 		s.GenericAPIServer.AddPostStartHookOrDie("start-system-namespaces-controller", func(hookContext genericapiserver.PostStartHookContext) error {
-			go systemnamespaces.NewController(c.SystemNamespaces, client, s.VersionedInformers.Core().V1().Namespaces()).Run(hookContext.Done())
+			go systemnamespaces.NewController(c.SystemNamespaces, client.Cluster(LocalAdminCluster.Path()), informerfactoryhack.Unwrap(s.VersionedInformers).Core().V1().Namespaces().Cluster(LocalAdminCluster)).Run(hookContext.Done())
 			return nil
 		})
 	}
@@ -176,11 +178,11 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 				controller, err := leaderelection.NewController(
 					leaseInformer,
 					lcInformer,
-					client.CoordinationV1(),
-					client.CoordinationV1alpha2(),
+					client.Cluster(LocalAdminCluster.Path()).CoordinationV1(),
+					client.Cluster(LocalAdminCluster.Path()).CoordinationV1alpha2(),
 				)
 				gccontroller := leaderelection.NewLeaseCandidateGC(
-					client,
+					client.Cluster(LocalAdminCluster.Path()),
 					LeaseCandidateGCPeriod,
 					lcInformer,
 				)
@@ -200,7 +202,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 			peeraddress,
 			c.Extra.PeerEndpointLeaseReconciler,
 			c.Extra.PeerEndpointReconcileInterval,
-			client)
+			client.Cluster(LocalAdminCluster.Path()))
 		s.GenericAPIServer.AddPostStartHookOrDie("peer-endpoint-reconciler-controller",
 			func(hookContext genericapiserver.PostStartHookContext) error {
 				peerEndpointCtrl.Start(hookContext.Done())
@@ -220,7 +222,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 	}
 
 	s.GenericAPIServer.AddPostStartHookOrDie("start-cluster-authentication-info-controller", func(hookContext genericapiserver.PostStartHookContext) error {
-		controller := clusterauthenticationtrust.NewClusterAuthenticationTrustController(s.ClusterAuthenticationInfo, client)
+		controller := clusterauthenticationtrust.NewClusterAuthenticationTrustController(s.ClusterAuthenticationInfo, client.Cluster(LocalAdminCluster.Path()))
 		// prime values and start listeners
 		if s.ClusterAuthenticationInfo.ClientCA != nil {
 			s.ClusterAuthenticationInfo.ClientCA.AddListener(controller)
@@ -256,7 +258,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 			// must replace ':,[]' in [ip:port] to be able to store this as a valid label value
 			controller := lease.NewController(
 				clock.RealClock{},
-				client,
+				client.Cluster(LocalAdminCluster.Path()),
 				holderIdentity,
 				int32(IdentityLeaseDurationSeconds),
 				nil,
@@ -271,7 +273,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 		// TODO: move this into generic apiserver and make the lease identity value configurable
 		s.GenericAPIServer.AddPostStartHookOrDie("start-kube-apiserver-identity-lease-garbage-collector", func(hookContext genericapiserver.PostStartHookContext) error {
 			go apiserverleasegc.NewAPIServerLeaseGC(
-				client,
+				client.Cluster(LocalAdminCluster.Path()),
 				IdentityLeaseGCPeriod,
 				metav1.NamespaceSystem,
 				IdentityLeaseComponentLabelKey+"="+name,
@@ -285,7 +287,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 	}
 
 	s.GenericAPIServer.AddPostStartHookOrDie("start-legacy-token-tracking-controller", func(hookContext genericapiserver.PostStartHookContext) error {
-		go legacytokentracking.NewController(client).Run(hookContext.Done())
+		go legacytokentracking.NewController(client.Cluster(LocalAdminCluster.Path())).Run(hookContext.Done())
 		return nil
 	})
 
