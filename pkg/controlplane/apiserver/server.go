@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/kcp-dev/client-go/kubernetes"
+
 	coordinationapiv1 "k8s.io/api/coordination/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/wait"
 	apiserverfeatures "k8s.io/apiserver/pkg/features"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 	peerreconcilers "k8s.io/apiserver/pkg/reconcilers"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -37,7 +40,6 @@ import (
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientgoinformers "k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/component-helpers/apimachinery/lease"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
@@ -132,7 +134,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 		APIResourceConfigSource:   c.APIResourceConfigSource,
 		RESTOptionsGetter:         c.Generic.RESTOptionsGetter,
 		ClusterAuthenticationInfo: c.ClusterAuthenticationInfo,
-		VersionedInformers:        c.VersionedInformers,
+		VersionedInformers:        informerfactoryhack.Wrap(c.VersionedInformers),
 	}
 
 	clusterClient, err := kubernetes.NewForConfig(s.GenericAPIServer.LoopbackClientConfig)
@@ -142,7 +144,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 	client := clusterClient.Cluster(LocalAdminCluster.Path())
 	if len(c.SystemNamespaces) > 0 {
 		s.GenericAPIServer.AddPostStartHookOrDie("start-system-namespaces-controller", func(hookContext genericapiserver.PostStartHookContext) error {
-			go systemnamespaces.NewController(c.SystemNamespaces, client, s.VersionedInformers.Core().V1().Namespaces()).Run(hookContext.StopCh)
+			go systemnamespaces.NewController(c.SystemNamespaces, client, informerfactoryhack.Unwrap(s.VersionedInformers).Core().V1().Namespaces().Cluster(LocalAdminCluster)).Run(hookContext.StopCh)
 			return nil
 		})
 	}

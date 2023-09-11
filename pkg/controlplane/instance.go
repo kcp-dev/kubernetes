@@ -55,6 +55,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	"k8s.io/client-go/kubernetes"
@@ -336,7 +337,7 @@ func (c CompletedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 			ExtendExpiration:            c.ControlPlane.Extra.ExtendExpiration,
 			ServiceAccountMaxExpiration: c.ControlPlane.Extra.ServiceAccountMaxExpiration,
 			APIAudiences:                c.ControlPlane.Generic.Authentication.APIAudiences,
-			Informers:                   c.ControlPlane.Extra.VersionedInformers,
+			Informers:                   informerfactoryhack.Wrap(c.ControlPlane.Extra.VersionedInformers),
 		},
 		Proxy: corerest.ProxyConfig{
 			Transport:           c.ControlPlane.Extra.ProxyTransport,
@@ -402,7 +403,7 @@ func (c CompletedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		ServicePort:               c.ExtraConfig.APIServerServicePort,
 		PublicServicePort:         publicServicePort,
 		KubernetesServiceNodePort: c.ExtraConfig.KubernetesServiceNodePort,
-	}, client, c.ControlPlane.Extra.VersionedInformers.Core().V1().Services())
+	}, client, c.ControlPlane.Extra.VersionedInformers.Core().V1().Services().Cluster(controlplaneapiserver.LocalAdminCluster))
 	s.ControlPlane.GenericAPIServer.AddPostStartHookOrDie("bootstrap-controller", func(hookContext genericapiserver.PostStartHookContext) error {
 		kubernetesServiceCtrl.Start(hookContext.StopCh)
 		return nil
