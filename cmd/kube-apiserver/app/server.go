@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 
+	kcpinformers "github.com/kcp-dev/client-go/informers"
 	"github.com/spf13/cobra"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -32,6 +33,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/admission"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/egressselector"
 	"k8s.io/apiserver/pkg/server/flagz"
@@ -187,7 +189,7 @@ func CreateServerChain(config CompletedConfig) (*aggregatorapiserver.APIAggregat
 	}
 
 	// aggregator comes last in the chain
-	aggregatorServer, err := controlplaneapiserver.CreateAggregatorServer(config.Aggregator, kubeAPIServer.ControlPlane.GenericAPIServer, apiExtensionsServer.Informers.Apiextensions().V1().CustomResourceDefinitions(), crdAPIEnabled, apiVersionPriorities)
+	aggregatorServer, err := controlplaneapiserver.CreateAggregatorServer(config.Aggregator, kubeAPIServer.ControlPlane.GenericAPIServer, apiExtensionsServer.Informers.Apiextensions().V1().CustomResourceDefinitions().Cluster(controlplaneapiserver.LocalAdminCluster), crdAPIEnabled, apiVersionPriorities)
 	if err != nil {
 		// we don't need special handling for innerStopCh because the aggregator server doesn't create any go routines
 		return nil, err
@@ -200,7 +202,7 @@ func CreateServerChain(config CompletedConfig) (*aggregatorapiserver.APIAggregat
 func CreateKubeAPIServerConfig(
 	opts options.CompletedOptions,
 	genericConfig *genericapiserver.Config,
-	versionedInformers clientgoinformers.SharedInformerFactory,
+	versionedInformers kcpinformers.SharedInformerFactory,
 	storageFactory *serverstorage.DefaultStorageFactory,
 ) (
 	*controlplane.Config,
@@ -218,7 +220,7 @@ func CreateKubeAPIServerConfig(
 		return nil, nil, nil, fmt.Errorf("failed to create admission plugin initializer: %w", err)
 	}
 
-	serviceResolver, err := buildServiceResolver(opts.EnableAggregatorRouting, genericConfig.LoopbackClientConfig.Host, versionedInformers)
+	serviceResolver, err := buildServiceResolver(opts.EnableAggregatorRouting, genericConfig.LoopbackClientConfig.Host, informerfactoryhack.Wrap(versionedInformers))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("error building service resolver: %w", err)
 	}
