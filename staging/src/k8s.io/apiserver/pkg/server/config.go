@@ -35,6 +35,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/cryptobyte"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -903,7 +904,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 	if c.SharedInformerFactory != nil {
 		if !s.isPostStartHookRegistered(genericApiServerHookName) {
 			err := s.AddPostStartHook(genericApiServerHookName, func(hookContext PostStartHookContext) error {
-				c.SharedInformerFactory.Start(hookContext.Done())
+				informerfactoryhack.Unwrap(c.SharedInformerFactory).Start(hookContext.Done())
 				return nil
 			})
 			if err != nil {
@@ -911,7 +912,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 			}
 		}
 		// TODO: Once we get rid of /healthz consider changing this to post-start-hook.
-		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(c.SharedInformerFactory))
+		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(informerfactoryhack.Unwrap(c.SharedInformerFactory)))
 		if err != nil {
 			return nil, err
 		}
