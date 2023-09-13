@@ -46,6 +46,9 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/imdario/mergo v0.3.6
 	github.com/ishidawataru/sctp v0.0.0-20190723014705-7c296d48a2b5
+	github.com/kcp-dev/apimachinery/v2 v2.0.0-alpha.0.0.20230826151957-7189d0d1fe31
+	github.com/kcp-dev/client-go v0.0.0-20230826195957-39c67dd41719
+	github.com/kcp-dev/logicalcluster/v3 v3.0.4
 	github.com/libopenstorage/openstorage v1.0.0
 	github.com/lithammer/dedent v1.1.0
 	github.com/moby/ipvs v1.1.0
@@ -94,12 +97,12 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.0.0
+	k8s.io/api v0.28.1
 	k8s.io/apiextensions-apiserver v0.0.0
-	k8s.io/apimachinery v0.0.0
+	k8s.io/apimachinery v0.28.1
 	k8s.io/apiserver v0.0.0
 	k8s.io/cli-runtime v0.0.0
-	k8s.io/client-go v0.0.0
+	k8s.io/client-go v0.28.1
 	k8s.io/cloud-provider v0.0.0
 	k8s.io/cluster-bootstrap v0.0.0
 	k8s.io/code-generator v0.0.0

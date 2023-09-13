@@ -18,12 +18,6 @@ package framework
 
 import (
 	"context"
-	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
-	"k8s.io/apimachinery/pkg/runtime"
-	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver"
-	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	"net"
 	"net/http"
 	"os"
@@ -34,7 +28,9 @@ import (
 
 	"github.com/google/uuid"
 
+	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -42,11 +38,16 @@ import (
 	client "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/cert"
+	aggregatorscheme "k8s.io/kube-aggregator/pkg/apiserver/scheme"
+	netutils "k8s.io/utils/net"
+
 	"k8s.io/kubernetes/cmd/kube-apiserver/app"
 	"k8s.io/kubernetes/cmd/kube-apiserver/app/options"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/controlplane"
+	controlplaneapiserver "k8s.io/kubernetes/pkg/controlplane/apiserver"
+	generatedopenapi "k8s.io/kubernetes/pkg/generated/openapi"
 	"k8s.io/kubernetes/test/utils"
-	netutils "k8s.io/utils/net"
 )
 
 // This key is for testing purposes only and is not considered secure.
@@ -165,7 +166,7 @@ func StartTestServer(ctx context.Context, t testing.TB, setup TestServerSetup) (
 		t.Fatalf("failed to validate ServerRunOptions: %v", utilerrors.NewAggregate(errs))
 	}
 
-	genericConfig, versionedInformers, storageFactory, err := controlplaneapiserver.BuildGenericConfig(
+	genericConfig, _, versionedInformers, storageFactory, err := controlplaneapiserver.BuildGenericConfig(
 		completedOptions.CompletedOptions,
 		[]*runtime.Scheme{legacyscheme.Scheme, apiextensionsapiserver.Scheme, aggregatorscheme.Scheme},
 		controlplane.DefaultAPIResourceConfigSource(),

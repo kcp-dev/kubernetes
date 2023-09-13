@@ -39,9 +39,12 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/apiserver/pkg/endpoints/request"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
+	kcpapi "k8s.io/apiserver/pkg/kcp"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/cacher/metrics"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/component-base/tracing"
@@ -82,7 +85,7 @@ type Config struct {
 	ResourcePrefix string
 
 	// KeyFunc is used to get a key in the underlying storage for a given object.
-	KeyFunc func(runtime.Object) (string, error)
+	KeyFunc func(context.Context, runtime.Object) (string, error)
 
 	// GetAttrsFunc is used to get object labels, fields
 	GetAttrsFunc func(runtime.Object) (label labels.Set, field fields.Set, err error)
@@ -105,6 +108,9 @@ type Config struct {
 	Codec runtime.Codec
 
 	Clock clock.WithTicker
+
+	// KcpExtraStorageMetadata holds metadata used by the watchCache's reflector to instruct the storage layer how to assign/extract the cluster name
+	KcpExtraStorageMetadata *storagebackend.KcpStorageMetadata
 }
 
 type watchersMap map[int]*cacheWatcher
@@ -401,10 +407,18 @@ func NewCacherFromConfig(config Config) (*Cacher, error) {
 		// so that future reuse does not get a spurious timeout.
 		<-cacher.timer.C
 	}
+
+	// empty storage metadata usually indicate build-in resources
+	// for those we require only a WildCard cluster to be present in the ctx
+	if config.KcpExtraStorageMetadata == nil {
+		config.KcpExtraStorageMetadata = &storagebackend.KcpStorageMetadata{Cluster: genericapirequest.Cluster{Wildcard: true}}
+	}
+
 	progressRequester := newConditionalProgressRequester(config.Storage.RequestWatchProgress, config.Clock)
 	watchCache := newWatchCache(
 		config.KeyFunc, cacher.processEvent, config.GetAttrsFunc, config.Versioner, config.Indexers, config.Clock, config.GroupResource, progressRequester)
-	listerWatcher := NewListerWatcher(config.Storage, config.ResourcePrefix, config.NewListFunc)
+	listerWatcher := NewListerWatcher(config.Storage, config.ResourcePrefix, config.NewListFunc, config.KcpExtraStorageMetadata)
+
 	reflectorName := "storage/cacher.go:" + config.ResourcePrefix
 
 	reflector := cache.NewNamedReflector(reflectorName, listerWatcher, obj, watchCache, 0)
@@ -1285,6 +1299,14 @@ func (c *Cacher) getCurrentResourceVersionFromStorage(ctx context.Context) (uint
 	return uint64(currentResourceVersion), nil
 }
 
+// cacherListerWatcher opaques storage.Interface to expose cache.ListerWatcher.
+type cacherListerWatcher struct {
+	storage                 storage.Interface
+	resourcePrefix          string
+	newListFunc             func() runtime.Object
+	kcpExtraStorageMetadata *storagebackend.KcpStorageMetadata
+}
+
 // getBookmarkAfterResourceVersionLockedFunc returns a function that
 // spits a ResourceVersion after which the bookmark event will be delivered.
 //
@@ -1342,6 +1364,14 @@ func (c *Cacher) waitUntilWatchCacheFreshAndForceAllEvents(ctx context.Context, 
 		return err == nil, err
 	}
 	return false, nil
+}
+
+func createKCPClusterAwareContext(meta *storagebackend.KcpStorageMetadata) context.Context {
+	ctx := context.Background()
+	if meta.IsCRD {
+		ctx = kcpapi.WithCustomResourceIndicator(ctx)
+	}
+	return genericapirequest.WithCluster(ctx, meta.Cluster)
 }
 
 // errWatcher implements watch.Interface to return a single error

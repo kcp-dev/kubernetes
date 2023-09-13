@@ -25,7 +25,8 @@ import (
 	"time"
 	"unicode"
 
-	restful "github.com/emicklei/go-restful/v3"
+	"github.com/emicklei/go-restful/v3"
+	"github.com/kcp-dev/logicalcluster/v3"
 	apidiscoveryv2beta1 "k8s.io/api/apidiscovery/v2beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/conversion"
@@ -489,7 +490,7 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 		if err != nil {
 			return nil, nil, err
 		}
-		apiResource.StorageVersionHash = discovery.StorageVersionHash(gvk.Group, gvk.Version, gvk.Kind)
+		apiResource.StorageVersionHash = discovery.StorageVersionHash(logicalcluster.Name(""), gvk.Group, gvk.Version, gvk.Kind)
 	}
 
 	// Get the list of actions for the given scope.

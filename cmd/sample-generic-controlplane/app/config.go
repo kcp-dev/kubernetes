@@ -18,6 +18,7 @@ package app
 
 import (
 	apiextensionsapiserver "k8s.io/apiextensions-apiserver/pkg/apiserver"
+	"k8s.io/apiextensions-apiserver/pkg/apiserver/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/util/webhook"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
@@ -77,7 +78,7 @@ func NewConfig(opts options.CompletedOptions) (*Config, error) {
 		Options: opts,
 	}
 
-	genericConfig, versionedInformers, storageFactory, err := controlplaneapiserver.BuildGenericConfig(
+	genericConfig, _, versionedInformers, storageFactory, err := controlplaneapiserver.BuildGenericConfig(
 		opts,
 		[]*runtime.Scheme{legacyscheme.Scheme, apiextensionsapiserver.Scheme, aggregatorscheme.Scheme},
 		controlplane.DefaultAPIResourceConfigSource(),
@@ -94,8 +95,13 @@ func NewConfig(opts options.CompletedOptions) (*Config, error) {
 	}
 	c.ControlPlane = kubeAPIs
 
-	apiExtensions, err := apiserver.CreateAPIExtensionsConfig(*kubeAPIs.Generic, kubeAPIs.VersionedInformers, pluginInitializer, opts, 3,
-		serviceResolver, webhook.NewDefaultAuthenticationInfoResolverWrapper(kubeAPIs.ProxyTransport, kubeAPIs.Generic.EgressSelector, kubeAPIs.Generic.LoopbackClientConfig, kubeAPIs.Generic.TracerProvider))
+	authInfoResolver := webhook.NewDefaultAuthenticationInfoResolverWrapper(kubeAPIs.ProxyTransport, kubeAPIs.Generic.EgressSelector, kubeAPIs.Generic.LoopbackClientConfig, kubeAPIs.Generic.TracerProvider)
+	conversionFactory, err := conversion.NewCRConverterFactory(serviceResolver, authInfoResolver)
+	if err != nil {
+		return nil, err
+	}
+
+	apiExtensions, err := apiserver.CreateAPIExtensionsConfig(*kubeAPIs.Generic, kubeAPIs.VersionedInformers, pluginInitializer, opts, 3, conversionFactory)
 	if err != nil {
 		return nil, err
 	}

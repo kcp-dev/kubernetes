@@ -128,6 +128,7 @@ func (o *RecommendedOptions) ApplyTo(config *server.RecommendedConfig) error {
 	if err := o.CoreAPI.ApplyTo(config); err != nil {
 		return err
 	}
+
 	initializers, err := o.ExtraAdmissionInitializers(config)
 	if err != nil {
 		return err
@@ -144,6 +145,7 @@ func (o *RecommendedOptions) ApplyTo(config *server.RecommendedConfig) error {
 		initializers...); err != nil {
 		return err
 	}
+
 	if feature.DefaultFeatureGate.Enabled(features.APIPriorityAndFairness) {
 		if config.ClientConfig != nil {
 			if config.MaxRequestsInFlight+config.MaxMutatingRequestsInFlight <= 0 {

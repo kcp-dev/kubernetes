@@ -35,6 +35,7 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/cryptobyte"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -795,7 +796,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 	if c.SharedInformerFactory != nil {
 		if !s.isPostStartHookRegistered(genericApiServerHookName) {
 			err := s.AddPostStartHook(genericApiServerHookName, func(context PostStartHookContext) error {
-				c.SharedInformerFactory.Start(context.StopCh)
+				informerfactoryhack.Unwrap(c.SharedInformerFactory).Start(context.StopCh)
 				return nil
 			})
 			if err != nil {
@@ -803,7 +804,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 			}
 		}
 		// TODO: Once we get rid of /healthz consider changing this to post-start-hook.
-		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(c.SharedInformerFactory))
+		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(informerfactoryhack.Unwrap(c.SharedInformerFactory)))
 		if err != nil {
 			return nil, err
 		}
@@ -900,16 +901,19 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 func BuildHandlerChainWithStorageVersionPrecondition(apiHandler http.Handler, c *Config) http.Handler {
 	// WithStorageVersionPrecondition needs the WithRequestInfo to run first
 	handler := genericapifilters.WithStorageVersionPrecondition(apiHandler, c.StorageVersionManager, c.Serializer)
-	return DefaultBuildHandlerChain(handler, c)
+	return DefaultBuildHandlerChainFromAuthz(handler, c)
 }
 
-func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
+func DefaultBuildHandlerChainFromAuthz(apiHandler http.Handler, c *Config) http.Handler {
 	handler := apiHandler
-
 	handler = filterlatency.TrackCompleted(handler)
 	handler = genericapifilters.WithAuthorization(handler, c.Authorization.Authorizer, c.Serializer)
 	handler = filterlatency.TrackStarted(handler, c.TracerProvider, "authorization")
+	return handler
+}
 
+func DefaultBuildHandlerChainBeforeAuthz(apiHandler http.Handler, c *Config) http.Handler {
+	handler := apiHandler
 	if c.FlowControl != nil {
 		workEstimatorCfg := flowcontrolrequest.DefaultWorkEstimatorConfig()
 		requestWorkEstimator := flowcontrolrequest.NewWorkEstimator(

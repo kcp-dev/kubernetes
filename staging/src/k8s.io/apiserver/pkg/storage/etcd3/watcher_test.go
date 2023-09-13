@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
+
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/testserver"
@@ -115,7 +117,7 @@ func TestSendInitialEventsBackwardCompatibility(t *testing.T) {
 func TestWatchErrResultNotBlockAfterCancel(t *testing.T) {
 	origCtx, store, _ := testSetup(t)
 	ctx, cancel := context.WithCancel(origCtx)
-	w := store.watcher.createWatchChan(ctx, "/abc", 0, false, false, newTestTransformer(), storage.Everything)
+	w := store.watcher.createWatchChan(ctx, "/abc", 0, false, genericapirequest.Shard(""), &genericapirequest.Cluster{}, false, newTestTransformer(), storage.Everything)
 	// make resultChan and errChan blocking to ensure ordering.
 	w.resultChan = make(chan watch.Event)
 	w.errChan = make(chan error)

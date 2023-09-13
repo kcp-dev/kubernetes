@@ -463,7 +463,7 @@ func setupTestCommon(t *testing.T, compiler cel.FilterCompiler, matcher Matcher,
 	plug, err := NewPlugin()
 	require.NoError(t, err)
 
-	handler := plug.(*celAdmissionPlugin)
+	handler := plug.(*CELAdmissionPlugin)
 	handler.enabled = true
 
 	genericInitializer := initializer.New(fakeClient, dynamicClient, fakeInformerFactory, fakeAuthorizer, featureGate, testContext.Done())

@@ -455,6 +455,185 @@ github.com/json-iterator/go
 # github.com/karrick/godirwalk v1.17.0
 ## explicit; go 1.13
 github.com/karrick/godirwalk
+# github.com/kcp-dev/apimachinery/v2 v2.0.0-alpha.0.0.20230826151957-7189d0d1fe31
+## explicit; go 1.20
+github.com/kcp-dev/apimachinery/v2/pkg/cache
+github.com/kcp-dev/apimachinery/v2/pkg/client
+github.com/kcp-dev/apimachinery/v2/third_party/informers
+# github.com/kcp-dev/client-go v0.0.0-20230826195957-39c67dd41719
+## explicit; go 1.19
+github.com/kcp-dev/client-go/dynamic
+github.com/kcp-dev/client-go/informers
+github.com/kcp-dev/client-go/informers/admissionregistration
+github.com/kcp-dev/client-go/informers/admissionregistration/v1
+github.com/kcp-dev/client-go/informers/admissionregistration/v1alpha1
+github.com/kcp-dev/client-go/informers/admissionregistration/v1beta1
+github.com/kcp-dev/client-go/informers/apiserverinternal
+github.com/kcp-dev/client-go/informers/apiserverinternal/v1alpha1
+github.com/kcp-dev/client-go/informers/apps
+github.com/kcp-dev/client-go/informers/apps/v1
+github.com/kcp-dev/client-go/informers/apps/v1beta1
+github.com/kcp-dev/client-go/informers/apps/v1beta2
+github.com/kcp-dev/client-go/informers/autoscaling
+github.com/kcp-dev/client-go/informers/autoscaling/v1
+github.com/kcp-dev/client-go/informers/autoscaling/v2
+github.com/kcp-dev/client-go/informers/autoscaling/v2beta1
+github.com/kcp-dev/client-go/informers/autoscaling/v2beta2
+github.com/kcp-dev/client-go/informers/batch
+github.com/kcp-dev/client-go/informers/batch/v1
+github.com/kcp-dev/client-go/informers/batch/v1beta1
+github.com/kcp-dev/client-go/informers/certificates
+github.com/kcp-dev/client-go/informers/certificates/v1
+github.com/kcp-dev/client-go/informers/certificates/v1alpha1
+github.com/kcp-dev/client-go/informers/certificates/v1beta1
+github.com/kcp-dev/client-go/informers/coordination
+github.com/kcp-dev/client-go/informers/coordination/v1
+github.com/kcp-dev/client-go/informers/coordination/v1beta1
+github.com/kcp-dev/client-go/informers/core
+github.com/kcp-dev/client-go/informers/core/v1
+github.com/kcp-dev/client-go/informers/discovery
+github.com/kcp-dev/client-go/informers/discovery/v1
+github.com/kcp-dev/client-go/informers/discovery/v1beta1
+github.com/kcp-dev/client-go/informers/events
+github.com/kcp-dev/client-go/informers/events/v1
+github.com/kcp-dev/client-go/informers/events/v1beta1
+github.com/kcp-dev/client-go/informers/extensions
+github.com/kcp-dev/client-go/informers/extensions/v1beta1
+github.com/kcp-dev/client-go/informers/flowcontrol
+github.com/kcp-dev/client-go/informers/flowcontrol/v1alpha1
+github.com/kcp-dev/client-go/informers/flowcontrol/v1beta1
+github.com/kcp-dev/client-go/informers/flowcontrol/v1beta2
+github.com/kcp-dev/client-go/informers/flowcontrol/v1beta3
+github.com/kcp-dev/client-go/informers/internalinterfaces
+github.com/kcp-dev/client-go/informers/networking
+github.com/kcp-dev/client-go/informers/networking/v1
+github.com/kcp-dev/client-go/informers/networking/v1alpha1
+github.com/kcp-dev/client-go/informers/networking/v1beta1
+github.com/kcp-dev/client-go/informers/node
+github.com/kcp-dev/client-go/informers/node/v1
+github.com/kcp-dev/client-go/informers/node/v1alpha1
+github.com/kcp-dev/client-go/informers/node/v1beta1
+github.com/kcp-dev/client-go/informers/policy
+github.com/kcp-dev/client-go/informers/policy/v1
+github.com/kcp-dev/client-go/informers/policy/v1beta1
+github.com/kcp-dev/client-go/informers/rbac
+github.com/kcp-dev/client-go/informers/rbac/v1
+github.com/kcp-dev/client-go/informers/rbac/v1alpha1
+github.com/kcp-dev/client-go/informers/rbac/v1beta1
+github.com/kcp-dev/client-go/informers/resource
+github.com/kcp-dev/client-go/informers/resource/v1alpha2
+github.com/kcp-dev/client-go/informers/scheduling
+github.com/kcp-dev/client-go/informers/scheduling/v1
+github.com/kcp-dev/client-go/informers/scheduling/v1alpha1
+github.com/kcp-dev/client-go/informers/scheduling/v1beta1
+github.com/kcp-dev/client-go/informers/storage
+github.com/kcp-dev/client-go/informers/storage/v1
+github.com/kcp-dev/client-go/informers/storage/v1alpha1
+github.com/kcp-dev/client-go/informers/storage/v1beta1
+github.com/kcp-dev/client-go/kubernetes
+github.com/kcp-dev/client-go/kubernetes/typed/admissionregistration/v1
+github.com/kcp-dev/client-go/kubernetes/typed/admissionregistration/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/admissionregistration/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/apiserverinternal/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/apps/v1
+github.com/kcp-dev/client-go/kubernetes/typed/apps/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/apps/v1beta2
+github.com/kcp-dev/client-go/kubernetes/typed/authentication/v1
+github.com/kcp-dev/client-go/kubernetes/typed/authentication/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/authentication/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/authorization/v1
+github.com/kcp-dev/client-go/kubernetes/typed/authorization/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/autoscaling/v1
+github.com/kcp-dev/client-go/kubernetes/typed/autoscaling/v2
+github.com/kcp-dev/client-go/kubernetes/typed/autoscaling/v2beta1
+github.com/kcp-dev/client-go/kubernetes/typed/autoscaling/v2beta2
+github.com/kcp-dev/client-go/kubernetes/typed/batch/v1
+github.com/kcp-dev/client-go/kubernetes/typed/batch/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/certificates/v1
+github.com/kcp-dev/client-go/kubernetes/typed/certificates/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/certificates/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/coordination/v1
+github.com/kcp-dev/client-go/kubernetes/typed/coordination/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/core/v1
+github.com/kcp-dev/client-go/kubernetes/typed/discovery/v1
+github.com/kcp-dev/client-go/kubernetes/typed/discovery/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/events/v1
+github.com/kcp-dev/client-go/kubernetes/typed/events/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/extensions/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/flowcontrol/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/flowcontrol/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/flowcontrol/v1beta2
+github.com/kcp-dev/client-go/kubernetes/typed/flowcontrol/v1beta3
+github.com/kcp-dev/client-go/kubernetes/typed/networking/v1
+github.com/kcp-dev/client-go/kubernetes/typed/networking/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/networking/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/node/v1
+github.com/kcp-dev/client-go/kubernetes/typed/node/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/node/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/policy/v1
+github.com/kcp-dev/client-go/kubernetes/typed/policy/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/rbac/v1
+github.com/kcp-dev/client-go/kubernetes/typed/rbac/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/rbac/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/resource/v1alpha2
+github.com/kcp-dev/client-go/kubernetes/typed/scheduling/v1
+github.com/kcp-dev/client-go/kubernetes/typed/scheduling/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/scheduling/v1beta1
+github.com/kcp-dev/client-go/kubernetes/typed/storage/v1
+github.com/kcp-dev/client-go/kubernetes/typed/storage/v1alpha1
+github.com/kcp-dev/client-go/kubernetes/typed/storage/v1beta1
+github.com/kcp-dev/client-go/listers/admissionregistration/v1
+github.com/kcp-dev/client-go/listers/admissionregistration/v1alpha1
+github.com/kcp-dev/client-go/listers/admissionregistration/v1beta1
+github.com/kcp-dev/client-go/listers/apiserverinternal/v1alpha1
+github.com/kcp-dev/client-go/listers/apps/v1
+github.com/kcp-dev/client-go/listers/apps/v1beta1
+github.com/kcp-dev/client-go/listers/apps/v1beta2
+github.com/kcp-dev/client-go/listers/autoscaling/v1
+github.com/kcp-dev/client-go/listers/autoscaling/v2
+github.com/kcp-dev/client-go/listers/autoscaling/v2beta1
+github.com/kcp-dev/client-go/listers/autoscaling/v2beta2
+github.com/kcp-dev/client-go/listers/batch/v1
+github.com/kcp-dev/client-go/listers/batch/v1beta1
+github.com/kcp-dev/client-go/listers/certificates/v1
+github.com/kcp-dev/client-go/listers/certificates/v1alpha1
+github.com/kcp-dev/client-go/listers/certificates/v1beta1
+github.com/kcp-dev/client-go/listers/coordination/v1
+github.com/kcp-dev/client-go/listers/coordination/v1beta1
+github.com/kcp-dev/client-go/listers/core/v1
+github.com/kcp-dev/client-go/listers/discovery/v1
+github.com/kcp-dev/client-go/listers/discovery/v1beta1
+github.com/kcp-dev/client-go/listers/events/v1
+github.com/kcp-dev/client-go/listers/events/v1beta1
+github.com/kcp-dev/client-go/listers/extensions/v1beta1
+github.com/kcp-dev/client-go/listers/flowcontrol/v1alpha1
+github.com/kcp-dev/client-go/listers/flowcontrol/v1beta1
+github.com/kcp-dev/client-go/listers/flowcontrol/v1beta2
+github.com/kcp-dev/client-go/listers/flowcontrol/v1beta3
+github.com/kcp-dev/client-go/listers/networking/v1
+github.com/kcp-dev/client-go/listers/networking/v1alpha1
+github.com/kcp-dev/client-go/listers/networking/v1beta1
+github.com/kcp-dev/client-go/listers/node/v1
+github.com/kcp-dev/client-go/listers/node/v1alpha1
+github.com/kcp-dev/client-go/listers/node/v1beta1
+github.com/kcp-dev/client-go/listers/policy/v1
+github.com/kcp-dev/client-go/listers/policy/v1beta1
+github.com/kcp-dev/client-go/listers/rbac/v1
+github.com/kcp-dev/client-go/listers/rbac/v1alpha1
+github.com/kcp-dev/client-go/listers/rbac/v1beta1
+github.com/kcp-dev/client-go/listers/resource/v1alpha2
+github.com/kcp-dev/client-go/listers/scheduling/v1
+github.com/kcp-dev/client-go/listers/scheduling/v1alpha1
+github.com/kcp-dev/client-go/listers/scheduling/v1beta1
+github.com/kcp-dev/client-go/listers/storage/v1
+github.com/kcp-dev/client-go/listers/storage/v1alpha1
+github.com/kcp-dev/client-go/listers/storage/v1beta1
+github.com/kcp-dev/client-go/metadata
+github.com/kcp-dev/client-go/third_party/k8s.io/client-go/dynamic
+github.com/kcp-dev/client-go/third_party/k8s.io/client-go/tools/cache
+# github.com/kcp-dev/logicalcluster/v3 v3.0.4
+## explicit; go 1.18
+github.com/kcp-dev/logicalcluster/v3
 # github.com/libopenstorage/openstorage v1.0.0
 ## explicit
 github.com/libopenstorage/openstorage/api
@@ -1238,7 +1417,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.0.0 => ./staging/src/k8s.io/api
+# k8s.io/api v0.28.1 => ./staging/src/k8s.io/api
 ## explicit; go 1.20
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -1343,7 +1522,7 @@ k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor
 k8s.io/apiextensions-apiserver/pkg/registry/customresourcedefinition
 k8s.io/apiextensions-apiserver/test/integration
 k8s.io/apiextensions-apiserver/test/integration/fixtures
-# k8s.io/apimachinery v0.0.0 => ./staging/src/k8s.io/apimachinery
+# k8s.io/apimachinery v0.28.1 => ./staging/src/k8s.io/apimachinery
 ## explicit; go 1.20
 k8s.io/apimachinery/pkg/api/apitesting
 k8s.io/apimachinery/pkg/api/apitesting/fuzzer
@@ -1496,6 +1675,8 @@ k8s.io/apiserver/pkg/cel/library
 k8s.io/apiserver/pkg/cel/metrics
 k8s.io/apiserver/pkg/cel/openapi
 k8s.io/apiserver/pkg/cel/openapi/resolver
+k8s.io/apiserver/pkg/clientsethack
+k8s.io/apiserver/pkg/dynamichack
 k8s.io/apiserver/pkg/endpoints
 k8s.io/apiserver/pkg/endpoints/deprecation
 k8s.io/apiserver/pkg/endpoints/discovery
@@ -1514,6 +1695,8 @@ k8s.io/apiserver/pkg/endpoints/request
 k8s.io/apiserver/pkg/endpoints/responsewriter
 k8s.io/apiserver/pkg/endpoints/warning
 k8s.io/apiserver/pkg/features
+k8s.io/apiserver/pkg/informerfactoryhack
+k8s.io/apiserver/pkg/kcp
 k8s.io/apiserver/pkg/quota/v1
 k8s.io/apiserver/pkg/quota/v1/generic
 k8s.io/apiserver/pkg/reconcilers
@@ -1597,7 +1780,7 @@ k8s.io/cli-runtime/pkg/genericclioptions
 k8s.io/cli-runtime/pkg/genericiooptions
 k8s.io/cli-runtime/pkg/printers
 k8s.io/cli-runtime/pkg/resource
-# k8s.io/client-go v0.0.0 => ./staging/src/k8s.io/client-go
+# k8s.io/client-go v0.28.1 => ./staging/src/k8s.io/client-go
 ## explicit; go 1.20
 k8s.io/client-go/applyconfigurations
 k8s.io/client-go/applyconfigurations/admissionregistration/v1

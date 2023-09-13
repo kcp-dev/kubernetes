@@ -9,10 +9,10 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.2
-	k8s.io/api v0.0.0
-	k8s.io/apimachinery v0.0.0
+	k8s.io/api v0.28.1
+	k8s.io/apimachinery v0.28.1
 	k8s.io/apiserver v0.0.0
-	k8s.io/client-go v0.0.0
+	k8s.io/client-go v0.28.1
 	k8s.io/component-base v0.0.0
 	k8s.io/component-helpers v0.0.0
 	k8s.io/controller-manager v0.0.0
@@ -55,6 +55,9 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kcp-dev/apimachinery/v2 v2.0.0-alpha.0.0.20230826151957-7189d0d1fe31 // indirect
+	github.com/kcp-dev/client-go v0.0.0-20230826195957-39c67dd41719 // indirect
+	github.com/kcp-dev/logicalcluster/v3 v3.0.4 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect

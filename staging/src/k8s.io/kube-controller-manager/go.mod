@@ -5,7 +5,7 @@ module k8s.io/kube-controller-manager
 go 1.20
 
 require (
-	k8s.io/apimachinery v0.0.0
+	k8s.io/apimachinery v0.28.1
 	k8s.io/cloud-provider v0.0.0
 	k8s.io/controller-manager v0.0.0
 )

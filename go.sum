@@ -482,6 +482,7 @@ github.com/google/cadvisor v0.47.3 h1:5XKTHBduWlBjmgw07uwEiC+Xa/FRd0MZI37oqlTagO
 github.com/google/cadvisor v0.47.3/go.mod h1:iJdTjcjyKHjLCf7OSTzwP5GxdfrkPusw2x5bwGvuLUw=
 github.com/google/cel-go v0.16.0 h1:DG9YQ8nFCFXAs/FDDwBxmL1tpKNrdlGUM9U3537bX/Y=
 github.com/google/cel-go v0.16.0/go.mod h1:HXZKzB0LXqer5lHHgfWAnlYwJaQBDKMjxjulNQzhwhY=
+github.com/google/gnostic v0.5.7-v3refs/go.mod h1:73MKFl6jIHelAJNaBGFzt3SPtZULs9dYrGFt8OiIsHQ=
 github.com/google/gnostic-models v0.6.8 h1:yo/ABAfM5IMRsS1VnXjTBvUb61tFIHozhlYvRgGre9I=
 github.com/google/gnostic-models v0.6.8/go.mod h1:5n7qKqH0f5wFt+aWF8CW6pZLLNOfYuF5OpfBSENuI8U=
 github.com/google/go-cmp v0.2.0/go.mod h1:oXzfMopK8JAjlY9xF4vHSVASa0yLyX7SntLO5aqRK0M=
@@ -602,6 +603,13 @@ github.com/julienschmidt/httprouter v1.2.0/go.mod h1:SYymIcj16QtmaHHD7aYtjjsJG7V
 github.com/julienschmidt/httprouter v1.3.0/go.mod h1:JR6WtHb+2LUe8TCKY3cZOxFyyO8IZAc4RVcycCCAKdM=
 github.com/karrick/godirwalk v1.17.0 h1:b4kY7nqDdioR/6qnbHQyDvmA17u5G1cZ6J+CZXwSWoI=
 github.com/karrick/godirwalk v1.17.0/go.mod h1:j4mkqPuvaLI8mp1DroR3P6ad7cyYd4c1qeJ3RV7ULlk=
+github.com/kcp-dev/apimachinery/v2 v2.0.0-alpha.0.0.20230826151957-7189d0d1fe31 h1:vNFCQHCMyrKoMDUH0JbmWHVfoqSHbzgcZKE4oN6Omb4=
+github.com/kcp-dev/apimachinery/v2 v2.0.0-alpha.0.0.20230826151957-7189d0d1fe31/go.mod h1:cWoaYGHl1nlzdEM2xvMzIASkEZJZLSf5nhe17M7wDhw=
+github.com/kcp-dev/client-go v0.0.0-20230826195957-39c67dd41719 h1:bk7xmRP/IK+Xo0Ebowe4Hr3T59GTK0ZXRwQgLDGdOSo=
+github.com/kcp-dev/client-go v0.0.0-20230826195957-39c67dd41719/go.mod h1:Yrui0yfvw6P5wvxL2f8ARL/2HaMlRyQEWybfMYn4rbo=
+github.com/kcp-dev/logicalcluster/v2 v2.0.0-alpha.4/go.mod h1:lfWJL764jKFJxZWOGuFuT3PCCLPo6lV5Cl8P7u9T05g=
+github.com/kcp-dev/logicalcluster/v3 v3.0.4 h1:q7KngML/QM7sWl8aVzmfZF0TPMnBwYNxsPKfwUvvBvU=
+github.com/kcp-dev/logicalcluster/v3 v3.0.4/go.mod h1:EWBUBxdr49fUB1cLMO4nOdBWmYifLbP1LfoL20KkXYY=
 github.com/kisielk/errcheck v1.1.0/go.mod h1:EZBBE59ingxPouuu3KfxchcWSUPOHkagtvWXihfKN4Q=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=

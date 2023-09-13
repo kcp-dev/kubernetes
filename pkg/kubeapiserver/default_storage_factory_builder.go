@@ -21,42 +21,18 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	serveroptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/apiserver/pkg/server/resourceconfig"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/apis/admissionregistration"
-	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/certificates"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/events"
-	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apis/networking"
-	"k8s.io/kubernetes/pkg/apis/policy"
 )
 
-// SpecialDefaultResourcePrefixes are prefixes compiled into Kubernetes.
-var SpecialDefaultResourcePrefixes = map[schema.GroupResource]string{
-	{Group: "", Resource: "replicationcontrollers"}:     "controllers",
-	{Group: "", Resource: "endpoints"}:                  "services/endpoints",
-	{Group: "", Resource: "nodes"}:                      "minions",
-	{Group: "", Resource: "services"}:                   "services/specs",
-	{Group: "extensions", Resource: "ingresses"}:        "ingress",
-	{Group: "networking.k8s.io", Resource: "ingresses"}: "ingress",
-}
-
-// DefaultWatchCacheSizes defines default resources for which watchcache
-// should be disabled.
-func DefaultWatchCacheSizes() map[schema.GroupResource]int {
-	return map[schema.GroupResource]int{
-		{Resource: "events"}:                         0,
-		{Group: "events.k8s.io", Resource: "events"}: 0,
-	}
-}
-
 // NewStorageFactoryConfig returns a new StorageFactoryConfig set up with necessary resource overrides.
-func NewStorageFactoryConfig() *StorageFactoryConfig {
+func NewStorageFactoryConfig(scheme *runtime.Scheme, codecs serializer.CodecFactory) *StorageFactoryConfig {
 	resources := []schema.GroupVersionResource{
 		// If a resource has to be stored in a version that is not the
 		// latest, then it can be listed here. Usually this is the case
@@ -75,10 +51,9 @@ func NewStorageFactoryConfig() *StorageFactoryConfig {
 		networking.Resource("ipaddresses").WithVersion("v1alpha1"),
 		certificates.Resource("clustertrustbundles").WithVersion("v1alpha1"),
 	}
-
 	return &StorageFactoryConfig{
-		Serializer:                legacyscheme.Codecs,
-		DefaultResourceEncoding:   serverstorage.NewDefaultResourceEncodingConfig(legacyscheme.Scheme),
+		Serializer:                codecs,
+		DefaultResourceEncoding:   serverstorage.NewDefaultResourceEncodingConfig(scheme),
 		ResourceEncodingOverrides: resources,
 	}
 }
@@ -120,16 +95,7 @@ func (c *completedStorageFactoryConfig) New() (*serverstorage.DefaultStorageFact
 		c.Serializer,
 		resourceEncodingConfig,
 		c.APIResourceConfig,
-		SpecialDefaultResourcePrefixes)
-
-	storageFactory.AddCohabitatingResources(networking.Resource("networkpolicies"), extensions.Resource("networkpolicies"))
-	storageFactory.AddCohabitatingResources(apps.Resource("deployments"), extensions.Resource("deployments"))
-	storageFactory.AddCohabitatingResources(apps.Resource("daemonsets"), extensions.Resource("daemonsets"))
-	storageFactory.AddCohabitatingResources(apps.Resource("replicasets"), extensions.Resource("replicasets"))
-	storageFactory.AddCohabitatingResources(api.Resource("events"), events.Resource("events"))
-	storageFactory.AddCohabitatingResources(api.Resource("replicationcontrollers"), extensions.Resource("replicationcontrollers")) // to make scale subresources equivalent
-	storageFactory.AddCohabitatingResources(policy.Resource("podsecuritypolicies"), extensions.Resource("podsecuritypolicies"))
-	storageFactory.AddCohabitatingResources(networking.Resource("ingresses"), extensions.Resource("ingresses"))
+		nil)
 
 	for _, override := range c.EtcdServersOverrides {
 		tokens := strings.Split(override, "#")
