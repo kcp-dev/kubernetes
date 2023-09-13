@@ -22,6 +22,9 @@ import (
 	"net/http"
 	"time"
 
+	kcpinformers "github.com/kcp-dev/client-go/informers"
+	kcpclient "github.com/kcp-dev/client-go/kubernetes"
+	"github.com/kcp-dev/logicalcluster/v3"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -122,6 +125,7 @@ func BuildGenericConfig(
 	getOpenAPIDefinitions func(ref openapicommon.ReferenceCallback) map[string]openapicommon.OpenAPIDefinition,
 ) (
 	genericConfig *genericapiserver.Config,
+	versionedClusterInformers kcpinformers.SharedInformerFactory,
 	versionedInformers clientgoinformers.SharedInformerFactory,
 	storageFactory *serverstorage.DefaultStorageFactory,
 	lastErr error,
@@ -175,7 +179,7 @@ func BuildGenericConfig(
 		s.Etcd.StorageConfig.Transport.TracerProvider = oteltrace.NewNoopTracerProvider()
 	}
 
-	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig()
+	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(legacyscheme.Scheme, legacyscheme.Codecs)
 	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
 	storageFactory, lastErr = storageFactoryConfig.Complete(s.Etcd).New()
 	if lastErr != nil {
@@ -195,15 +199,16 @@ func BuildGenericConfig(
 	genericConfig.LoopbackClientConfig.DisableCompression = true
 
 	kubeClientConfig := genericConfig.LoopbackClientConfig
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
+	clusterClient, err := kcpclient.NewForConfig(kubeClientConfig)
 	if err != nil {
-		lastErr = fmt.Errorf("failed to create real external clientset: %v", err)
+		lastErr = fmt.Errorf("failed to create cluster clientset: %v", err)
 		return
 	}
-	versionedInformers = clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
+	versionedInformers = clientgoinformers.NewSharedInformerFactory(clusterClient.Cluster(logicalcluster.NewPath("system:admin")), 10*time.Minute)
+	versionedClusterInformers = kcpinformers.NewSharedInformerFactory(clusterClient, 10*time.Minute)
 
 	// Authentication.ApplyTo requires already applied OpenAPIConfig and EgressSelector if present
-	if lastErr = s.Authentication.ApplyTo(&genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig, genericConfig.OpenAPIV3Config, clientgoExternalClient, versionedInformers); lastErr != nil {
+	if lastErr = s.Authentication.ApplyTo(&genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig, genericConfig.OpenAPIV3Config, clusterClient, versionedClusterInformers); lastErr != nil {
 		return
 	}
 
@@ -222,7 +227,7 @@ func BuildGenericConfig(
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIPriorityAndFairness) && s.GenericServerRunOptions.EnablePriorityAndFairness {
-		genericConfig.FlowControl, lastErr = BuildPriorityAndFairness(s, clientgoExternalClient, versionedInformers)
+		genericConfig.FlowControl, lastErr = BuildPriorityAndFairness(s, clusterClient.Cluster(logicalcluster.NewPath("system:admin")), versionedInformers)
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.AggregatedDiscoveryEndpoint) {

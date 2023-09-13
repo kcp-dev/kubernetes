@@ -173,7 +173,7 @@ func CreateServerChain(config CompletedConfig) (*aggregatorapiserver.APIAggregat
 	}
 
 	// aggregator comes last in the chain
-	aggregatorServer, err := controlplaneapiserver.CreateAggregatorServer(config.Aggregator, kubeAPIs.GenericAPIServer, apiExtensionsServer.Informers, crdAPIEnabled, controlplaneapiserver.DefaultGenericAPIServicePriorities())
+	aggregatorServer, err := controlplaneapiserver.CreateAggregatorServer(config.Aggregator, kubeAPIs.GenericAPIServer, apiExtensionsServer.Informers.Apiextensions().V1().CustomResourceDefinitions().Cluster("system:admin"), crdAPIEnabled, controlplaneapiserver.DefaultGenericAPIServicePriorities())
 	if err != nil {
 		// we don't need special handling for innerStopCh because the aggregator server doesn't create any go routines
 		return nil, fmt.Errorf("failed to create kube-aggregator: %w", err)
