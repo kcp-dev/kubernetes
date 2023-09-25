@@ -22,7 +22,7 @@ import (
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/discovery"
 	"k8s.io/klog/v2"
 
 	admissionregistrationrest "k8s.io/kubernetes/pkg/registry/admissionregistration/rest"
@@ -45,13 +45,7 @@ type RESTStorageProvider interface {
 	NewRESTStorage(apiResourceConfigSource serverstorage.APIResourceConfigSource, restOptionsGetter generic.RESTOptionsGetter) (genericapiserver.APIGroupInfo, error)
 }
 
-func (c *CompletedConfig) DefaultStorageProviders() ([]RESTStorageProvider, error) {
-	client, err := kubernetes.NewForConfig(c.Generic.LoopbackClientConfig)
-	if err != nil {
-		return nil, err
-	}
-	discoveryClientForAdmissionRegistration := client.Discovery()
-
+func (c *CompletedConfig) DefaultStorageProviders(discovery discovery.DiscoveryInterface) ([]RESTStorageProvider, error) {
 	// The order here is preserved in discovery.
 	// If resources with identical names exist in more than one of these groups (e.g. "deployments.apps"" and "deployments.extensions"),
 	// the order of this list determines which group an unqualified resource name (e.g. "deployments") should prefer.
@@ -78,7 +72,7 @@ func (c *CompletedConfig) DefaultStorageProviders() ([]RESTStorageProvider, erro
 		coordinationrest.RESTStorageProvider{},
 		rbacrest.RESTStorageProvider{Authorizer: c.Generic.Authorization.Authorizer},
 		flowcontrolrest.RESTStorageProvider{InformerFactory: c.Generic.SharedInformerFactory},
-		admissionregistrationrest.RESTStorageProvider{Authorizer: c.Generic.Authorization.Authorizer, DiscoveryClient: discoveryClientForAdmissionRegistration},
+		admissionregistrationrest.RESTStorageProvider{Authorizer: c.Generic.Authorization.Authorizer, DiscoveryClient: discovery},
 		eventsrest.RESTStorageProvider{TTL: c.EventTTL},
 		resourcerest.RESTStorageProvider{},
 	}, nil
