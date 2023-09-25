@@ -135,7 +135,11 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 		VersionedInformers:        c.VersionedInformers,
 	}
 
-	client := kubernetes.NewForConfigOrDie(s.GenericAPIServer.LoopbackClientConfig)
+	clusterClient, err := kubernetes.NewForConfig(s.GenericAPIServer.LoopbackClientConfig)
+	if err != nil {
+		return nil, err
+	}
+	client := clusterClient.Cluster(LocalAdminCluster.Path())
 	if len(c.SystemNamespaces) > 0 {
 		s.GenericAPIServer.AddPostStartHookOrDie("start-system-namespaces-controller", func(hookContext genericapiserver.PostStartHookContext) error {
 			go systemnamespaces.NewController(c.SystemNamespaces, client, s.VersionedInformers.Core().V1().Namespaces()).Run(hookContext.StopCh)
@@ -177,11 +181,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 	}
 
 	s.GenericAPIServer.AddPostStartHookOrDie("start-cluster-authentication-info-controller", func(hookContext genericapiserver.PostStartHookContext) error {
-		kubeClient, err := kubernetes.NewForConfig(hookContext.LoopbackClientConfig)
-		if err != nil {
-			return err
-		}
-		controller := clusterauthenticationtrust.NewClusterAuthenticationTrustController(s.ClusterAuthenticationInfo, kubeClient)
+		controller := clusterauthenticationtrust.NewClusterAuthenticationTrustController(s.ClusterAuthenticationInfo, client)
 
 		// generate a context  from stopCh. This is to avoid modifying files which are relying on apiserver
 		// TODO: See if we can pass ctx to the current method
@@ -215,11 +215,6 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 
 	if utilfeature.DefaultFeatureGate.Enabled(apiserverfeatures.APIServerIdentity) {
 		s.GenericAPIServer.AddPostStartHookOrDie("start-kube-apiserver-identity-lease-controller", func(hookContext genericapiserver.PostStartHookContext) error {
-			kubeClient, err := kubernetes.NewForConfig(hookContext.LoopbackClientConfig)
-			if err != nil {
-				return err
-			}
-
 			// generate a context  from stopCh. This is to avoid modifying files which are relying on apiserver
 			// TODO: See if we can pass ctx to the current method
 			ctx := wait.ContextForChannel(hookContext.StopCh)
@@ -229,7 +224,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 
 			controller := lease.NewController(
 				clock.RealClock{},
-				kubeClient,
+				client,
 				holderIdentity,
 				int32(IdentityLeaseDurationSeconds),
 				nil,
@@ -245,12 +240,8 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 		// For compatibility, garbage collect leases with both labels for at least 1 release
 		// TODO: remove in Kubernetes 1.28
 		s.GenericAPIServer.AddPostStartHookOrDie("start-deprecated-kube-apiserver-identity-lease-garbage-collector", func(hookContext genericapiserver.PostStartHookContext) error {
-			kubeClient, err := kubernetes.NewForConfig(hookContext.LoopbackClientConfig)
-			if err != nil {
-				return err
-			}
 			go apiserverleasegc.NewAPIServerLeaseGC(
-				kubeClient,
+				client,
 				IdentityLeaseGCPeriod,
 				metav1.NamespaceSystem,
 				DeprecatedKubeAPIServerIdentityLeaseLabelSelector,
@@ -259,12 +250,11 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 		})
 		// TODO: move this into generic apiserver and make the lease identity value configurable
 		s.GenericAPIServer.AddPostStartHookOrDie("start-kube-apiserver-identity-lease-garbage-collector", func(hookContext genericapiserver.PostStartHookContext) error {
-			kubeClient, err := kubernetes.NewForConfig(hookContext.LoopbackClientConfig)
 			if err != nil {
 				return err
 			}
 			go apiserverleasegc.NewAPIServerLeaseGC(
-				kubeClient,
+				client,
 				IdentityLeaseGCPeriod,
 				metav1.NamespaceSystem,
 				IdentityLeaseComponentLabelKey+"="+name,
@@ -274,11 +264,7 @@ func (c completedConfig) New(name string, delegationTarget genericapiserver.Dele
 	}
 
 	s.GenericAPIServer.AddPostStartHookOrDie("start-legacy-token-tracking-controller", func(hookContext genericapiserver.PostStartHookContext) error {
-		kubeClient, err := kubernetes.NewForConfig(hookContext.LoopbackClientConfig)
-		if err != nil {
-			return err
-		}
-		go legacytokentracking.NewController(kubeClient).Run(hookContext.StopCh)
+		go legacytokentracking.NewController(client).Run(hookContext.StopCh)
 		return nil
 	})
 
