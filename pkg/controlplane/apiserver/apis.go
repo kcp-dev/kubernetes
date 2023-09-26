@@ -33,10 +33,8 @@ import (
 	certificatesrest "k8s.io/kubernetes/pkg/registry/certificates/rest"
 	coordinationrest "k8s.io/kubernetes/pkg/registry/coordination/rest"
 	corerest "k8s.io/kubernetes/pkg/registry/core/rest"
-	discoveryrest "k8s.io/kubernetes/pkg/registry/discovery/rest"
 	eventsrest "k8s.io/kubernetes/pkg/registry/events/rest"
 	flowcontrolrest "k8s.io/kubernetes/pkg/registry/flowcontrol/rest"
-	policyrest "k8s.io/kubernetes/pkg/registry/policy/rest"
 	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
 	resourcerest "k8s.io/kubernetes/pkg/registry/resource/rest"
 )
@@ -78,8 +76,6 @@ func (c *CompletedConfig) DefaultStorageProviders() ([]RESTStorageProvider, erro
 		autoscalingrest.RESTStorageProvider{},
 		certificatesrest.RESTStorageProvider{},
 		coordinationrest.RESTStorageProvider{},
-		discoveryrest.StorageProvider{},
-		policyrest.RESTStorageProvider{},
 		rbacrest.RESTStorageProvider{Authorizer: c.Generic.Authorization.Authorizer},
 		flowcontrolrest.RESTStorageProvider{InformerFactory: c.Generic.SharedInformerFactory},
 		admissionregistrationrest.RESTStorageProvider{Authorizer: c.Generic.Authorization.Authorizer, DiscoveryClient: discoveryClientForAdmissionRegistration},
