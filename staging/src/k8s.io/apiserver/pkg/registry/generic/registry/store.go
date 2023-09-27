@@ -316,8 +316,10 @@ type storeKeyFuncs struct {
 	storageKeyFunc func(ctx context.Context, name string) (string, error)
 	// cacheKeyFunc returns the resource-relative storage path for one object.
 	// It is passed to cache layers that receive objects instead of request
-	// contexts, so it derives the namespace and name from object metadata.
-	cacheKeyFunc func(obj runtime.Object) (string, error)
+	// contexts, so it derives the namespace and name from object metadata. The
+	// passed context carries no request data, only the cluster scope derived
+	// from the object by the cache layer.
+	cacheKeyFunc func(ctx context.Context, obj runtime.Object) (string, error)
 }
 
 func defaultStoreKeyFuncs(prefix string, isNamespaced bool) storeKeyFuncs {
@@ -352,13 +354,12 @@ func newStoreKeyFuncs(
 	return storeKeyFuncs{
 		storageRootKeyFunc: storageRootKeyFunc,
 		storageKeyFunc:     storageKeyFunc,
-		cacheKeyFunc: func(obj runtime.Object) (string, error) {
+		cacheKeyFunc: func(ctx context.Context, obj runtime.Object) (string, error) {
 			accessor, err := meta.Accessor(obj)
 			if err != nil {
 				return "", err
 			}
 
-			ctx := genericapirequest.NewContext()
 			if isNamespaced {
 				ctx = genericapirequest.WithNamespace(ctx, accessor.GetNamespace())
 			}
@@ -1720,7 +1721,9 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 
 // startObservingCount starts monitoring given prefix and periodically updating metrics. It returns a function to stop collection.
 func (e *Store) startObservingCount(period time.Duration, objectCountTracker flowcontrolrequest.StorageObjectCountTracker) func() {
-	ctx := genericapirequest.NewContext()
+	// Count objects across all logical clusters; the wildcard cluster keeps
+	// the key root at the resource prefix.
+	ctx := genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{Wildcard: true})
 	prefix := e.KeyRootFunc(ctx)
 	resourceName := e.DefaultQualifiedResource.String()
 	klog.V(2).InfoS("Monitoring resource count at path", "resource", resourceName, "path", "<storage-prefix>/"+prefix)

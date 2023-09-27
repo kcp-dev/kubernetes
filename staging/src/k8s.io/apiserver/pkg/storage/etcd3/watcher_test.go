@@ -41,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/apis/example"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
@@ -190,7 +191,7 @@ func TestWatchErrorIncorrectConfiguration(t *testing.T) {
 			ctx, cancel := context.WithCancel(origCtx)
 			defer cancel()
 
-			w, err := store.watcher.Watch(ctx, "/abc", 0, scenario.requestOpts)
+			w, err := store.watcher.Watch(ctx, "/abc", 0, scenario.requestOpts, nil)
 			if err == nil {
 				t.Fatalf("expected an error but got none")
 			}
@@ -223,7 +224,7 @@ func TestTooLargeResourceVersionErrorForWatchList(t *testing.T) {
 		t.Fatalf("Unable to convert NewTooLargeResourceVersionError to apierrors.StatusError")
 	}
 
-	w, err := store.watcher.Watch(ctx, "/abc/", int64(102), requestOpts)
+	w, err := store.watcher.Watch(ctx, "/abc/", int64(102), requestOpts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,10 +319,12 @@ func TestWatchChanSync(t *testing.T) {
 					origCtx,
 					testCase.watchKey,
 					0,
+					&genericapirequest.Cluster{Wildcard: true},
 					true,
 					false,
 					false,
-					storage.Everything)
+					storage.Everything,
+					nil)
 
 				sync := w.syncPaginated
 				if mode.rangeStream {
@@ -407,7 +410,7 @@ func TestWatchChanSyncStreamFallsBackToPaginated(t *testing.T) {
 	kvWrapper.streamKV = unimplementedRangeStreamKV()
 	store.client.KV = kvWrapper
 
-	w := store.watcher.createWatchChan(origCtx, "/pods/", 0, true, false, false, storage.Everything)
+	w := store.watcher.createWatchChan(origCtx, "/pods/", 0, &genericapirequest.Cluster{Wildcard: true}, true, false, false, storage.Everything, nil)
 
 	if err := w.sync(); err != nil {
 		t.Fatalf("sync failed: %v", err)
@@ -436,7 +439,7 @@ func TestWatchChanSyncStreamFallsBackToPaginated(t *testing.T) {
 
 func drainSync(t *testing.T, store *store, ctx context.Context, sync func(*watchChan) error) map[string]*event {
 	t.Helper()
-	wc := store.watcher.createWatchChan(ctx, "/pods/", 0, true, false, false, storage.Everything)
+	wc := store.watcher.createWatchChan(ctx, "/pods/", 0, &genericapirequest.Cluster{Wildcard: true}, true, false, false, storage.Everything, nil)
 	if err := sync(wc); err != nil {
 		t.Fatalf("sync failed: %v", err)
 	}
@@ -472,7 +475,7 @@ func TestWatchChanSyncStreamCompactionError(t *testing.T) {
 	legacyregistry.Reset()
 	t.Cleanup(legacyregistry.Reset)
 
-	wc := store.watcher.createWatchChan(ctx, "/pods/", 0, true, false, false, storage.Everything)
+	wc := store.watcher.createWatchChan(ctx, "/pods/", 0, &genericapirequest.Cluster{Wildcard: true}, true, false, false, storage.Everything, nil)
 	if err := wc.syncStreamRecursive(); !apierrors.IsResourceExpired(err) {
 		t.Fatalf("expected ResourceExpired from a compacted revision, got %T %v", err, err)
 	}
@@ -499,7 +502,7 @@ func TestWatchChanSyncStreamMetrics(t *testing.T) {
 		legacyregistry.Reset()
 		t.Cleanup(legacyregistry.Reset)
 
-		wc := store.watcher.createWatchChan(ctx, "/pods/", 0, true, false, false, storage.Everything)
+		wc := store.watcher.createWatchChan(ctx, "/pods/", 0, &genericapirequest.Cluster{Wildcard: true}, true, false, false, storage.Everything, nil)
 		if err := wc.syncStreamRecursive(); err != nil {
 			t.Fatal(err)
 		}
@@ -522,7 +525,7 @@ etcd_requests_total{group="",operation="listStream",resource="pods"} 1
 		legacyregistry.Reset()
 		t.Cleanup(legacyregistry.Reset)
 
-		wc := store.watcher.createWatchChan(ctx, "/pods/", 0, true, false, false, storage.Everything)
+		wc := store.watcher.createWatchChan(ctx, "/pods/", 0, &genericapirequest.Cluster{Wildcard: true}, true, false, false, storage.Everything, nil)
 		err := wc.syncStreamRecursive()
 		if grpcstatus.Code(err) != grpccodes.Unimplemented {
 			t.Fatalf("expected Unimplemented error, got %v", err)

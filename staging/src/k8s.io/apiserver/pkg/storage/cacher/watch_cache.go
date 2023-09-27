@@ -127,7 +127,7 @@ type ImmutableWatchCacheConfig struct {
 }
 
 func newWatchCache(
-	keyFunc func(runtime.Object) (string, error),
+	keyFunc func(context.Context, runtime.Object) (string, error),
 	eventHandler func(*watchCacheEvent),
 	getAttrsFunc func(runtime.Object) (labels.Set, fields.Set, error),
 	versioner storage.Versioner,
@@ -139,7 +139,10 @@ func newWatchCache(
 	getCurrentRV func(context.Context) (uint64, error),
 ) *watchCache {
 	config := &ImmutableWatchCacheConfig{
-		keyFunc:           keyFunc,
+		// by wrapping keyFunc here, we can drastically decrease overall rebase surface
+		keyFunc: func(obj runtime.Object) (string, error) {
+			return keyFunc(createClusterAwareContext(obj), obj)
+		},
 		getAttrsFunc:      getAttrsFunc,
 		eventHandler:      eventHandler,
 		clock:             clock,

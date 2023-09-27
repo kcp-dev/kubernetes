@@ -318,7 +318,7 @@ func TestDefaultStoreKeyFuncs(t *testing.T) {
 				t.Fatalf("storageKeyFunc returned %q, expect %q", gotKey, tc.expectKey)
 			}
 
-			gotCacheKey, err := keyFuncs.cacheKeyFunc(tc.obj)
+			gotCacheKey, err := keyFuncs.cacheKeyFunc(tc.ctx, tc.obj)
 			if (err != nil) != tc.expectCacheKeyErr {
 				t.Fatalf("cacheKeyFunc error = %v, expectErr %t", err, tc.expectCacheKeyErr)
 			}
@@ -2602,11 +2602,14 @@ func newTestGenericStoreRegistry(t *testing.T, scheme *runtime.Scheme, hasCacheE
 			GroupResource:       schema.GroupResource{Resource: "pods"},
 			EventsHistoryWindow: cacherstorage.DefaultEventFreshDuration,
 			ResourcePrefix:      podPrefix,
-			KeyFunc:             func(obj runtime.Object) (string, error) { return storage.NoNamespaceKeyFunc(podPrefix, obj) },
 			GetAttrsFunc:        getPodAttrs,
 			NewFunc:             newFunc,
 			NewListFunc:         newListFunc,
 			Codec:               sc.Codec,
+
+			KeyFunc: func(ctx context.Context, obj runtime.Object) (string, error) {
+				return storage.NoNamespaceKeyFunc(podPrefix, obj)
+			},
 		}
 		cacher, err := cacherstorage.NewCacherFromConfig(config)
 		if err != nil {

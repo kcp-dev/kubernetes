@@ -237,11 +237,11 @@ func (t *Tester) TestWatch(valid runtime.Object, labelsPass, labelsFail []labels
 // Helper functions
 
 func (t *Tester) getObject(ctx context.Context, obj runtime.Object) (runtime.Object, error) {
+	ctx = genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Name: t.tester.TestCluster()})
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
 	}
-
 	result, err := t.storage.Get(ctx, accessor.GetName(), &metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -250,6 +250,7 @@ func (t *Tester) getObject(ctx context.Context, obj runtime.Object) (runtime.Obj
 }
 
 func (t *Tester) createObject(ctx context.Context, obj runtime.Object) error {
+	ctx = genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Name: t.tester.TestCluster()})
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
 		return err
