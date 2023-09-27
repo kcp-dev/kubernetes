@@ -25,15 +25,23 @@ import (
 
 // NoNamespaceKeyRootFunc is the default function for constructing storage
 // paths to resource directories. In kcp, all storage keys are scoped by the
-// logical cluster of the request, i.e. <prefix>/<clusterName>[/...], so that
-// workspaces are isolated in etcd. Wildcard requests span all clusters and
-// therefore stay at <prefix>.
+// shard (if set) and the logical cluster of the request, i.e.
+// <prefix>[/<shardName>]/<clusterName>[/...], so that workspaces are isolated
+// in etcd. Wildcard requests span all shards/clusters and therefore stay at
+// <prefix>.
 func NoNamespaceKeyRootFunc(ctx context.Context, prefix string) string {
 	key := prefix
+	shard := genericapirequest.ShardFrom(ctx)
+	if shard.Wildcard() {
+		return key
+	}
 	cluster, err := genericapirequest.ValidClusterFrom(ctx)
 	if err != nil {
 		klog.Errorf("invalid context cluster value: %v", err)
 		return key
+	}
+	if !shard.Empty() {
+		key += "/" + shard.String()
 	}
 	if !cluster.Wildcard {
 		key += "/" + cluster.Name.String()

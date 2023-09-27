@@ -547,7 +547,8 @@ func (e *Store) create(ctx context.Context, obj runtime.Object, createValidation
 	var finishCreate FinishFunc = finishNothing
 
 	// Init metadata as early as possible.
-	if objectMeta, err := meta.Accessor(obj); err != nil {
+	objectMeta, err := meta.Accessor(obj)
+	if err != nil {
 		return nil, err
 	} else {
 		rest.FillObjectMetaSystemFields(objectMeta)
@@ -570,6 +571,12 @@ func (e *Store) create(ctx context.Context, obj runtime.Object, createValidation
 	if err := rest.BeforeCreate(e.CreateStrategy, ctx, obj); err != nil {
 		return nil, err
 	}
+
+	if _, found := objectMeta.GetAnnotations()[genericapirequest.ShardAnnotationKey]; found {
+		// Remove the shard annotation so it is not persisted
+		delete(objectMeta.GetAnnotations(), genericapirequest.ShardAnnotationKey)
+	}
+
 	// at this point we have a fully formed object.  It is time to call the validators that the apiserver
 	// handling chain wants to enforce.
 	if createValidation != nil {
@@ -1144,6 +1151,13 @@ func (e *Store) updateForGracefulDeletionAndFinalizers(ctx context.Context, name
 			if err != nil {
 				return nil, err
 			}
+
+			// the following annotation key indicates that the request is from the cache server
+			// in that case we've decided not to require finalization, the object will be deleted immediately
+			if _, hasShardAnnotation := existingAccessor.GetAnnotations()[genericapirequest.ShardAnnotationKey]; hasShardAnnotation {
+				return existing, nil
+			}
+
 			needsUpdate, newFinalizers := deletionFinalizersForGarbageCollection(ctx, e, existingAccessor, options)
 			if needsUpdate {
 				existingAccessor.SetFinalizers(newFinalizers)
