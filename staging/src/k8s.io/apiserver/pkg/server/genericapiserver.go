@@ -47,6 +47,8 @@ import (
 	genericapi "k8s.io/apiserver/pkg/endpoints"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
 	discoveryendpoint "k8s.io/apiserver/pkg/endpoints/discovery/aggregated"
+	genericrequest "k8s.io/apiserver/pkg/endpoints/request"
+
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -59,7 +61,6 @@ import (
 	"k8s.io/klog/v2"
 	openapibuilder3 "k8s.io/kube-openapi/pkg/builder3"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
-	"k8s.io/kube-openapi/pkg/handler"
 	"k8s.io/kube-openapi/pkg/handler3"
 	openapiutil "k8s.io/kube-openapi/pkg/util"
 	"k8s.io/kube-openapi/pkg/validation/spec"
@@ -170,7 +171,7 @@ type GenericAPIServer struct {
 
 	// OpenAPIVersionedService controls the /openapi/v2 endpoint, and can be used to update the served spec.
 	// It is set during PrepareRun if `openAPIConfig` is non-nil unless `skipOpenAPIInstallation` is true.
-	OpenAPIVersionedService *handler.OpenAPIService
+	OpenAPIVersionedService routes.OpenAPIServiceProvider
 
 	// OpenAPIV3VersionedService controls the /openapi/v3 endpoint and can be used to update the served spec.
 	// It is set during PrepareRun if `openAPIConfig` is non-nil unless `skipOpenAPIInstallation` is true.
