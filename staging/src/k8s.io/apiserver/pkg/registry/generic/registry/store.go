@@ -267,7 +267,7 @@ const (
 // NamespaceKeyRootFunc is the default function for constructing storage paths
 // to resource directories enforcing namespace rules.
 func NamespaceKeyRootFunc(ctx context.Context, prefix string) string {
-	key := prefix
+	key := NoNamespaceKeyRootFunc(ctx, prefix)
 	ns, ok := genericapirequest.NamespaceFrom(ctx)
 	if ok && len(ns) > 0 {
 		key = key + "/" + ns
@@ -303,7 +303,7 @@ func NoNamespaceKeyFunc(ctx context.Context, prefix string, name string) (string
 	if msgs := content.IsPathSegmentName(name); len(msgs) != 0 {
 		return "", apierrors.NewBadRequest(fmt.Sprintf("Name parameter invalid: %q: %s", name, strings.Join(msgs, ";")))
 	}
-	key := prefix + "/" + name
+	key := NoNamespaceKeyRootFunc(ctx, prefix) + "/" + name
 	return key, nil
 }
 
@@ -336,7 +336,7 @@ func defaultStoreKeyFuncs(prefix string, isNamespaced bool) storeKeyFuncs {
 	return newStoreKeyFuncs(
 		isNamespaced,
 		func(ctx context.Context) string {
-			return prefix
+			return NoNamespaceKeyRootFunc(ctx, prefix)
 		},
 		func(ctx context.Context, name string) (string, error) {
 			return NoNamespaceKeyFunc(ctx, prefix, name)

@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster/v3"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -116,6 +117,10 @@ func (t *Tester) SetUserInfo(userInfo user.Info) {
 	t.userInfo = userInfo
 }
 
+func (t *Tester) TestCluster() logicalcluster.Name {
+	return logicalcluster.New("root")
+}
+
 // TestContext returns a namespaced context that will be used when making storage calls.
 // Namespace is determined by TestNamespace()
 func (t *Tester) TestContext() context.Context {
@@ -127,7 +132,7 @@ func (t *Tester) TestContext() context.Context {
 	if t.requestInfo != nil {
 		ctx = genericapirequest.WithRequestInfo(ctx, t.requestInfo)
 	}
-	return ctx
+	return genericapirequest.WithCluster(genericapirequest.WithNamespace(ctx, t.TestNamespace()), genericapirequest.Cluster{Name: t.TestCluster()})
 }
 
 func (t *Tester) getObjectMetaOrFail(obj runtime.Object) metav1.Object {
@@ -136,6 +141,27 @@ func (t *Tester) getObjectMetaOrFail(obj runtime.Object) metav1.Object {
 		t.Fatalf("object does not have ObjectMeta: %v\n%#v", err, obj)
 	}
 	return objMeta
+}
+
+// copyClusterAnnotation aligns the kcp.io/cluster annotation of dst with src.
+// The storage layer stamps the annotation onto objects decoded from etcd, so
+// objects that never round-tripped (e.g. dry-run results) differ from
+// persisted ones only in this annotation; tests normalize it away before
+// comparing, like resourceVersion.
+func copyClusterAnnotation(dst, src metav1.Object) {
+	annotations := dst.GetAnnotations()
+	if cluster, ok := src.GetAnnotations()[logicalcluster.AnnotationKey]; ok {
+		if annotations == nil {
+			annotations = map[string]string{}
+		}
+		annotations[logicalcluster.AnnotationKey] = cluster
+	} else {
+		delete(annotations, logicalcluster.AnnotationKey)
+		if len(annotations) == 0 {
+			annotations = nil
+		}
+	}
+	dst.SetAnnotations(annotations)
 }
 
 func (t *Tester) setObjectMeta(obj runtime.Object, name string) {
@@ -336,6 +362,7 @@ func (t *Tester) testCreateDryRunEquals(obj runtime.Object) {
 	createdFakeMeta.SetResourceVersion("")
 	createdMeta.SetResourceVersion("")
 	createdMeta.SetUID(createdFakeMeta.GetUID())
+	copyClusterAnnotation(createdMeta, createdFakeMeta)
 
 	if e, a := created, createdFake; !apiequality.Semantic.DeepEqual(e, a) {
 		t.Errorf("unexpected obj: %#v, expected %#v", e, a)
@@ -363,6 +390,7 @@ func (t *Tester) testCreateEquals(obj runtime.Object, getFn GetFunc) {
 	createdMeta := t.getObjectMetaOrFail(created)
 	gotMeta := t.getObjectMetaOrFail(got)
 	createdMeta.SetResourceVersion(gotMeta.GetResourceVersion())
+	copyClusterAnnotation(createdMeta, gotMeta)
 
 	if e, a := created, got; !apiequality.Semantic.DeepEqual(e, a) {
 		t.Errorf("unexpected obj: %#v, expected %#v", e, a)
@@ -425,6 +453,7 @@ func (t *Tester) testCreateHasMetadata(valid runtime.Object) {
 func (t *Tester) testCreateIgnoresContextNamespace(valid runtime.Object, opts metav1.CreateOptions) {
 	// Ignore non-empty namespace in context
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), "not-default2")
+	ctx = genericapirequest.WithNamespace(genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Name: t.TestCluster()}), "not-default2")
 	if t.requestInfo != nil {
 		ctx = genericapirequest.WithRequestInfo(ctx, t.requestInfo)
 	}
@@ -447,6 +476,7 @@ func (t *Tester) testCreateIgnoresMismatchedNamespace(valid runtime.Object, opts
 	// Ignore non-empty namespace in object meta
 	objectMeta.SetNamespace("not-default")
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), "not-default2")
+	ctx = genericapirequest.WithNamespace(genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Name: t.TestCluster()}), "not-default2")
 	if t.requestInfo != nil {
 		ctx = genericapirequest.WithRequestInfo(ctx, t.requestInfo)
 	}
@@ -1195,6 +1225,7 @@ func (t *Tester) testGetDifferentNamespace(obj runtime.Object) {
 	objMeta.SetName(t.namer(5))
 
 	ctx1 := genericapirequest.WithNamespace(genericapirequest.NewContext(), "bar3")
+	ctx1 = genericapirequest.WithNamespace(genericapirequest.WithCluster(ctx1, genericapirequest.Cluster{Name: t.TestCluster()}), "bar3")
 	if t.requestInfo != nil {
 		ctx1 = genericapirequest.WithRequestInfo(ctx1, t.requestInfo)
 	}
@@ -1205,6 +1236,7 @@ func (t *Tester) testGetDifferentNamespace(obj runtime.Object) {
 	}
 
 	ctx2 := genericapirequest.WithNamespace(genericapirequest.NewContext(), "bar4")
+	ctx2 = genericapirequest.WithNamespace(genericapirequest.WithCluster(ctx2, genericapirequest.Cluster{Name: t.TestCluster()}), "bar4")
 	if t.requestInfo != nil {
 		ctx2 = genericapirequest.WithRequestInfo(ctx2, t.requestInfo)
 	}
@@ -1262,10 +1294,12 @@ func (t *Tester) testGetFound(obj runtime.Object) {
 
 func (t *Tester) testGetMimatchedNamespace(obj runtime.Object) {
 	ctx1 := genericapirequest.WithNamespace(genericapirequest.NewContext(), "bar1")
+	ctx1 = genericapirequest.WithNamespace(genericapirequest.WithCluster(ctx1, genericapirequest.Cluster{Name: t.TestCluster()}), "bar1")
 	if t.requestInfo != nil {
 		ctx1 = genericapirequest.WithRequestInfo(ctx1, t.requestInfo)
 	}
 	ctx2 := genericapirequest.WithNamespace(genericapirequest.NewContext(), "bar2")
+	ctx2 = genericapirequest.WithNamespace(genericapirequest.WithCluster(ctx2, genericapirequest.Cluster{Name: t.TestCluster()}), "bar2")
 	if t.requestInfo != nil {
 		ctx2 = genericapirequest.WithRequestInfo(ctx2, t.requestInfo)
 	}
@@ -1361,7 +1395,7 @@ func (t *Tester) testListMatchLabels(obj runtime.Object, assignFn AssignFunc) {
 	foo4Meta.SetNamespace(genericapirequest.NamespaceValue(ctx))
 	foo4Meta.SetLabels(testLabels)
 
-	objs := ([]runtime.Object{foo3, foo4})
+	objs := []runtime.Object{foo3, foo4}
 
 	assignFn(objs)
 	filtered := []runtime.Object{objs[1]}
@@ -1415,7 +1449,7 @@ func (t *Tester) testListTableConversion(obj runtime.Object, assignFn AssignFunc
 	foo4Meta.SetNamespace(genericapirequest.NamespaceValue(ctx))
 	foo4Meta.SetLabels(testLabels)
 
-	objs := ([]runtime.Object{foo3, foo4})
+	objs := []runtime.Object{foo3, foo4}
 
 	assignFn(objs)
 
