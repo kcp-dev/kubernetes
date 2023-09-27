@@ -29,6 +29,7 @@ import (
 	"github.com/kcp-dev/logicalcluster/v3"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel/attribute"
+	"k8s.io/apiserver/pkg/kcp"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -737,6 +738,7 @@ func (s *store) GetList(ctx context.Context, key string, opts storage.ListOption
 	if err != nil {
 		return storage.NewInternalErrorf("unable to get cluster for list key %q: %v", keyPrefix, err)
 	}
+	crdIndicator := kcp.CustomResourceIndicatorFrom(ctx)
 
 	// loop until we have filled the requested limit from etcd or there are no more results
 	var lastKey []byte
@@ -794,7 +796,7 @@ func (s *store) GetList(ctx context.Context, key string, opts storage.ListOption
 				return storage.NewInternalErrorf("unable to transform key %q: %v", kv.Key, err)
 			}
 
-			clusterName := adjustClusterNameIfWildcard(shard, cluster, keyPrefix, string(kv.Key))
+			clusterName := adjustClusterNameIfWildcard(shard, cluster, crdIndicator, keyPrefix, string(kv.Key))
 			if err := appendListItem(v, data, uint64(kv.ModRevision), pred, s.codec, s.versioner, newItemFunc, clusterName); err != nil {
 				recordDecodeError(s.groupResourceString, string(kv.Key))
 				return err
