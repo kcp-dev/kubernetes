@@ -6836,9 +6836,9 @@ func TestValidateCustomResourceDefinitionValidationRuleCompatibility(t *testing.
 
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.TODO()
-			errs := validateCustomResourceDefinitionUpdate(ctx, resource, old, validationOptions{
-				preexistingExpressions: findPreexistingExpressions(&old.Spec),
-				celEnvironmentSet:      envSet,
+			errs := validateCustomResourceDefinitionUpdate(ctx, resource, old, ValidationOptions{
+				PreexistingExpressions: findPreexistingExpressions(&old.Spec),
+				CELEnvironmentSet:      envSet,
 			})
 			seenErrs := make([]bool, len(errs))
 
@@ -6871,7 +6871,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		name           string
 		input          apiextensions.CustomResourceValidation
 		statusEnabled  bool
-		opts           validationOptions
+		opts           ValidationOptions
 		expectedErrors []validationMatch
 	}{
 		{
@@ -6999,7 +6999,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{},
 			},
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			expectedErrors: []validationMatch{
 				required("spec.validation.openAPIV3Schema.type"),
 			},
@@ -7011,7 +7011,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					Type: "object",
 				},
 			},
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 		},
 		{
 			name: "require valid types, valid",
@@ -7020,7 +7020,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					Type: "object",
 				},
 			},
-			opts: validationOptions{requireValidPropertyType: true, requireStructuralSchema: true},
+			opts: ValidationOptions{RequireValidPropertyType: true, RequireStructuralSchema: true},
 		},
 		{
 			name: "require valid types, invalid",
@@ -7029,7 +7029,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					Type: "null",
 				},
 			},
-			opts: validationOptions{requireValidPropertyType: true, requireStructuralSchema: true},
+			opts: ValidationOptions{RequireValidPropertyType: true, RequireStructuralSchema: true},
 			expectedErrors: []validationMatch{
 				// Invalid value: "null": must be object at the root
 				unsupported("spec.validation.openAPIV3Schema.type"),
@@ -7046,7 +7046,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					Type: "bogus",
 				},
 			},
-			opts: validationOptions{requireValidPropertyType: true, requireStructuralSchema: true},
+			opts: ValidationOptions{RequireValidPropertyType: true, RequireStructuralSchema: true},
 			expectedErrors: []validationMatch{
 				unsupported("spec.validation.openAPIV3Schema.type"),
 				invalid("spec.validation.openAPIV3Schema.type"),
@@ -7343,7 +7343,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{requireAtomicSetType: true},
+			opts: ValidationOptions{RequireAtomicSetType: true},
 			expectedErrors: []validationMatch{
 				invalid("spec.validation.openAPIV3Schema.items.x-kubernetes-map-type"),
 			},
@@ -7364,7 +7364,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{requireAtomicSetType: true},
+			opts: ValidationOptions{RequireAtomicSetType: true},
 			expectedErrors: []validationMatch{
 				invalid("spec.validation.openAPIV3Schema.items.x-kubernetes-map-type"),
 			},
@@ -7427,7 +7427,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{requireAtomicSetType: true},
+			opts: ValidationOptions{RequireAtomicSetType: true},
 			expectedErrors: []validationMatch{
 				invalid("spec.validation.openAPIV3Schema.items.x-kubernetes-list-type"),
 			},
@@ -7527,8 +7527,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				RequireMapListKeysMapSetValidation: true,
 			},
 			expectedErrors: []validationMatch{
 				required("spec.validation.openAPIV3Schema.items.properties[key].default"),
@@ -7554,8 +7554,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				RequireMapListKeysMapSetValidation: true,
 			},
 		},
 		{
@@ -7578,9 +7578,9 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				allowDefaults:                      true,
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				AllowDefaults:                      true,
+				RequireMapListKeysMapSetValidation: true,
 			},
 		},
 		{
@@ -7603,8 +7603,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				RequireMapListKeysMapSetValidation: true,
 			},
 			expectedErrors: []validationMatch{
 				required("spec.validation.openAPIV3Schema.items.properties[key].default"),
@@ -7631,8 +7631,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				RequireMapListKeysMapSetValidation: true,
 			},
 			expectedErrors: []validationMatch{
 				forbidden("spec.validation.openAPIV3Schema.items.nullable"),
@@ -7669,8 +7669,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				RequireMapListKeysMapSetValidation: true,
 			},
 			expectedErrors: []validationMatch{
 				forbidden("spec.validation.openAPIV3Schema.items.properties[b].default"),
@@ -7689,8 +7689,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				RequireMapListKeysMapSetValidation: true,
 			},
 			expectedErrors: []validationMatch{
 				forbidden("spec.validation.openAPIV3Schema.items.nullable"),
@@ -7709,8 +7709,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireMapListKeysMapSetValidation: true,
+			opts: ValidationOptions{
+				RequireMapListKeysMapSetValidation: true,
 			},
 		},
 		{
@@ -7735,8 +7735,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7760,8 +7760,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7777,8 +7777,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 			expectedErrors: []validationMatch{
 				required("spec.validation.openAPIV3Schema.x-kubernetes-validations[0].rule"),
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7789,8 +7789,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					XValidations: apiextensions.ValidationRules{},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7818,8 +7818,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 			expectedErrors: []validationMatch{
 				invalid("spec.validation.openAPIV3Schema.properties[subRoot].x-kubernetes-validations[0].rule"),
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7857,8 +7857,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7889,8 +7889,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7916,8 +7916,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7953,8 +7953,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -7992,8 +7992,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -8027,8 +8027,8 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 				invalid("spec.validation.openAPIV3Schema.x-kubernetes-validations[1].rule"),
 				invalid("spec.validation.openAPIV3Schema.x-kubernetes-validations[2].rule"),
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
 			},
 		},
 		{
@@ -8086,9 +8086,9 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 					},
 				},
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
-				allowDefaults:           true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
+				AllowDefaults:           true,
 			},
 		},
 		{
@@ -8151,9 +8151,9 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 				invalid("spec.validation.openAPIV3Schema.properties[value].default"),
 				invalid("spec.validation.openAPIV3Schema.properties[object].default"),
 			},
-			opts: validationOptions{
-				requireStructuralSchema: true,
-				allowDefaults:           true,
+			opts: ValidationOptions{
+				RequireStructuralSchema: true,
+				AllowDefaults:           true,
 			},
 		},
 		{
@@ -8237,7 +8237,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "forbid transition rule on element of list of type atomic",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8264,7 +8264,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "forbid transition rule on element of list defaulting to type atomic",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8290,7 +8290,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on list of type atomic",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8337,7 +8337,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "forbid transition rule on element of list of type set",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8365,7 +8365,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on list of type set",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8390,7 +8390,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on element of list of type map",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8418,7 +8418,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on list of type map",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8447,7 +8447,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on element of map of type granular",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8471,7 +8471,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "forbid transition rule on element of map of unrecognized type",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8499,7 +8499,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on element of map defaulting to type granular",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8522,7 +8522,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on map of type granular",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8540,7 +8540,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on map defaulting to type granular",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8557,7 +8557,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on element of map of type atomic",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8580,7 +8580,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow transition rule on map of type atomic",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8598,7 +8598,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "forbid double-nested rule with no limit set",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8636,7 +8636,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "forbid double-nested rule with one limit set",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8674,7 +8674,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow double-nested rule with three limits set",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8708,7 +8708,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "allow double-nested rule with one limit set on outermost array",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8741,7 +8741,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "check for cardinality of 1 under root object",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8759,7 +8759,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "forbid validation rules where cost total exceeds total limit",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8812,7 +8812,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "skip CEL expression validation when OpenAPIv3 schema is an invalid structural schema",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8840,7 +8840,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "skip CEL expression validation when OpenAPIv3 schema is an invalid structural schema at level below",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8872,7 +8872,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		{
 			// So long at the schema information accessible to the CEL expression is valid, the expression should be validated.
 			name: "do not skip when OpenAPIv3 schema is an invalid structural schema in a separate part of the schema tree",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8913,7 +8913,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		{
 			// So long at the schema information accessible to the CEL expression is valid, the expression should be validated.
 			name: "do not skip CEL expression validation when OpenAPIv3 schema is an invalid structural schema at level above",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8945,7 +8945,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated for escaped property name",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8965,7 +8965,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under array items",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -8990,7 +8990,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under array items, parent has rule",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9017,7 +9017,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under additionalProperties",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9042,7 +9042,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under additionalProperties, parent has rule",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9070,7 +9070,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under unescaped property name",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9090,7 +9090,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under unescaped property name, parent has rule",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9113,7 +9113,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under escaped property name",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9133,7 +9133,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under escaped property name, parent has rule",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9156,7 +9156,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under unescapable property name",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9176,7 +9176,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule validated under unescapable property name, parent has rule",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9199,7 +9199,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule with messageExpression",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9220,7 +9220,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule allows both message and messageExpression",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9242,7 +9242,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule invalidated by messageExpression syntax error",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9265,7 +9265,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule invalidated by messageExpression not returning a string",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9288,7 +9288,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule invalidated by messageExpression exceeding per-expression estimated cost limit",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9317,7 +9317,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule invalidated by messageExpression exceeding per-CRD estimated cost limit",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9350,7 +9350,7 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 		},
 		{
 			name: "x-kubernetes-validations rule invalidated by messageExpression being only empty spaces",
-			opts: validationOptions{requireStructuralSchema: true},
+			opts: ValidationOptions{RequireStructuralSchema: true},
 			input: apiextensions.CustomResourceValidation{
 				OpenAPIV3Schema: &apiextensions.JSONSchemaProps{
 					Type: "object",
@@ -9375,10 +9375,10 @@ func TestValidateCustomResourceDefinitionValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.TODO()
-			if tt.opts.celEnvironmentSet == nil {
-				tt.opts.celEnvironmentSet = environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion())
+			if tt.opts.CELEnvironmentSet == nil {
+				tt.opts.CELEnvironmentSet = environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion())
 			}
-			got := validateCustomResourceDefinitionValidation(ctx, &tt.input, tt.statusEnabled, tt.opts, field.NewPath("spec", "validation"))
+			got := ValidateCustomResourceDefinitionValidation(ctx, &tt.input, tt.statusEnabled, tt.opts, field.NewPath("spec", "validation"))
 
 			seenErrs := make([]bool, len(got))
 
@@ -9726,7 +9726,7 @@ func Test_validateDeprecationWarning(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := validateDeprecationWarning(tt.deprecated, tt.warning); !reflect.DeepEqual(got, tt.want) {
+			if got := ValidateDeprecationWarning(tt.deprecated, tt.warning); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("validateDeprecationWarning() = %v, want %v", got, tt.want)
 			}
 		})
@@ -9906,13 +9906,13 @@ func TestCelContext(t *testing.T) {
 			}
 			celContext := RootCELContext(tt.schema)
 			celContext.converter = converter
-			opts := validationOptions{
-				celEnvironmentSet: environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion()),
+			opts := ValidationOptions{
+				CELEnvironmentSet: environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion()),
 			}
 			openAPIV3Schema := &specStandardValidatorV3{
-				allowDefaults:            opts.allowDefaults,
-				disallowDefaultsReason:   opts.disallowDefaultsReason,
-				requireValidPropertyType: opts.requireValidPropertyType,
+				allowDefaults:            opts.AllowDefaults,
+				disallowDefaultsReason:   opts.DisallowDefaultsReason,
+				requireValidPropertyType: opts.RequireValidPropertyType,
 			}
 			errors := ValidateCustomResourceDefinitionOpenAPISchema(tt.schema, field.NewPath("openAPIV3Schema"), openAPIV3Schema, true, &opts, celContext).AllErrors()
 			if len(errors) != 0 {
