@@ -115,7 +115,7 @@ func (w *testWatchCache) getCacheIntervalForEvents(resourceVersion uint64, opts 
 
 // newTestWatchCache just adds a fake clock.
 func newTestWatchCache(capacity int, eventFreshDuration time.Duration, indexers *cache.Indexers) *testWatchCache {
-	keyFunc := func(obj runtime.Object) (string, error) {
+	keyFunc := func(_ context.Context, obj runtime.Object) (string, error) {
 		return storage.NamespaceKeyFunc("/prefix/", obj)
 	}
 	getAttrsFunc := func(obj runtime.Object) (labels.Set, fields.Set, error) {

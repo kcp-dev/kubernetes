@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/consistencydetector"
@@ -44,10 +45,12 @@ type listerWatcher struct {
 
 	unsupportedWatchListSemantics    bool
 	watchListConsistencyCheckEnabled bool
+
+	kcpExtraStorageMetadata *storagebackend.KcpStorageMetadata
 }
 
 // NewListerWatcher returns a storage.Interface backed ListerWatcher.
-func NewListerWatcher(storage storage.Interface, resourcePrefix string, newListFunc func() runtime.Object, contextMetadata metadata.MD) cache.ListerWatcher {
+func NewListerWatcher(storage storage.Interface, resourcePrefix string, newListFunc func() runtime.Object, contextMetadata metadata.MD, kcpStorageMetadata *storagebackend.KcpStorageMetadata) cache.ListerWatcher {
 	return &listerWatcher{
 		storage:                          storage,
 		resourcePrefix:                   resourcePrefix,
@@ -55,6 +58,7 @@ func NewListerWatcher(storage storage.Interface, resourcePrefix string, newListF
 		contextMetadata:                  contextMetadata,
 		unsupportedWatchListSemantics:    watchlist.DoesClientNotSupportWatchListSemantics(storage),
 		watchListConsistencyCheckEnabled: consistencydetector.IsDataConsistencyDetectionForWatchListEnabled(),
+		kcpExtraStorageMetadata:          kcpStorageMetadata,
 	}
 }
 
@@ -98,7 +102,10 @@ func (lw *listerWatcher) List(options metav1.ListOptions) (runtime.Object, error
 	if lw.contextMetadata != nil {
 		ctx = metadata.NewOutgoingContext(ctx, lw.contextMetadata)
 	}
-	if err := lw.storage.GetList(ctx, lw.resourcePrefix, storageOpts, list); err != nil {
+	if lw.kcpExtraStorageMetadata != nil {
+		ctx = createKCPClusterAwareContext(lw.kcpExtraStorageMetadata)
+	}
+	if err := lw.storage.GetList(ctx, lw.kcpAwareResourcePrefix(), storageOpts, list); err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -131,7 +138,10 @@ func (lw *listerWatcher) Watch(options metav1.ListOptions) (watch.Interface, err
 		return nil, fmt.Errorf("sendInitialEvents is forbidden for watch unless the WatchList feature gate is enabled")
 	}
 
-	return lw.storage.Watch(ctx, lw.resourcePrefix, opts)
+	if lw.kcpExtraStorageMetadata != nil {
+		ctx = createKCPClusterAwareContext(lw.kcpExtraStorageMetadata)
+	}
+	return lw.storage.Watch(ctx, lw.kcpAwareResourcePrefix(), opts)
 }
 
 func (lw *listerWatcher) IsWatchListSemanticsUnSupported() bool {
