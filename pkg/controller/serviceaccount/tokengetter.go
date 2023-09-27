@@ -54,6 +54,7 @@ func (s *serviceAccountTokenClusterGetter) Cluster(name logicalcluster.Name) ser
 		s.secretLister.Cluster(name),
 		s.serviceAccountLister.Cluster(name),
 		nil,
+		nil,
 	)
 }
 
