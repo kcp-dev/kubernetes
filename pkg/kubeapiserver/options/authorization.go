@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	versionedinformers "k8s.io/client-go/informers"
+
 	"k8s.io/kubernetes/pkg/kubeapiserver/authorizer"
 	authzmodes "k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes"
 )
@@ -101,6 +102,10 @@ func (o *BuiltInAuthorizationOptions) Validate() []error {
 
 // AddFlags returns flags of authorization for a API Server
 func (o *BuiltInAuthorizationOptions) AddFlags(fs *pflag.FlagSet) {
+	if o == nil {
+		return
+	}
+
 	fs.StringSliceVar(&o.Modes, "authorization-mode", o.Modes, ""+
 		"Ordered list of plug-ins to do authorization on secure port. Comma-delimited list of: "+
 		strings.Join(authzmodes.AuthorizationModeChoices, ",")+".")

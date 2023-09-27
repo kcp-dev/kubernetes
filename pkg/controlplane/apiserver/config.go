@@ -147,13 +147,15 @@ func BuildGenericConfig(
 		return
 	}
 
-	genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, err = BuildAuthorizer(s, genericConfig.EgressSelector, versionedInformers)
-	if err != nil {
-		lastErr = fmt.Errorf("invalid authorization config: %v", err)
-		return
-	}
-	if !sets.NewString(s.Authorization.Modes...).Has(modes.ModeRBAC) {
-		genericConfig.DisabledPostStartHooks.Insert(rbacrest.PostStartHookName)
+	if s.Authorization != nil {
+		genericConfig.Authorization.Authorizer, genericConfig.RuleResolver, err = BuildAuthorizer(s, genericConfig.EgressSelector, versionedInformers)
+		if err != nil {
+			lastErr = fmt.Errorf("invalid authorization config: %v", err)
+			return
+		}
+		if !sets.NewString(s.Authorization.Modes...).Has(modes.ModeRBAC) {
+			genericConfig.DisabledPostStartHooks.Insert(rbacrest.PostStartHookName)
+		}
 	}
 
 	lastErr = s.Audit.ApplyTo(genericConfig)
