@@ -103,7 +103,7 @@ func (lw *listerWatcher) List(options metav1.ListOptions) (runtime.Object, error
 		ctx = metadata.NewOutgoingContext(ctx, lw.contextMetadata)
 	}
 	if lw.kcpExtraStorageMetadata != nil {
-		ctx = createKCPClusterAwareContext(lw.kcpExtraStorageMetadata)
+		ctx = createKCPClusterAwareContext(ctx, lw.kcpExtraStorageMetadata)
 	}
 	if err := lw.storage.GetList(ctx, lw.kcpAwareResourcePrefix(), storageOpts, list); err != nil {
 		return nil, err
@@ -139,7 +139,7 @@ func (lw *listerWatcher) Watch(options metav1.ListOptions) (watch.Interface, err
 	}
 
 	if lw.kcpExtraStorageMetadata != nil {
-		ctx = createKCPClusterAwareContext(lw.kcpExtraStorageMetadata)
+		ctx = createKCPClusterAwareContext(ctx, lw.kcpExtraStorageMetadata)
 	}
 	return lw.storage.Watch(ctx, lw.kcpAwareResourcePrefix(), opts)
 }
