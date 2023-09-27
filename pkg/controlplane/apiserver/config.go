@@ -175,7 +175,7 @@ func BuildGenericConfig(
 		s.Etcd.StorageConfig.Transport.TracerProvider = oteltrace.NewNoopTracerProvider()
 	}
 
-	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig(legacyscheme.Scheme, legacyscheme.Codecs)
+	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig()
 	storageFactoryConfig.APIResourceConfig = genericConfig.MergedResourceConfig
 	storageFactory, lastErr = storageFactoryConfig.Complete(s.Etcd).New()
 	if lastErr != nil {
