@@ -29,12 +29,13 @@ import (
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apivalidation "k8s.io/apimachinery/pkg/api/validation"
 	metainternal "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/managedfields"
+	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/generic"
 	registrytest "k8s.io/apiserver/pkg/registry/generic/testing"
@@ -47,6 +48,7 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/crdserverscheme"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource"
 	"k8s.io/apiextensions-apiserver/pkg/registry/customresource/tableconvertor"
+	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 )
 
 func newStorage(t *testing.T) (customresource.CustomResourceStorage, *etcd3testing.EtcdTestServer) {
@@ -101,6 +103,7 @@ func newStorage(t *testing.T) (customresource.CustomResourceStorage, *etcd3testi
 			typer,
 			true,
 			kind,
+			apivalidation.NameIsDNSSubdomain,
 			nil,
 			nil,
 			nil,
@@ -110,7 +113,7 @@ func newStorage(t *testing.T) (customresource.CustomResourceStorage, *etcd3testi
 		restOptions,
 		[]string{"all"},
 		table,
-		managedfields.ResourcePathMappings{},
+		fieldmanager.ResourcePathMappings{},
 	)
 
 	return storage, server
@@ -155,8 +158,8 @@ var validCustomResource = *validNewCustomResource()
 func TestCreate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
-	test := registrytest.New(t, storage.CustomResource.Store)
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
+	test := registrytest.New(t, storage.CustomResource.Store.(*genericregistry.Store))
 	cr := validNewCustomResource()
 	cr.SetNamespace("")
 	test.TestCreate(
@@ -167,31 +170,31 @@ func TestCreate(t *testing.T) {
 func TestGet(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
-	test := registrytest.New(t, storage.CustomResource.Store)
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
+	test := registrytest.New(t, storage.CustomResource.Store.(*genericregistry.Store))
 	test.TestGet(validNewCustomResource())
 }
 
 func TestList(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
-	test := registrytest.New(t, storage.CustomResource.Store)
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
+	test := registrytest.New(t, storage.CustomResource.Store.(*genericregistry.Store))
 	test.TestList(validNewCustomResource())
 }
 
 func TestDelete(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
-	test := registrytest.New(t, storage.CustomResource.Store)
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
+	test := registrytest.New(t, storage.CustomResource.Store.(*genericregistry.Store))
 	test.TestDelete(validNewCustomResource())
 }
 
 func TestGenerationNumber(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 	modifiedRno := *validNewCustomResource()
 	modifiedRno.SetGeneration(10)
 	ctx := genericapirequest.NewDefaultContext()
@@ -243,7 +246,7 @@ func TestGenerationNumber(t *testing.T) {
 func TestCategories(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	expected := []string{"all"}
 	actual := storage.CustomResource.Categories()
@@ -256,12 +259,12 @@ func TestCategories(t *testing.T) {
 func TestColumns(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceDefault)
 	key := "/noxus/" + metav1.NamespaceDefault + "/foo"
 	validCustomResource := validNewCustomResource()
-	if err := storage.CustomResource.Storage.Create(ctx, key, validCustomResource, nil, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, validCustomResource, nil, 0, false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -327,11 +330,11 @@ func TestColumns(t *testing.T) {
 func TestStatusUpdate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceDefault)
 	key := "/noxus/" + metav1.NamespaceDefault + "/foo"
 	validCustomResource := validNewCustomResource()
-	if err := storage.CustomResource.Storage.Create(ctx, key, validCustomResource, nil, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, validCustomResource, nil, 0, false); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -375,14 +378,14 @@ func TestStatusUpdate(t *testing.T) {
 func TestScaleGet(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	name := "foo"
 
 	var cr unstructured.Unstructured
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceDefault)
 	key := "/noxus/" + metav1.NamespaceDefault + "/" + name
-	if err := storage.CustomResource.Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
 		t.Fatalf("error setting new custom resource (key: %s) %v: %v", key, validCustomResource, err)
 	}
 
@@ -417,7 +420,7 @@ func TestScaleGet(t *testing.T) {
 func TestScaleGetWithoutSpecReplicas(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	name := "foo"
 
@@ -426,7 +429,7 @@ func TestScaleGetWithoutSpecReplicas(t *testing.T) {
 	key := "/noxus/" + metav1.NamespaceDefault + "/" + name
 	withoutSpecReplicas := validCustomResource.DeepCopy()
 	unstructured.RemoveNestedField(withoutSpecReplicas.Object, "spec", "replicas")
-	if err := storage.CustomResource.Storage.Create(ctx, key, withoutSpecReplicas, &cr, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, withoutSpecReplicas, &cr, 0, false); err != nil {
 		t.Fatalf("error setting new custom resource (key: %s) %v: %v", key, withoutSpecReplicas, err)
 	}
 
@@ -442,14 +445,14 @@ func TestScaleGetWithoutSpecReplicas(t *testing.T) {
 func TestScaleUpdate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	name := "foo"
 
 	var cr unstructured.Unstructured
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceDefault)
 	key := "/noxus/" + metav1.NamespaceDefault + "/" + name
-	if err := storage.CustomResource.Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
 		t.Fatalf("error setting new custom resource (key: %s) %v: %v", key, validCustomResource, err)
 	}
 
@@ -494,7 +497,7 @@ func TestScaleUpdate(t *testing.T) {
 func TestScaleUpdateWithoutSpecReplicas(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	name := "foo"
 
@@ -503,7 +506,7 @@ func TestScaleUpdateWithoutSpecReplicas(t *testing.T) {
 	key := "/noxus/" + metav1.NamespaceDefault + "/" + name
 	withoutSpecReplicas := validCustomResource.DeepCopy()
 	unstructured.RemoveNestedField(withoutSpecReplicas.Object, "spec", "replicas")
-	if err := storage.CustomResource.Storage.Create(ctx, key, withoutSpecReplicas, &cr, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, withoutSpecReplicas, &cr, 0, false); err != nil {
 		t.Fatalf("error setting new custom resource (key: %s) %v: %v", key, withoutSpecReplicas, err)
 	}
 
@@ -535,14 +538,14 @@ func TestScaleUpdateWithoutSpecReplicas(t *testing.T) {
 func TestScaleUpdateWithoutResourceVersion(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	name := "foo"
 
 	var cr unstructured.Unstructured
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceDefault)
 	key := "/noxus/" + metav1.NamespaceDefault + "/" + name
-	if err := storage.CustomResource.Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
 		t.Fatalf("error setting new custom resource (key: %s) %v: %v", key, validCustomResource, err)
 	}
 
@@ -573,14 +576,14 @@ func TestScaleUpdateWithoutResourceVersion(t *testing.T) {
 func TestScaleUpdateWithoutResourceVersionWithConflicts(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	name := "foo"
 
 	var cr unstructured.Unstructured
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceDefault)
 	key := "/noxus/" + metav1.NamespaceDefault + "/" + name
-	if err := storage.CustomResource.Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
 		t.Fatalf("error setting new custom resource (key: %s) %v: %v", key, validCustomResource, err)
 	}
 
@@ -672,14 +675,14 @@ func TestScaleUpdateWithoutResourceVersionWithConflicts(t *testing.T) {
 func TestScaleUpdateWithResourceVersionWithConflicts(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	defer storage.CustomResource.Store.DestroyFunc()
+	defer storage.CustomResource.Store.(*genericregistry.Store).DestroyFunc()
 
 	name := "foo"
 
 	var cr unstructured.Unstructured
 	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), metav1.NamespaceDefault)
 	key := "/noxus/" + metav1.NamespaceDefault + "/" + name
-	if err := storage.CustomResource.Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
+	if err := storage.CustomResource.Store.(*genericregistry.Store).Storage.Create(ctx, key, &validCustomResource, &cr, 0, false); err != nil {
 		t.Fatalf("error setting new custom resource (key: %s) %v: %v", key, validCustomResource, err)
 	}
 
