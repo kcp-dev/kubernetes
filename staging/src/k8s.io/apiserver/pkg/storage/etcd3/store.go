@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster/v3"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -39,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/audit"
 	endpointsrequest "k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	"k8s.io/apiserver/pkg/storage/value"
@@ -149,6 +151,11 @@ func (s *store) Versioner() storage.Versioner {
 
 // Get implements storage.Interface.Get.
 func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, out runtime.Object) error {
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in Get action for key %s : %s", key, err.Error())
+	}
+
 	preparedKey, err := s.prepareKey(key)
 	if err != nil {
 		return err
@@ -176,7 +183,7 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 		return storage.NewInternalError(err.Error())
 	}
 
-	err = decode(s.codec, s.versioner, data, out, kv.ModRevision)
+	err = decode(s.codec, s.versioner, data, out, kv.ModRevision, clusterName)
 	if err != nil {
 		recordDecodeError(s.groupResourceString, preparedKey)
 		return err
@@ -186,6 +193,11 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 
 // Create implements storage.Interface.Create.
 func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object, ttl uint64) error {
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in Create action for key %s : %s", key, err.Error())
+	}
+
 	preparedKey, err := s.prepareKey(key)
 	if err != nil {
 		return err
@@ -242,7 +254,7 @@ func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object,
 
 	if out != nil {
 		putResp := txnResp.Responses[0].GetResponsePut()
-		err = decode(s.codec, s.versioner, data, out, putResp.Header.Revision)
+		err = decode(s.codec, s.versioner, data, out, putResp.Header.Revision, clusterName)
 		if err != nil {
 			span.AddEvent("decode failed", attribute.Int("len", len(data)), attribute.String("err", err.Error()))
 			recordDecodeError(s.groupResourceString, preparedKey)
@@ -271,10 +283,13 @@ func (s *store) Delete(
 func (s *store) conditionalDelete(
 	ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions,
 	validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
-	getCurrentState := s.getCurrentState(ctx, key, v, false)
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in conditionalDelete action for key %s : %s", key, err.Error())
+	}
+	getCurrentState := s.getCurrentState(ctx, key, v, false, clusterName)
 
 	var origState *objState
-	var err error
 	var origStateIsCurrent bool
 	if cachedExistingObject != nil {
 		origState, err = s.getStateFromObject(cachedExistingObject)
@@ -355,7 +370,7 @@ func (s *store) conditionalDelete(
 		if !txnResp.Succeeded {
 			getResp := (*clientv3.GetResponse)(txnResp.Responses[0].GetResponseRange())
 			klog.V(4).Infof("deletion of %s failed because of a conflict, going to retry", key)
-			origState, err = s.getState(ctx, getResp, key, v, false)
+			origState, err = s.getState(ctx, getResp, key, v, false, clusterName)
 			if err != nil {
 				return err
 			}
@@ -370,7 +385,7 @@ func (s *store) conditionalDelete(
 		if deleteResp.Header == nil {
 			return errors.New("invalid DeleteRange response - nil header")
 		}
-		err = decode(s.codec, s.versioner, origState.data, out, deleteResp.Header.Revision)
+		err = decode(s.codec, s.versioner, origState.data, out, deleteResp.Header.Revision, clusterName)
 		if err != nil {
 			recordDecodeError(s.groupResourceString, key)
 			return err
@@ -383,6 +398,10 @@ func (s *store) conditionalDelete(
 func (s *store) GuaranteedUpdate(
 	ctx context.Context, key string, destination runtime.Object, ignoreNotFound bool,
 	preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in GuaranteedUpdate action for key %s : %s", key, err.Error())
+	}
 	preparedKey, err := s.prepareKey(key)
 	if err != nil {
 		return err
@@ -399,7 +418,7 @@ func (s *store) GuaranteedUpdate(
 		return fmt.Errorf("unable to convert output object to pointer: %v", err)
 	}
 
-	getCurrentState := s.getCurrentState(ctx, preparedKey, v, ignoreNotFound)
+	getCurrentState := s.getCurrentState(ctx, preparedKey, v, ignoreNotFound, clusterName)
 
 	var origState *objState
 	var origStateIsCurrent bool
@@ -485,7 +504,7 @@ func (s *store) GuaranteedUpdate(
 			}
 			// recheck that the data from etcd is not stale before short-circuiting a write
 			if !origState.stale {
-				err = decode(s.codec, s.versioner, origState.data, destination, origState.rev)
+				err = decode(s.codec, s.versioner, origState.data, destination, origState.rev, clusterName)
 				if err != nil {
 					recordDecodeError(s.groupResourceString, preparedKey)
 					return err
@@ -525,7 +544,7 @@ func (s *store) GuaranteedUpdate(
 		if !txnResp.Succeeded {
 			getResp := (*clientv3.GetResponse)(txnResp.Responses[0].GetResponseRange())
 			klog.V(4).Infof("GuaranteedUpdate of %s failed because of a conflict, going to retry", preparedKey)
-			origState, err = s.getState(ctx, getResp, preparedKey, v, ignoreNotFound)
+			origState, err = s.getState(ctx, getResp, preparedKey, v, ignoreNotFound, clusterName, shardName)
 			if err != nil {
 				return err
 			}
@@ -535,7 +554,7 @@ func (s *store) GuaranteedUpdate(
 		}
 		putResp := txnResp.Responses[0].GetResponsePut()
 
-		err = decode(s.codec, s.versioner, data, destination, putResp.Header.Revision)
+		err = decode(s.codec, s.versioner, data, destination, putResp.Header.Revision, clusterName, shardName)
 		if err != nil {
 			span.AddEvent("decode failed", attribute.Int("len", len(data)), attribute.String("err", err.Error()))
 			recordDecodeError(s.groupResourceString, preparedKey)
@@ -693,6 +712,11 @@ func (s *store) GetList(ctx context.Context, key string, opts storage.ListOption
 		options = append(options, clientv3.WithRev(withRev))
 	}
 
+	cluster, err := genericapirequest.ValidClusterFrom(ctx)
+	if err != nil {
+		return storage.NewInternalErrorf("unable to get cluster for list key %q: %v", keyPrefix, err)
+	}
+
 	// loop until we have filled the requested limit from etcd or there are no more results
 	var lastKey []byte
 	var hasMore bool
@@ -762,7 +786,8 @@ func (s *store) GetList(ctx context.Context, key string, opts storage.ListOption
 			default:
 			}
 
-			obj, err := decodeListItem(ctx, data, uint64(kv.ModRevision), s.codec, s.versioner, newItemFunc)
+			clusterName := adjustClusterNameIfWildcard(shard, cluster, keyPrefix, string(kv.Key))
+			obj, err := decodeListItem(ctx, data, uint64(kv.ModRevision), s.codec, s.versioner, newItemFunc, clusterName)
 			if err != nil {
 				recordDecodeError(s.groupResourceString, string(kv.Key))
 				return err
@@ -883,7 +908,7 @@ func (s *store) watchContext(ctx context.Context) context.Context {
 	return clientv3.WithRequireLeader(ctx)
 }
 
-func (s *store) getCurrentState(ctx context.Context, key string, v reflect.Value, ignoreNotFound bool) func() (*objState, error) {
+func (s *store) getCurrentState(ctx context.Context, key string, v reflect.Value, ignoreNotFound bool, clusterName logicalcluster.Name) func() (*objState, error) {
 	return func() (*objState, error) {
 		startTime := time.Now()
 		getResp, err := s.client.KV.Get(ctx, key)
@@ -891,11 +916,11 @@ func (s *store) getCurrentState(ctx context.Context, key string, v reflect.Value
 		if err != nil {
 			return nil, err
 		}
-		return s.getState(ctx, getResp, key, v, ignoreNotFound)
+		return s.getState(ctx, getResp, key, v, ignoreNotFound, clusterName)
 	}
 }
 
-func (s *store) getState(ctx context.Context, getResp *clientv3.GetResponse, key string, v reflect.Value, ignoreNotFound bool) (*objState, error) {
+func (s *store) getState(ctx context.Context, getResp *clientv3.GetResponse, key string, v reflect.Value, ignoreNotFound bool, clusterName logicalcluster.Name) (*objState, error) {
 	state := &objState{
 		meta: &storage.ResponseMeta{},
 	}
@@ -922,7 +947,7 @@ func (s *store) getState(ctx context.Context, getResp *clientv3.GetResponse, key
 		state.meta.ResourceVersion = uint64(state.rev)
 		state.data = data
 		state.stale = stale
-		if err := decode(s.codec, s.versioner, state.data, state.obj, state.rev); err != nil {
+		if err := decode(s.codec, s.versioner, state.data, state.obj, state.rev, clusterName); err != nil {
 			recordDecodeError(s.groupResourceString, key)
 			return nil, err
 		}
@@ -1031,7 +1056,7 @@ func (s *store) prepareKey(key string) (string, error) {
 
 // decode decodes value of bytes into object. It will also set the object resource version to rev.
 // On success, objPtr would be set to the object.
-func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objPtr runtime.Object, rev int64) error {
+func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objPtr runtime.Object, rev int64, clusterName logicalcluster.Name) error {
 	if _, err := conversion.EnforcePtr(objPtr); err != nil {
 		return fmt.Errorf("unable to convert output object to pointer: %v", err)
 	}
@@ -1043,6 +1068,10 @@ func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objP
 	if err := versioner.UpdateObject(objPtr, uint64(rev)); err != nil {
 		klog.Errorf("failed to update object version: %v", err)
 	}
+
+	// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+	annotateDecodedObjectWith(objPtr, clusterName)
+
 	return nil
 }
 
@@ -1061,6 +1090,8 @@ func decodeListItem(ctx context.Context, data []byte, rev uint64, codec runtime.
 	if err := versioner.UpdateObject(obj, rev); err != nil {
 		klog.Errorf("failed to update object version: %v", err)
 	}
+
+	annotateDecodedObjectWith(obj, clusterName)
 
 	return obj, nil
 }
