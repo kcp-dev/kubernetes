@@ -947,7 +947,11 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 	}
 
 	kcpValidateName := apivalidation.NameIsDNSSubdomain
-	if crd.Annotations[KcpValidateNameAnnotationKey] == "path-segment" {
+	switch {
+	// Carvel(https://carvel.dev/kapp-controller) packages allow a valid semver to be a part of the name
+	case crd.Spec.Group == "data.packaging.carvel.dev" && crd.Spec.Names.Kind == "Package":
+		fallthrough
+	case crd.Annotations[KcpValidateNameAnnotationKey] == "path-segment":
 		kcpValidateName = path.ValidatePathSegmentName
 	}
 
