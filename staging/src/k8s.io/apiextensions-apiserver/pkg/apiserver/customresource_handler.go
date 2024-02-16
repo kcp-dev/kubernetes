@@ -951,6 +951,11 @@ func (r *crdHandler) getOrCreateServingInfoFor(crd *apiextensionsv1.CustomResour
 		kcpValidateName = path.ValidatePathSegmentName
 	}
 
+	switch crd.Spec.NameValidation {
+	case "PathSegmentName":
+		kcpValidateName = path.ValidatePathSegmentName
+	}
+
 	for _, v := range crd.Spec.Versions {
 		// In addition to Unstructured objects (Custom Resources), we also may sometimes need to
 		// decode unversioned Options objects, so we delegate to parameterScheme for such types.

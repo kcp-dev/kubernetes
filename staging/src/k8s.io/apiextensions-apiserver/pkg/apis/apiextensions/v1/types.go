@@ -69,6 +69,10 @@ type CustomResourceDefinitionSpec struct {
 	// See https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#field-pruning for details.
 	// +optional
 	PreserveUnknownFields bool `json:"preserveUnknownFields,omitempty" protobuf:"varint,10,opt,name=preserveUnknownFields"`
+
+	// nameValidation allows configuring the name validation for bound CRDs
+	// +optional
+	NameValidation string `json:"nameValidation,omitempty" protobuf:"varint,11,opt,name=nameValidation"`
 }
 
 // CustomResourceConversion describes how to convert different versions of a CR.

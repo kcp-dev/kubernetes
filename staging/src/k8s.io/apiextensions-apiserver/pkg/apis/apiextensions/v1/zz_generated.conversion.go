@@ -469,6 +469,7 @@ func autoConvert_v1_CustomResourceDefinitionSpec_To_apiextensions_CustomResource
 	if err := metav1.Convert_bool_To_Pointer_bool(&in.PreserveUnknownFields, &out.PreserveUnknownFields, s); err != nil {
 		return err
 	}
+	// WARNING: in.NameValidation requires manual conversion: does not exist in peer-type
 	return nil
 }
 

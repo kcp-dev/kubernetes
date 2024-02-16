@@ -1594,6 +1594,13 @@ func schema_pkg_apis_apiextensions_v1_CustomResourceDefinitionSpec(ref common.Re
 							Format:      "",
 						},
 					},
+					"nameValidation": {
+						SchemaProps: spec.SchemaProps{
+							Description: "nameValidation allows configuring the name validation for bound CRDs",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"group", "names", "scope", "versions"},
 			},
