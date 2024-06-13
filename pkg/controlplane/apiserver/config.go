@@ -29,8 +29,7 @@ import (
 	kcpclient "github.com/kcp-dev/client-go/kubernetes"
 	"github.com/kcp-dev/logicalcluster/v3"
 
-	noopoteltrace "go.opentelemetry.io/otel/trace/noop"
-
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/cbor"
@@ -56,7 +55,6 @@ import (
 	utilpeerproxy "k8s.io/apiserver/pkg/util/peerproxy"
 	"k8s.io/apiserver/pkg/util/proxy"
 	clientgoinformers "k8s.io/client-go/informers"
-	clientgoclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/keyutil"
 	basecompatibility "k8s.io/component-base/compatibility"
@@ -172,7 +170,7 @@ func BuildGenericConfig(
 	kubeClientConfig := genericConfig.LoopbackClientConfig
 	clusterClient, err := kcpclient.NewForConfig(kubeClientConfig)
 	if err != nil {
-		lastErr = fmt.Errorf("failed to create real external clientset: %w", err)
+		lastErr = fmt.Errorf("failed to create cluster clientset: %v", err)
 		return
 	}
 	trim := func(obj interface{}) (interface{}, error) {
@@ -190,7 +188,8 @@ func BuildGenericConfig(
 		// informer names (yet), so the identifier is unused here.
 	)
 
-	if lastErr = s.Features.ApplyTo(genericConfig, clusterClient, versionedInformers); lastErr != nil {
+	// TODO(embik): this creates flowcontrol for system:admin, but that's probably wrong.
+	if lastErr = s.Features.ApplyTo(genericConfig, clusterClient.Cluster(LocalAdminCluster.Path()), clientgoinformers.NewSharedInformerFactory(clusterClient.Cluster(LocalAdminCluster.Path()), 10*time.Minute)); lastErr != nil {
 		return
 	}
 	if lastErr = s.APIEnablement.ApplyTo(genericConfig, resourceConfig, legacyscheme.Scheme); lastErr != nil {
@@ -398,7 +397,7 @@ func CreateConfig(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create admission plugin initializer: %w", err)
 	}
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(genericConfig.LoopbackClientConfig)
+	clientgoExternalClient, err := kcpclient.NewForConfig(genericConfig.LoopbackClientConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create real client-go external client: %w", err)
 	}
