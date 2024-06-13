@@ -23,7 +23,21 @@ import (
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
+	"k8s.io/client-go/discovery"
 	"k8s.io/klog/v2"
+
+	admissionregistrationrest "k8s.io/kubernetes/pkg/registry/admissionregistration/rest"
+	apiserverinternalrest "k8s.io/kubernetes/pkg/registry/apiserverinternal/rest"
+	authenticationrest "k8s.io/kubernetes/pkg/registry/authentication/rest"
+	authorizationrest "k8s.io/kubernetes/pkg/registry/authorization/rest"
+	autoscalingrest "k8s.io/kubernetes/pkg/registry/autoscaling/rest"
+	certificatesrest "k8s.io/kubernetes/pkg/registry/certificates/rest"
+	coordinationrest "k8s.io/kubernetes/pkg/registry/coordination/rest"
+	corerest "k8s.io/kubernetes/pkg/registry/core/rest"
+	eventsrest "k8s.io/kubernetes/pkg/registry/events/rest"
+	flowcontrolrest "k8s.io/kubernetes/pkg/registry/flowcontrol/rest"
+	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
+	resourcerest "k8s.io/kubernetes/pkg/registry/resource/rest"
 )
 
 // RESTStorageProvider is a factory type for REST storage.

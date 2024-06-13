@@ -25,7 +25,6 @@ import (
 
 	"github.com/kcp-dev/client-go/dynamic"
 	kcpinformers "github.com/kcp-dev/client-go/informers"
-	clientset "github.com/kcp-dev/client-go/kubernetes"
 	kcpclient "github.com/kcp-dev/client-go/kubernetes"
 	"github.com/kcp-dev/logicalcluster/v3"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -42,7 +41,6 @@ import (
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/informerfactoryhack"
-	"k8s.io/apiserver/pkg/reconcilers"
 	peerreconcilers "k8s.io/apiserver/pkg/reconcilers"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/egressselector"
@@ -52,8 +50,6 @@ import (
 	"k8s.io/apiserver/pkg/util/openapi"
 	utilpeerproxy "k8s.io/apiserver/pkg/util/peerproxy"
 	clientgoinformers "k8s.io/client-go/informers"
-	clientgoclientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/transport"
 	"k8s.io/client-go/util/keyutil"
 	"k8s.io/component-base/version"
 	aggregatorapiserver "k8s.io/kube-aggregator/pkg/apiserver"
@@ -146,14 +142,15 @@ func BuildGenericConfig(
 	genericConfig.LoopbackClientConfig.DisableCompression = true
 
 	kubeClientConfig := genericConfig.LoopbackClientConfig
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
+	clientgoExternalClient, err := kcpclient.NewForConfig(kubeClientConfig)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to create real external clientset: %w", err)
 		return
 	}
-	versionedInformers = clientgoinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
+	versionedInformers = kcpinformers.NewSharedInformerFactory(clientgoExternalClient, 10*time.Minute)
 
-	if lastErr = s.Features.ApplyTo(genericConfig, clientgoExternalClient, versionedInformers); lastErr != nil {
+	// TODO(embik): this creates flowcontrol for system:admin, but that's probably wrong.
+	if lastErr = s.Features.ApplyTo(genericConfig, clientgoExternalClient.Cluster(LocalAdminCluster.Path()), clientgoinformers.NewSharedInformerFactory(clientgoExternalClient.Cluster(LocalAdminCluster.Path()), 10*time.Minute)); lastErr != nil {
 		return
 	}
 	if lastErr = s.APIEnablement.ApplyTo(genericConfig, resourceConfig, legacyscheme.Scheme); lastErr != nil {
@@ -207,7 +204,6 @@ func BuildGenericConfig(
 	// on a fast local network
 	genericConfig.LoopbackClientConfig.DisableCompression = true
 
-	kubeClientConfig := genericConfig.LoopbackClientConfig
 	clusterClient, err := kcpclient.NewForConfig(kubeClientConfig)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to create cluster clientset: %v", err)
@@ -239,10 +235,6 @@ func BuildGenericConfig(
 	lastErr = s.Audit.ApplyTo(genericConfig)
 	if lastErr != nil {
 		return
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.APIPriorityAndFairness) && s.GenericServerRunOptions.EnablePriorityAndFairness {
-		genericConfig.FlowControl, lastErr = BuildPriorityAndFairness(s, clusterClient.Cluster(LocalAdminCluster.Path()), informerfactoryhack.Wrap(versionedInformers))
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(genericfeatures.AggregatedDiscoveryEndpoint) {
@@ -363,7 +355,7 @@ func CreateConfig(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create admission plugin initializer: %w", err)
 	}
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(genericConfig.LoopbackClientConfig)
+	clientgoExternalClient, err := kcpclient.NewForConfig(genericConfig.LoopbackClientConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create real client-go external client: %w", err)
 	}
