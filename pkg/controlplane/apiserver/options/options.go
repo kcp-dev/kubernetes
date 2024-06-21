@@ -250,7 +250,9 @@ func (o *Options) Complete(ctx context.Context, alternateDNS []string, alternate
 	}
 
 	// put authorization options in final state
-	completed.Authorization.Complete()
+	if completed.Authorization != nil {
+		completed.Authorization.Complete()
+	}
 	// adjust authentication for completed authorization
 	completed.Authentication.ApplyAuthorization(completed.Authorization)
 
