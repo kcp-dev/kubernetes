@@ -21,6 +21,8 @@ import (
 	"io"
 	"sync"
 
+	"github.com/kcp-dev/logicalcluster/v3"
+
 	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apiserver/pkg/admission"
@@ -100,16 +102,17 @@ func NewPlugin(_ io.Reader) *Plugin {
 	p := &Plugin{
 		Plugin: generic.NewPlugin(
 			handler,
-			func(f informers.SharedInformerFactory, client kubernetes.Interface, dynamicClient dynamic.Interface, restMapper meta.RESTMapper) generic.Source[PolicyHook] {
+			func(f informers.SharedInformerFactory, client kubernetes.Interface, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, clusterName logicalcluster.Name) generic.Source[PolicyHook] {
 				return generic.NewPolicySource(
 					f.Admissionregistration().V1().ValidatingAdmissionPolicies().Informer(),
 					f.Admissionregistration().V1().ValidatingAdmissionPolicyBindings().Informer(),
 					NewValidatingAdmissionPolicyAccessor,
 					NewValidatingAdmissionPolicyBindingAccessor,
-					compilePolicy,
-					f,
+					CompilePolicy,
+					nil, // TODO(embik): this was done in accordance with d0a7ccbaac22d32f219b4a2c4944e72e507c3d14.
 					dynamicClient,
 					restMapper,
+					clusterName,
 				)
 			},
 			func(a authorizer.Authorizer, m *matching.Matcher, client kubernetes.Interface) generic.Dispatcher[PolicyHook] {
@@ -126,7 +129,7 @@ func (a *Plugin) Validate(ctx context.Context, attr admission.Attributes, o admi
 	return a.Plugin.Dispatch(ctx, attr, o)
 }
 
-func compilePolicy(policy *Policy) Validator {
+func CompilePolicy(policy *Policy) Validator {
 	hasParam := false
 	if policy.Spec.ParamKind != nil {
 		hasParam = true
