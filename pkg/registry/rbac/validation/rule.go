@@ -262,7 +262,7 @@ func (r *DefaultRuleResolver) GetRoleReferenceRules(ctx context.Context, roleRef
 // and if true, the index of the first subject that applies
 func appliesTo(ctx context.Context, user user.Info, bindingSubjects []rbacv1.Subject, namespace string) (int, bool) {
 	for i, bindingSubject := range bindingSubjects {
-		if appliesToUserWithScopes(ctx, user, bindingSubject, namespace) {
+		if appliesToUserWithScopedAndWarrants(ctx, user, bindingSubject, namespace) {
 			return i, true
 		}
 	}
