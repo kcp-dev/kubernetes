@@ -6,6 +6,7 @@ import (
 
 	"github.com/kcp-dev/logicalcluster/v3"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	authserviceaccount "k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -13,6 +14,11 @@ import (
 )
 
 const (
+	// WarrantExtraKey is the key used in a user's "extra" to specify
+	// JSON-encoded user infos for attached extra permissions for that user
+	// evaluated by the authorizer.
+	WarrantExtraKey = "authorization.kcp.io/warrant"
+
 	// ScopeExtraKey is the key used in a user's "extra" to specify
 	// that the user is restricted to a given scope. Valid values for
 	// one extra value are:
@@ -27,15 +33,71 @@ const (
 	clusterPrefix = "cluster:"
 )
 
+// Warrant is serialized into the user's "extra" field authorization.kcp.io/warrant
+// to hold user information for extra permissions.
+type Warrant struct {
+	// User is the user you're testing for.
+	// If you specify "User" but not "Groups", then is it interpreted as "What if User were not a member of any groups
+	// +optional
+	User string `json:"user,omitempty"`
+	// Groups is the groups you're testing for.
+	// +optional
+	// +listType=atomic
+	Groups []string `json:"groups,omitempty"`
+	// Extra corresponds to the user.Info.GetExtra() method from the authenticator.  Since that is input to the authorizer
+	// it needs a reflection here.
+	// +optional
+	Extra map[string][]string `json:"extra,omitempty"`
+	// UID information about the requesting user.
+	// +optional
+	UID string `json:"uid,omitempty"`
+}
+
 type appliesToUserFunc func(user user.Info, subject rbacv1.Subject, namespace string) bool
 type appliesToUserFuncCtx func(ctx context.Context, user user.Info, subject rbacv1.Subject, namespace string) bool
 
-var appliesToUserWithScopes = withScopes(appliesToUser)
+var (
+	appliesToUserWithScopes            = withScopes(appliesToUser)
+	appliesToUserWithScopedAndWarrants = withWarrants(appliesToUserWithScopes)
+)
 
-// withScopes wraps the appliesToUser predicate to check for the base user and any warrants.
-func withScopes(appliesToUser appliesToUserFunc) appliesToUserFuncCtx {
+// withWarrants wraps the appliesToUser predicate to check for the base user and any warrants.
+func withWarrants(appliesToUser appliesToUserFuncCtx) appliesToUserFuncCtx {
 	var recursive appliesToUserFuncCtx
 	recursive = func(ctx context.Context, u user.Info, bindingSubject rbacv1.Subject, namespace string) bool {
+		if appliesToUser(ctx, u, bindingSubject, namespace) {
+			return true
+		}
+
+		for _, v := range u.GetExtra()[WarrantExtraKey] {
+			var w Warrant
+			if err := json.Unmarshal([]byte(v), &w); err != nil {
+				continue
+			}
+
+			wu := &user.DefaultInfo{
+				Name:   w.User,
+				UID:    w.UID,
+				Groups: w.Groups,
+				Extra:  w.Extra,
+			}
+			if IsServiceAccount(wu) && len(w.Extra[authserviceaccount.ClusterNameKey]) == 0 {
+				// warrants must be scoped to a cluster
+				continue
+			}
+			if recursive(ctx, wu, bindingSubject, namespace) {
+				return true
+			}
+		}
+
+		return false
+	}
+	return recursive
+}
+
+// withScopes wraps the appliesToUser predicate to check the scopes.
+func withScopes(appliesToUser appliesToUserFunc) appliesToUserFuncCtx {
+	return func(ctx context.Context, u user.Info, bindingSubject rbacv1.Subject, namespace string) bool {
 		var clusterName logicalcluster.Name
 		if cluster := genericapirequest.ClusterFrom(ctx); cluster != nil {
 			clusterName = cluster.Name
@@ -49,7 +111,6 @@ func withScopes(appliesToUser appliesToUserFunc) appliesToUserFuncCtx {
 
 		return false
 	}
-	return recursive
 }
 
 var (
