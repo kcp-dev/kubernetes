@@ -230,3 +230,141 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 		})
 	}
 }
+
+func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
+	tests := []struct {
+		name string
+		user user.Info
+		sub  rbacv1.Subject
+		want bool
+	}{
+		{
+			name: "simple matching user without warrants",
+			user: &user.DefaultInfo{Name: "user-a"},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "simple non-matching user without warrants",
+			user: &user.DefaultInfo{Name: "user-a"},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-b"},
+			want: false,
+		},
+		{
+			name: "simple matching user with warrants",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "simple non-matching user with matching warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "simple non-matching user with non-matching warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: false,
+		},
+		{
+			name: "simple non-matching user with multiple warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`, `{"user":"user-a"}`, `{"user":"user-c"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "simple non-matching user with nested warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b","extra":{"authorization.kcp.io/warrant":["{\"user\":\"user-a\"}"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "foreign service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "local service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "foreign service account with local warrant",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["this"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "foreign service account with foreign warrant",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["other"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "non-cluster-aware service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa"},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "non-cluster-aware service account as warrant",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa"}`}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "in-scope scoped user",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "out-of-scope user",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: false,
+		},
+		{
+			name: "out-of-scope user with warrent",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}, WarrantExtraKey: {`{"user":"user-a"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "out-of-scope warrant",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a","extra":{"authentication.kcp.io/scopes":["cluster:other"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: false,
+		},
+		{
+			name: "in-scope warrant",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a","extra":{"authentication.kcp.io/scopes":["cluster:this"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "in-scope service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "out-of-scope service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := request.WithCluster(context.Background(), request.Cluster{Name: "this"})
+			if got := appliesToUserWithScopedAndWarrants(ctx, tt.user, tt.sub, "ns"); got != tt.want {
+				t.Errorf("withWarrants(withScopes(base)) = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
