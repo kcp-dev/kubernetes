@@ -15,6 +15,5 @@ limitations under the License.
 */
 
 // +k8s:deepcopy-gen=package
-// +groupName=
 
 package core // import "k8s.io/code-generator/examples/apiserver/apis/core"
