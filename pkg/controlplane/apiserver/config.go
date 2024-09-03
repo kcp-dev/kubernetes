@@ -31,7 +31,6 @@ import (
 
 	noopoteltrace "go.opentelemetry.io/otel/trace/noop"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/runtime/serializer/cbor"
@@ -171,7 +170,7 @@ func BuildGenericConfig(
 	genericConfig.LoopbackClientConfig.DisableCompression = true
 
 	kubeClientConfig := genericConfig.LoopbackClientConfig
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
+	clusterClient, err := kcpclient.NewForConfig(kubeClientConfig)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to create real external clientset: %w", err)
 		return
@@ -182,14 +181,16 @@ func BuildGenericConfig(
 		}
 		return obj, nil
 	}
-	versionedInformers = clientgoinformers.NewSharedInformerFactoryWithOptions(
-		clientgoExternalClient,
+	versionedInformers = kcpinformers.NewSharedInformerFactoryWithOptions(
+		clusterClient,
 		10*time.Minute,
-		clientgoinformers.WithTransform(trim),
-		clientgoinformers.WithInformerName(informerName),
+		kcpinformers.WithTransform(trim),
+		// Upstream additionally sets WithInformerName(informerName) for informer
+		// identity metrics; the kcp cluster informer factory does not support
+		// informer names (yet), so the identifier is unused here.
 	)
 
-	if lastErr = s.Features.ApplyTo(genericConfig, clientgoExternalClient, versionedInformers); lastErr != nil {
+	if lastErr = s.Features.ApplyTo(genericConfig, clusterClient, versionedInformers); lastErr != nil {
 		return
 	}
 	if lastErr = s.APIEnablement.ApplyTo(genericConfig, resourceConfig, legacyscheme.Scheme); lastErr != nil {
@@ -234,22 +235,6 @@ func BuildGenericConfig(
 	}
 
 	ctx := wait.ContextForChannel(genericConfig.DrainedNotify())
-
-	// Use protobufs for self-communication.
-	// Since not every generic apiserver has to support protobufs, we
-	// cannot default to it in generic apiserver and need to explicitly
-	// set it in kube-apiserver.
-	genericConfig.LoopbackClientConfig.ContentConfig.ContentType = "application/vnd.kubernetes.protobuf"
-	// Disable compression for self-communication, since we are going to be
-	// on a fast local network
-	genericConfig.LoopbackClientConfig.DisableCompression = true
-
-	clusterClient, err := kcpclient.NewForConfig(kubeClientConfig)
-	if err != nil {
-		lastErr = fmt.Errorf("failed to create cluster clientset: %v", err)
-		return
-	}
-	versionedInformers = kcpinformers.NewSharedInformerFactory(clusterClient, 10*time.Minute)
 
 	// Authentication.ApplyTo requires already applied OpenAPIConfig and EgressSelector if present
 	if lastErr = s.Authentication.ApplyTo(ctx, &genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig, genericConfig.OpenAPIV3Config, clusterClient, versionedInformers, genericConfig.APIServerID); lastErr != nil {

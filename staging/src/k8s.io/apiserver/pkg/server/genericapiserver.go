@@ -476,7 +476,7 @@ func (s *GenericAPIServer) PrepareRun() preparedGenericAPIServer {
 	}
 	// statusz is installed last so that it can list all the paths that have been registered
 	if utilfeature.DefaultFeatureGate.Enabled(zpagesfeatures.ComponentStatusz) {
-		statusz.Install(s.Handler.NonGoRestfulMux, componentName, statusz.NewRegistry(s.EffectiveVersion, statusz.WithListedPaths(s.ListedPaths())))
+		statusz.Install(s.Handler.NonGoRestfulMux, componentName, statusz.NewRegistry(s.EffectiveVersion, statusz.WithListedPaths(s.ListedPaths(&genericrequest.Cluster{}))))
 	}
 
 	return preparedGenericAPIServer{s}
