@@ -19,8 +19,8 @@ type apiBindingAwareCRDRESTOptionsGetter struct {
 	crd      *apiextensionsv1.CustomResourceDefinition
 }
 
-func (t apiBindingAwareCRDRESTOptionsGetter) GetRESTOptions(resource schema.GroupResource, example runtime.Object) (generic.RESTOptions, error) {
-	ret, err := t.delegate.GetRESTOptions(resource, example)
+func (t apiBindingAwareCRDRESTOptionsGetter) GetRESTOptions(resource schema.GroupResource, obj runtime.Object) (generic.RESTOptions, error) {
+	ret, err := t.delegate.GetRESTOptions(resource, obj)
 	if err != nil {
 		return ret, err
 	}

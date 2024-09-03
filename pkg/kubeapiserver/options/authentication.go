@@ -716,7 +716,7 @@ func (o *BuiltInAuthenticationOptions) ApplyTo(
 			versionedInformer.Admissionregistration().V1().MutatingWebhookConfigurations().Lister(),
 		)
 	}
-	authenticatorConfig.SecretsWriter = extclient.CoreV1()
+	authenticatorConfig.SecretsWriter = extclient.CoreV1().Secrets()
 
 	if authenticatorConfig.BootstrapToken {
 		authenticatorConfig.BootstrapTokenAuthenticator = bootstrap.NewTokenAuthenticator(
