@@ -50,7 +50,6 @@ import (
 	authenticationconfigmetrics "k8s.io/apiserver/pkg/server/options/authenticationconfig/metrics"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/plugin/pkg/authenticator/token/oidc"
-	"k8s.io/client-go/informers"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/client-go/util/keyutil"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -138,7 +137,7 @@ type ServiceAccountAuthenticationOptions struct {
 	MaxExtendedExpiration time.Duration
 	// OptionalTokenGetter is a function that returns a service account token getter.
 	// If not set, the default token getter will be used.
-	OptionalTokenGetter func(factory informers.SharedInformerFactory) serviceaccount.ServiceAccountTokenGetter
+	OptionalTokenGetter func(factory kcpinformers.SharedInformerFactory) serviceaccount.ServiceAccountTokenClusterGetter
 	// ExternalPublicKeysGetter gets set if `--service-account-signing-endpoint` is passed.
 	// ExternalPublicKeysGetter is mutually exclusive with KeyFiles.
 	ExternalPublicKeysGetter serviceaccount.PublicKeysGetter
