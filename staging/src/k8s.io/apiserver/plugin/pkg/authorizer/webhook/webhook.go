@@ -41,6 +41,7 @@ import (
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	authorizationcel "k8s.io/apiserver/pkg/authorization/cel"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/apiserver/plugin/pkg/authorizer/webhook/metrics"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -52,6 +53,9 @@ import (
 const (
 	// The maximum length of requester-controlled attributes to allow caching.
 	maxControlledAttrCacheSize = 10000
+
+	// ClusterNameKey is the logical cluster name a webhook message originates from.
+	ClusterNameKey = "authorization.kubernetes.io/cluster-name"
 )
 
 // DefaultRetryBackoff returns the default backoff parameters for webhook retry.
@@ -192,6 +196,13 @@ func (w *WebhookAuthorizer) Authorize(ctx context.Context, attr authorizer.Attri
 			Groups: user.GetGroups(),
 			Extra:  convertToSARExtra(user.GetExtra()),
 		}
+	}
+
+	if clusterName, err := request.ClusterNameFrom(ctx); err == nil {
+		if r.Spec.Extra == nil {
+			r.Spec.Extra = map[string]authorizationv1.ExtraValue{}
+		}
+		r.Spec.Extra[ClusterNameKey] = authorizationv1.ExtraValue{clusterName.Path().String()}
 	}
 
 	if attr.IsResourceRequest() {
