@@ -41,6 +41,7 @@ import (
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	authorizationcel "k8s.io/apiserver/pkg/authorization/cel"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/util/webhook"
@@ -194,6 +195,14 @@ func (w *WebhookAuthorizer) Authorize(ctx context.Context, attr authorizer.Attri
 			Groups: user.GetGroups(),
 			Extra:  convertToSARExtra(user.GetExtra()),
 		}
+	}
+
+	clusterName, err := request.ClusterNameFrom(ctx)
+	if err == nil {
+		if r.Spec.Extra == nil {
+			r.Spec.Extra = map[string]authorizationv1.ExtraValue{}
+		}
+		r.Spec.Extra["authentication.kubernetes.io/cluster-name"] = authorizationv1.ExtraValue{clusterName.Path().String()}
 	}
 
 	if attr.IsResourceRequest() {
