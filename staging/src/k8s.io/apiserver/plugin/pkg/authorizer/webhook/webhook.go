@@ -55,6 +55,9 @@ import (
 const (
 	// The maximum length of requester-controlled attributes to allow caching.
 	maxControlledAttrCacheSize = 10000
+
+	// ClusterNameKey is the logical cluster name a webhook message originates from.
+	ClusterNameKey = "authorization.kubernetes.io/cluster-name"
 )
 
 // DefaultRetryBackoff returns the default backoff parameters for webhook retry.
@@ -197,12 +200,11 @@ func (w *WebhookAuthorizer) Authorize(ctx context.Context, attr authorizer.Attri
 		}
 	}
 
-	clusterName, err := request.ClusterNameFrom(ctx)
-	if err == nil {
+	if clusterName, err := request.ClusterNameFrom(ctx); err == nil {
 		if r.Spec.Extra == nil {
 			r.Spec.Extra = map[string]authorizationv1.ExtraValue{}
 		}
-		r.Spec.Extra["authentication.kubernetes.io/cluster-name"] = authorizationv1.ExtraValue{clusterName.Path().String()}
+		r.Spec.Extra[ClusterNameKey] = authorizationv1.ExtraValue{clusterName.Path().String()}
 	}
 
 	if attr.IsResourceRequest() {
