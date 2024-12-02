@@ -17,7 +17,6 @@ limitations under the License.
 package validation
 
 import (
-	"context"
 	"hash/fnv"
 	"io"
 	"reflect"
@@ -268,7 +267,7 @@ func TestAppliesTo(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		gotIndex, got := appliesTo(context.Background(), tc.user, tc.subjects, tc.namespace)
+		gotIndex, got := appliesTo(tc.user, tc.subjects, tc.namespace)
 		if got != tc.appliesTo {
 			t.Errorf("case %q want appliesTo=%t, got appliesTo=%t", tc.testCase, tc.appliesTo, got)
 		}
