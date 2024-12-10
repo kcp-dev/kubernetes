@@ -999,16 +999,24 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 func BuildHandlerChainWithStorageVersionPrecondition(apiHandler http.Handler, c *Config) http.Handler {
 	// WithStorageVersionPrecondition needs the WithRequestInfo to run first
 	handler := genericapifilters.WithStorageVersionPrecondition(apiHandler, c.StorageVersionManager, c.Serializer)
-	return DefaultBuildHandlerChainFromAuthz(handler, c)
+	return DefaultBuildHandlerChainFromAuthzToCompletion(handler, c)
 }
 
+// These handlers are split into 3, allowing us to insert additional handlers between them.
+// {DefaultBuildHandlerChain}FromStartToBeforeImpersonation
+//                           FromImpersonationToAuthz
+//                           FromAuthzToCompletion
+// Note that they are called in reverse order, so the first handler in the chain is the last one to run.
+
 func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
-	handler := DefaultBuildHandlerChainFromAuthz(apiHandler, c)
-	handler = DefaultBuildHandlerChainBeforeAuthz(handler, c)
+	handler := DefaultBuildHandlerChainFromAuthzToCompletion(apiHandler, c)
+	handler = DefaultBuildHandlerChainFromImpersonationToAuthz(handler, c)
+	handler = DefaultBuildHandlerChainFromStartToBeforeImpersonation(handler, c)
 	return handler
 }
 
-func DefaultBuildHandlerChainFromAuthz(apiHandler http.Handler, c *Config) http.Handler {
+// DefaultBuildHandlerChainFromAuthzToCompletion builds the handler chain from authorization to completion. Its last in the chain.
+func DefaultBuildHandlerChainFromAuthzToCompletion(apiHandler http.Handler, c *Config) http.Handler {
 	handler := apiHandler
 	handler = filterlatency.TrackCompleted(handler)
 	handler = genericapifilters.WithAuthorization(handler, c.Authorization.Authorizer, c.Serializer)
@@ -1016,7 +1024,8 @@ func DefaultBuildHandlerChainFromAuthz(apiHandler http.Handler, c *Config) http.
 	return handler
 }
 
-func DefaultBuildHandlerChainBeforeAuthz(apiHandler http.Handler, c *Config) http.Handler {
+// DefaultBuildHandlerChainFromImpersonationToAuthz builds the handler chain from impersonation to authorization. Its Middle in the chain.
+func DefaultBuildHandlerChainFromImpersonationToAuthz(apiHandler http.Handler, c *Config) http.Handler {
 	handler := apiHandler
 	if c.FlowControl != nil {
 		workEstimatorCfg := flowcontrolrequest.DefaultWorkEstimatorConfig()
@@ -1033,6 +1042,12 @@ func DefaultBuildHandlerChainBeforeAuthz(apiHandler http.Handler, c *Config) htt
 	handler = genericapifilters.WithImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
 	handler = filterlatency.TrackStarted(handler, c.TracerProvider, "impersonation")
 
+	return handler
+}
+
+// DefaultBuildHandlerChainFromStartToBeforeImpersonation builds the handler chain from the start to before impersonation. Its first in the chain.
+func DefaultBuildHandlerChainFromStartToBeforeImpersonation(apiHandler http.Handler, c *Config) http.Handler {
+	handler := apiHandler
 	handler = filterlatency.TrackCompleted(handler)
 	handler = genericapifilters.WithAudit(handler, c.AuditBackend, c.AuditPolicyRuleEvaluator, c.LongRunningFunc)
 	handler = filterlatency.TrackStarted(handler, c.TracerProvider, "audit")
