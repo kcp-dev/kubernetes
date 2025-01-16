@@ -184,7 +184,7 @@ func (r *DefaultRuleResolver) VisitRulesFor(ctx context.Context, user user.Info,
 	} else {
 		sourceDescriber := &clusterRoleBindingDescriber{}
 		for _, clusterRoleBinding := range clusterRoleBindings {
-			subjectIndex, applies := appliesTo(user, clusterRoleBinding.Subjects, "")
+			subjectIndex, applies := appliesTo(ctx, user, clusterRoleBinding.Subjects, "")
 			if !applies {
 				continue
 			}
@@ -213,7 +213,7 @@ func (r *DefaultRuleResolver) VisitRulesFor(ctx context.Context, user user.Info,
 		} else {
 			sourceDescriber := &roleBindingDescriber{}
 			for _, roleBinding := range roleBindings {
-				subjectIndex, applies := appliesTo(user, roleBinding.Subjects, namespace)
+				subjectIndex, applies := appliesTo(ctx, user, roleBinding.Subjects, namespace)
 				if !applies {
 					continue
 				}
@@ -260,9 +260,9 @@ func (r *DefaultRuleResolver) GetRoleReferenceRules(ctx context.Context, roleRef
 
 // appliesTo returns whether any of the bindingSubjects applies to the specified subject,
 // and if true, the index of the first subject that applies
-func appliesTo(user user.Info, bindingSubjects []rbacv1.Subject, namespace string) (int, bool) {
+func appliesTo(ctx context.Context, user user.Info, bindingSubjects []rbacv1.Subject, namespace string) (int, bool) {
 	for i, bindingSubject := range bindingSubjects {
-		if appliesToUser(user, bindingSubject, namespace) {
+		if appliesToUserWithScopes(ctx, user, bindingSubject, namespace) {
 			return i, true
 		}
 	}
