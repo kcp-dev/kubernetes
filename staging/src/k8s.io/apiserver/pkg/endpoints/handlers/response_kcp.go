@@ -39,7 +39,6 @@ func setKCPOriginalAPIVersionAnnotation(ctx context.Context, original any, parti
 	if cluster := request.ClusterFrom(ctx); !cluster.Wildcard {
 		return
 	}
-
 	annotations := partial.GetAnnotations()
 
 	if annotations[KCPOriginalAPIVersionAnnotation] != "" {
