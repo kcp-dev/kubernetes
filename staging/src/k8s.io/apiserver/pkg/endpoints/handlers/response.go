@@ -510,15 +510,20 @@ type watchListTransformer struct {
 	targetGVK                  *schema.GroupVersionKind
 	negotiatedEncoder          runtime.Encoder
 	buffer                     runtime.Splice
+
+	// kcp: needed for setKCPOriginalAPIVersionAnnotation().
+	// It expects a context with clusterContextKey key set.
+	ctx context.Context
 }
 
 // createWatchListTransformerIfRequested returns a transformer function for watchlist bookmark event.
-func newWatchListTransformer(initialEventsListBlueprint runtime.Object, targetGVK *schema.GroupVersionKind, negotiatedEncoder runtime.Encoder) *watchListTransformer {
+func newWatchListTransformer(ctx context.Context, initialEventsListBlueprint runtime.Object, targetGVK *schema.GroupVersionKind, negotiatedEncoder runtime.Encoder) *watchListTransformer {
 	return &watchListTransformer{
 		initialEventsListBlueprint: initialEventsListBlueprint,
 		targetGVK:                  targetGVK,
 		negotiatedEncoder:          negotiatedEncoder,
 		buffer:                     runtime.NewSpliceBuffer(),
+		ctx:                        ctx,
 	}
 }
 
@@ -568,7 +573,7 @@ func (e *watchListTransformer) encodeInitialEventsListBlueprint(object runtime.O
 
 func (e *watchListTransformer) transformInitialEventsListBlueprint() (runtime.Object, error) {
 	if e.targetGVK != nil && e.targetGVK.Kind == "PartialObjectMetadata" {
-		return asPartialObjectMetadataList(e.initialEventsListBlueprint, e.targetGVK.GroupVersion())
+		return asPartialObjectMetadataList(e.ctx, e.initialEventsListBlueprint, e.targetGVK.GroupVersion())
 	}
 	return e.initialEventsListBlueprint, nil
 }
