@@ -22,6 +22,8 @@ import (
 
 	celgo "github.com/google/cel-go/cel"
 
+	"github.com/kcp-dev/logicalcluster/v3"
+
 	v1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -133,7 +135,7 @@ func NewPlugin(configFile io.Reader) (*Plugin, error) {
 	res := &Plugin{}
 	res.Plugin = generic.NewPlugin(
 		handler,
-		func(f informers.SharedInformerFactory, client kubernetes.Interface, dynamicClient dynamic.Interface, restMapper meta.RESTMapper) generic.Source[PolicyHook] {
+		func(f informers.SharedInformerFactory, client kubernetes.Interface, dynamicClient dynamic.Interface, restMapper meta.RESTMapper, clusterName logicalcluster.Name) generic.Source[PolicyHook] {
 			return generic.NewPolicySource(
 				f.Admissionregistration().V1().MutatingAdmissionPolicies().Informer(),
 				f.Admissionregistration().V1().MutatingAdmissionPolicyBindings().Informer(),
@@ -145,6 +147,7 @@ func NewPlugin(configFile io.Reader) (*Plugin, error) {
 				f,
 				dynamicClient,
 				restMapper,
+				clusterName,
 			)
 		},
 		func(a authorizer.UnconditionalAuthorizer, m *matching.Matcher, client kubernetes.Interface) generic.Dispatcher[PolicyHook] {
