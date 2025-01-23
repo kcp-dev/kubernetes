@@ -17,6 +17,7 @@ limitations under the License.
 package mutating
 
 import (
+	"github.com/kcp-dev/logicalcluster/v3"
 	v1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/api/admissionregistration/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
@@ -45,6 +46,10 @@ func (v *mutatingAdmissionPolicyAccessor) GetNamespace() string {
 
 func (v *mutatingAdmissionPolicyAccessor) GetName() string {
 	return v.Name
+}
+
+func (v *mutatingAdmissionPolicyAccessor) GetCluster() string {
+	return logicalcluster.From(v.Policy).String()
 }
 
 func (v *mutatingAdmissionPolicyAccessor) GetParamKind() *v1.ParamKind {
@@ -84,6 +89,10 @@ func (v *mutatingAdmissionPolicyBindingAccessor) GetNamespace() string {
 
 func (v *mutatingAdmissionPolicyBindingAccessor) GetName() string {
 	return v.Name
+}
+
+func (v *mutatingAdmissionPolicyBindingAccessor) GetCluster() string {
+	return logicalcluster.From(v.PolicyBinding).String()
 }
 
 func (v *mutatingAdmissionPolicyBindingAccessor) GetPolicyName() types.NamespacedName {
