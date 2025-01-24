@@ -182,3 +182,100 @@ func IsInScope(attr user.Info, cluster logicalcluster.Name) bool {
 
 	return true
 }
+
+// EffectiveGroups returns the effective groups of the user in the given context
+// taking scopes and warrants into account.
+func EffectiveGroups(ctx context.Context, u user.Info) sets.Set[string] {
+	var clusterName logicalcluster.Name
+	if cluster := genericapirequest.ClusterFrom(ctx); cluster != nil {
+		clusterName = cluster.Name
+	}
+
+	groups := sets.New[string]()
+	var recursive func(u user.Info)
+	recursive = func(u user.Info) {
+		if IsInScope(u, clusterName) {
+			groups.Insert(u.GetGroups()...)
+		} else {
+			for _, g := range u.GetGroups() {
+				if g == user.AllAuthenticated {
+					groups.Insert(g)
+				}
+			}
+		}
+
+		for _, v := range u.GetExtra()[WarrantExtraKey] {
+			var w Warrant
+			if err := json.Unmarshal([]byte(v), &w); err != nil {
+				continue
+			}
+			recursive(&user.DefaultInfo{Name: w.User, UID: w.UID, Groups: w.Groups, Extra: w.Extra})
+		}
+	}
+	recursive(u)
+
+	return groups
+}
+
+// PrefixUser returns a new user with the name and groups prefixed with the
+// given prefix, and all warrants recursively prefixed.
+//
+// If the user is a service account, the prefix is added to the global service
+// account name.
+//
+// Invalid warrants are skipped.
+func PrefixUser(u user.Info, prefix string) user.Info {
+	pu := &user.DefaultInfo{
+		Name: prefix + u.GetName(),
+		UID:  u.GetUID(),
+	}
+	if IsServiceAccount(u) {
+		if clusters := u.GetExtra()[authserviceaccount.ClusterNameKey]; len(clusters) != 1 {
+			// this should not happen. But if it does, we are defensive.
+			for _, g := range u.GetGroups() {
+				if g == user.AllAuthenticated {
+					return &user.DefaultInfo{Name: prefix + user.Anonymous, Groups: []string{prefix + user.AllAuthenticated}}
+				}
+			}
+			return &user.DefaultInfo{Name: prefix + user.Anonymous, Groups: []string{prefix + user.AllUnauthenticated}}
+		} else {
+			pu.Name = fmt.Sprintf("%ssystem:kcp:serviceaccount:%s:%s", prefix, clusters[0], strings.TrimPrefix(u.GetName(), "system:serviceaccount:"))
+		}
+	}
+
+	for _, g := range u.GetGroups() {
+		pu.Groups = append(pu.Groups, prefix+g)
+	}
+
+	for k, v := range u.GetExtra() {
+		if k == WarrantExtraKey {
+			continue
+		}
+		if pu.Extra == nil {
+			pu.Extra = map[string][]string{}
+		}
+		pu.Extra[k] = v
+	}
+
+	for _, w := range u.GetExtra()[WarrantExtraKey] {
+		var warrant Warrant
+		if err := json.Unmarshal([]byte(w), &warrant); err != nil {
+			continue // skip invalid warrant
+		}
+
+		wpu := PrefixUser(&user.DefaultInfo{Name: warrant.User, UID: warrant.UID, Groups: warrant.Groups, Extra: warrant.Extra}, prefix)
+		warrant = Warrant{User: wpu.GetName(), UID: wpu.GetUID(), Groups: wpu.GetGroups(), Extra: wpu.GetExtra()}
+
+		bs, err := json.Marshal(warrant)
+		if err != nil {
+			continue // skip invalid warrant
+		}
+
+		if pu.Extra == nil {
+			pu.Extra = map[string][]string{}
+		}
+		pu.Extra[WarrantExtraKey] = append(pu.Extra[WarrantExtraKey], string(bs))
+	}
+
+	return pu
+}
