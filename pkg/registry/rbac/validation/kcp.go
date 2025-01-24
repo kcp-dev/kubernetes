@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/kcp-dev/logicalcluster/v3"
@@ -67,6 +68,20 @@ func withWarrants(appliesToUser appliesToUserFuncCtx) appliesToUserFuncCtx {
 	recursive = func(ctx context.Context, u user.Info, bindingSubject rbacv1.Subject, namespace string) bool {
 		if appliesToUser(ctx, u, bindingSubject, namespace) {
 			return true
+		}
+
+		if IsServiceAccount(u) {
+			if cluster := genericapirequest.ClusterFrom(ctx); cluster != nil && cluster.Name != "" {
+				nsNameSuffix := strings.TrimPrefix(u.GetName(), "system:serviceaccount:")
+				rewritten := &user.DefaultInfo{
+					Name:   fmt.Sprintf("system:kcp:serviceaccount:%s:%s", cluster.Name, nsNameSuffix),
+					Groups: []string{user.AllAuthenticated},
+					Extra:  u.GetExtra(),
+				}
+				if appliesToUser(ctx, rewritten, bindingSubject, namespace) {
+					return true
+				}
+			}
 		}
 
 		for _, v := range u.GetExtra()[WarrantExtraKey] {
