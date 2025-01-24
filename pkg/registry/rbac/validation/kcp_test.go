@@ -4,8 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/kcp-dev/logicalcluster/v3"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	authserviceaccount "k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/request"
 )
@@ -376,6 +379,115 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 			ctx := request.WithCluster(context.Background(), request.Cluster{Name: "this"})
 			if got := appliesToUserWithScopedAndWarrants(ctx, tt.user, tt.sub, "ns"); got != tt.want {
 				t.Errorf("withWarrants(withScopes(base)) = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEffectiveGroups(t *testing.T) {
+	tests := map[string]struct {
+		u    user.Info
+		want sets.Set[string]
+	}{
+		"empty user": {
+			u:    &user.DefaultInfo{},
+			want: sets.New[string](),
+		},
+		"authenticated user": {
+			u:    &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllAuthenticated}},
+			want: sets.New(user.AllAuthenticated),
+		},
+		"multiple groups": {
+			u:    &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}},
+			want: sets.New("a", "b"),
+		},
+		"out of scope user": {
+			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}, Extra: map[string][]string{
+				ScopeExtraKey: {"cluster:other"},
+			}},
+			want: sets.New[string](),
+		},
+		"out of scope authenticated user": {
+			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllAuthenticated, "a", "b"}, Extra: map[string][]string{
+				ScopeExtraKey: {"cluster:other"},
+			}},
+			want: sets.New(user.AllAuthenticated),
+		},
+		"user with warrant": {
+			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}, Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"warrant","groups":["c","d"]}`},
+			}},
+			want: sets.New("a", "b", "c", "d"),
+		},
+		"user with warrant out of scope": {
+			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}, Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"warrant","groups":["c","d"],"extra":{"authentication.kcp.io/scopes":["cluster:other"]}}`},
+			}},
+			want: sets.New("a", "b"),
+		},
+		"nested warrants": {
+			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}, Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"warrant","groups":["c","d"],"extra":{"authorization.kcp.io/warrant":["{\"user\":\"warrant2\",\"groups\":[\"e\",\"f\"]}"]}}`},
+			}},
+			want: sets.New("a", "b", "c", "d", "e", "f"),
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx := request.WithCluster(context.Background(), request.Cluster{Name: "root:ws"})
+			got := EffectiveGroups(ctx, tt.u)
+			if diff := cmp.Diff(sets.List(tt.want), sets.List(got)); diff != "" {
+				t.Errorf("effectiveGroups() +got -want\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestPrefixUser(t *testing.T) {
+	tests := map[string]struct {
+		u      user.Info
+		prefix string
+		want   user.Info
+	}{
+		"user with groups": {
+			u:      &user.DefaultInfo{Name: "user", Groups: []string{"a", "b"}},
+			prefix: "prefix:",
+			want:   &user.DefaultInfo{Name: "prefix:user", Groups: []string{"prefix:a", "prefix:b"}},
+		},
+		"user with warrant": {
+			u: &user.DefaultInfo{Name: "user", Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"warrant","groups":["c","d"]}`},
+			}},
+			prefix: "prefix:",
+			want: &user.DefaultInfo{Name: "prefix:user", Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"prefix:warrant","groups":["prefix:c","prefix:d"]}`},
+			}},
+		},
+		"service account without cluster": {
+			u:      &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Groups: []string{"system:serviceaccounts"}},
+			prefix: "prefix:",
+			want:   &user.DefaultInfo{Name: "prefix:system:anonymous", Groups: []string{"prefix:system:unauthenticated"}},
+		},
+		"service account without cluster but authenticated": {
+			u:      &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Groups: []string{"system:serviceaccounts", user.AllAuthenticated}},
+			prefix: "prefix:",
+			want:   &user.DefaultInfo{Name: "prefix:system:anonymous", Groups: []string{"prefix:system:authenticated"}},
+		},
+		"service account with cluster": {
+			u: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Groups: []string{"system:serviceaccounts"}, Extra: map[string][]string{
+				authserviceaccount.ClusterNameKey: {"cluster"},
+			}},
+			prefix: "prefix:",
+			want: &user.DefaultInfo{Name: "prefix:system:kcp:serviceaccount:cluster:ns:sa", Groups: []string{"prefix:system:serviceaccounts"}, Extra: map[string][]string{
+				authserviceaccount.ClusterNameKey: {"cluster"},
+			}},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := PrefixUser(tt.u, tt.prefix)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("prefixUser() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
