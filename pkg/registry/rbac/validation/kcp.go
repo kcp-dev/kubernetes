@@ -57,30 +57,68 @@ type Warrant struct {
 type appliesToUserFunc func(user user.Info, subject rbacv1.Subject, namespace string) bool
 type appliesToUserFuncCtx func(ctx context.Context, user user.Info, subject rbacv1.Subject, namespace string) bool
 
+var appliesToUserWithScopedAndWarrants = withScopesAndWarrants(appliesToUser)
+
+// withScopesAndWarrants flattens the warrants, applies scopes and then applies the users to the subjects.
+func withScopesAndWarrants(appliesToUser appliesToUserFunc) appliesToUserFuncCtx {
+	return func(ctx context.Context, u user.Info, bindingSubject rbacv1.Subject, namespace string) bool {
+		var clusterName logicalcluster.Name
+		if cluster := genericapirequest.ClusterFrom(ctx); cluster != nil {
+			clusterName = cluster.Name
+		}
+
+		for _, eu := range EffectiveUsers(clusterName, u) {
+			if appliesToUser(eu, bindingSubject, namespace) {
+				return true
+			}
+		}
+
+		return false
+	}
+}
+
 var (
-	appliesToUserWithScopes            = withScopes(appliesToUser)
-	appliesToUserWithScopedAndWarrants = withWarrants(appliesToUserWithScopes)
+	authenticated   = &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllAuthenticated}}
+	unauthenticated = &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllUnauthenticated}}
 )
 
-// withWarrants wraps the appliesToUser predicate to check for the base user and any warrants.
-func withWarrants(appliesToUser appliesToUserFuncCtx) appliesToUserFuncCtx {
-	var recursive appliesToUserFuncCtx
-	recursive = func(ctx context.Context, u user.Info, bindingSubject rbacv1.Subject, namespace string) bool {
-		if appliesToUser(ctx, u, bindingSubject, namespace) {
-			return true
+// EffectiveUsers flattens the warrants and scopes each user to the given cluster.
+func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
+	ret := make([]user.Info, 0, 2)
+
+	var wantAuthenticated bool
+	var wantUnauthenticated bool
+
+	var recursive func(u user.Info)
+	recursive = func(u user.Info) {
+		if IsInScope(u, clusterName) {
+			ret = append(ret, u)
+		} else {
+			found := false
+			for _, g := range u.GetGroups() {
+				if g == user.AllAuthenticated {
+					found = true
+					break
+				}
+			}
+			wantAuthenticated = wantAuthenticated || found
+			wantUnauthenticated = wantUnauthenticated || !found
 		}
 
 		if IsServiceAccount(u) {
 			if clusters := u.GetExtra()[authserviceaccount.ClusterNameKey]; len(clusters) == 1 {
 				nsNameSuffix := strings.TrimPrefix(u.GetName(), "system:serviceaccount:")
 				rewritten := &user.DefaultInfo{
-					Name:   fmt.Sprintf("system:kcp:serviceaccount:%s:%s", clusters[0], nsNameSuffix),
-					Groups: []string{user.AllAuthenticated},
-					Extra:  u.GetExtra(),
+					Name:  fmt.Sprintf("system:kcp:serviceaccount:%s:%s", clusters[0], nsNameSuffix),
+					Extra: u.GetExtra(),
 				}
-				if appliesToUser(ctx, rewritten, bindingSubject, namespace) {
-					return true
+				for _, g := range u.GetGroups() {
+					if g == user.AllAuthenticated {
+						rewritten.Groups = []string{user.AllAuthenticated}
+						break
+					}
 				}
+				ret = append(ret, rewritten)
 			}
 		}
 
@@ -100,47 +138,19 @@ func withWarrants(appliesToUser appliesToUserFuncCtx) appliesToUserFuncCtx {
 				// warrants must be scoped to a cluster
 				continue
 			}
-			if recursive(ctx, wu, bindingSubject, namespace) {
-				return true
-			}
-		}
-
-		return false
-	}
-	return recursive
-}
-
-// withScopes wraps the appliesToUser predicate to check the scopes.
-func withScopes(appliesToUser appliesToUserFunc) appliesToUserFuncCtx {
-	return func(ctx context.Context, u user.Info, bindingSubject rbacv1.Subject, namespace string) bool {
-		var clusterName logicalcluster.Name
-		if cluster := genericapirequest.ClusterFrom(ctx); cluster != nil {
-			clusterName = cluster.Name
-		}
-		if IsInScope(u, clusterName) && appliesToUser(u, bindingSubject, namespace) {
-			return true
-		}
-		if appliesToUser(scopeDown(u), bindingSubject, namespace) {
-			return true
-		}
-
-		return false
-	}
-}
-
-var (
-	authenticated   = &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllAuthenticated}}
-	unauthenticated = &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllUnauthenticated}}
-)
-
-func scopeDown(u user.Info) user.Info {
-	for _, g := range u.GetGroups() {
-		if g == user.AllAuthenticated {
-			return authenticated
+			recursive(wu)
 		}
 	}
+	recursive(u)
 
-	return unauthenticated
+	if wantAuthenticated {
+		ret = append(ret, authenticated)
+	}
+	if wantUnauthenticated {
+		ret = append(ret, unauthenticated)
+	}
+
+	return ret
 }
 
 // IsServiceAccount returns true if the user is a service account.
@@ -195,28 +205,11 @@ func EffectiveGroups(ctx context.Context, u user.Info) sets.Set[string] {
 		clusterName = cluster.Name
 	}
 
+	eus := EffectiveUsers(clusterName, u)
 	groups := sets.New[string]()
-	var recursive func(u user.Info)
-	recursive = func(u user.Info) {
-		if IsInScope(u, clusterName) {
-			groups.Insert(u.GetGroups()...)
-		} else {
-			for _, g := range u.GetGroups() {
-				if g == user.AllAuthenticated {
-					groups.Insert(g)
-				}
-			}
-		}
-
-		for _, v := range u.GetExtra()[WarrantExtraKey] {
-			var w Warrant
-			if err := json.Unmarshal([]byte(v), &w); err != nil {
-				continue
-			}
-			recursive(&user.DefaultInfo{Name: w.User, UID: w.UID, Groups: w.Groups, Extra: w.Extra})
-		}
+	for _, eu := range eus {
+		groups.Insert(eu.GetGroups()...)
 	}
-	recursive(u)
 
 	return groups
 }
