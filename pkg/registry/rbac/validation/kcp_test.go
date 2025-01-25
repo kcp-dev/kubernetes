@@ -144,13 +144,14 @@ func TestIsInScope(t *testing.T) {
 	}
 }
 
-func TestAppliesToUserWithScopes(t *testing.T) {
+func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 	tests := []struct {
 		name string
 		user user.Info
 		sub  rbacv1.Subject
 		want bool
 	}{
+		// base cases
 		{
 			name: "simple matching user",
 			user: &user.DefaultInfo{Name: "user-a"},
@@ -163,18 +164,40 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 			sub:  rbacv1.Subject{Kind: "User", Name: "user-b"},
 			want: false,
 		},
+
+		// warrants
 		{
-			name: "foreign service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			name: "simple matching user with warrants",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "simple non-matching user with matching warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "simple non-matching user with non-matching warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
 			want: false,
 		},
 		{
-			name: "local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			name: "simple non-matching user with multiple warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`, `{"user":"user-a"}`, `{"user":"user-c"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
 			want: true,
 		},
+		{
+			name: "simple non-matching user with nested warrants",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b","extra":{"authorization.kcp.io/warrant":["{\"user\":\"user-a\"}"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+
+		// non-cluster-aware service accounts
 		{
 			name: "non-cluster-aware service account",
 			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa"},
@@ -182,8 +205,46 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "out-of-scope local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}, "authentication.kcp.io/scopes": {"cluster:other"}}},
+			name: "non-cluster-aware service account with this scope",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "non-cluster-aware service account with other scope",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "non-cluster-aware service account as warrant",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa"}`}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+
+		// service accounts with cluster
+		{
+			name: "local service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "foreign service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "foreign service account with local warrant",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["this"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "foreign service account with foreign warrant",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["other"]}}`}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
@@ -194,16 +255,62 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "out-of-scope local service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}, "authentication.kcp.io/scopes": {"cluster:other"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+
+		// global service accounts
+		{
 			name: "local service account as global kcp service account",
 			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
-			want: false, // this is handled by withWarrants
+			want: true,
 		},
 		{
 			name: "foreign service account as global kcp service account",
 			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
 			want: false,
+		},
+		{
+			name: "non-cluster-aware service account as global kcp service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa"},
+			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
+			want: false,
+		},
+
+		// scopes
+		{
+			name: "in-scope user",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "out-of-scope user",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: false,
+		},
+		{
+			name: "out-of-scope user with warrant",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}, WarrantExtraKey: {`{"user":"user-a"}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
+		},
+		{
+			name: "out-of-scope warrant",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a","extra":{"authentication.kcp.io/scopes":["cluster:other"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: false,
+		},
+		{
+			name: "in-scope warrant",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a","extra":{"authentication.kcp.io/scopes":["cluster:this"]}}`}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true,
 		},
 		{
 			name: "in-scope scoped user matches itself",
@@ -217,6 +324,8 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
 			want: false,
 		},
+
+		// authenticated and unauthenticated
 		{
 			name: "out-of-scope unauthenticated user does not match system:authenticated",
 			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
@@ -263,162 +372,6 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := request.WithCluster(context.Background(), request.Cluster{Name: "this"})
-			if got := appliesToUserWithScopes(ctx, tt.user, tt.sub, "ns"); got != tt.want {
-				t.Errorf("appliesToUserWithScopes(%#v, %#v) = %v, want %v", tt.user, tt.sub, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
-	tests := []struct {
-		name string
-		user user.Info
-		sub  rbacv1.Subject
-		want bool
-	}{
-		{
-			name: "simple matching user without warrants",
-			user: &user.DefaultInfo{Name: "user-a"},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "simple non-matching user without warrants",
-			user: &user.DefaultInfo{Name: "user-a"},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-b"},
-			want: false,
-		},
-		{
-			name: "simple matching user with warrants",
-			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "simple non-matching user with matching warrants",
-			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a"}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "simple non-matching user with non-matching warrants",
-			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: false,
-		},
-		{
-			name: "simple non-matching user with multiple warrants",
-			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`, `{"user":"user-a"}`, `{"user":"user-c"}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "simple non-matching user with nested warrants",
-			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b","extra":{"authorization.kcp.io/warrant":["{\"user\":\"user-a\"}"]}}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "foreign service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: false,
-		},
-		{
-			name: "local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: true,
-		},
-		{
-			name: "foreign service account with local warrant",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["this"]}}`}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: true,
-		},
-		{
-			name: "foreign service account with foreign warrant",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["other"]}}`}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: false,
-		},
-		{
-			name: "non-cluster-aware service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa"},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: true,
-		},
-		{
-			name: "local service account with multiple clusters",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this", "this"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: false,
-		},
-		{
-			name: "local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: true,
-		},
-		{
-			name: "foreign service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: false,
-		},
-		{
-			name: "local service account as global kcp service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
-			want: true,
-		},
-		{
-			name: "non-cluster-aware service account as global kcp service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa"},
-			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
-			want: false,
-		},
-		{
-			name: "non-cluster-aware service account as warrant",
-			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa"}`}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: false,
-		},
-		{
-			name: "in-scope scoped user",
-			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "out-of-scope user",
-			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: false,
-		},
-		{
-			name: "out-of-scope user with warrent",
-			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}, WarrantExtraKey: {`{"user":"user-a"}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "out-of-scope warrant",
-			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a","extra":{"authentication.kcp.io/scopes":["cluster:other"]}}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: false,
-		},
-		{
-			name: "in-scope warrant",
-			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a","extra":{"authentication.kcp.io/scopes":["cluster:this"]}}`}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := request.WithCluster(context.Background(), request.Cluster{Name: "this"})
 			if got := appliesToUserWithScopedAndWarrants(ctx, tt.user, tt.sub, "ns"); got != tt.want {
 				t.Errorf("withWarrants(withScopes(base)) = %v, want %v", got, tt.want)
 			}
@@ -447,7 +400,7 @@ func TestEffectiveGroups(t *testing.T) {
 			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}, Extra: map[string][]string{
 				ScopeExtraKey: {"cluster:other"},
 			}},
-			want: sets.New[string](),
+			want: sets.New("system:unauthenticated"),
 		},
 		"out of scope authenticated user": {
 			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllAuthenticated, "a", "b"}, Extra: map[string][]string{
@@ -465,7 +418,7 @@ func TestEffectiveGroups(t *testing.T) {
 			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}, Extra: map[string][]string{
 				WarrantExtraKey: {`{"user":"warrant","groups":["c","d"],"extra":{"authentication.kcp.io/scopes":["cluster:other"]}}`},
 			}},
-			want: sets.New("a", "b"),
+			want: sets.New("a", "b", "system:unauthenticated"),
 		},
 		"nested warrants": {
 			u: &user.DefaultInfo{Name: user.Anonymous, Groups: []string{"a", "b"}, Extra: map[string][]string{
