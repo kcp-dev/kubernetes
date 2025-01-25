@@ -182,6 +182,30 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "out-of-scope local service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}, "authentication.kcp.io/scopes": {"cluster:other"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "local service account with multiple clusters",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this", "this"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "local service account as global kcp service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
+			want: false, // this is handled by withWarrants
+		},
+		{
+			name: "foreign service account as global kcp service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
+			want: false,
+		},
+		{
 			name: "in-scope scoped user",
 			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
@@ -210,18 +234,6 @@ func TestAppliesToUserWithScopes(t *testing.T) {
 			user: &user.DefaultInfo{Name: "user-a", Groups: []string{user.AllAuthenticated}, Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
 			sub:  rbacv1.Subject{Kind: "Group", Name: "system:authenticated"},
 			want: true,
-		},
-		{
-			name: "in-scope service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: true,
-		},
-		{
-			name: "out-of-scope service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: false,
 		},
 	}
 	for _, tt := range tests {
@@ -314,6 +326,36 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "local service account with multiple clusters",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this", "this"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "local service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: true,
+		},
+		{
+			name: "foreign service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
+			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
+			want: false,
+		},
+		{
+			name: "local service account as global kcp service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
+			want: true,
+		},
+		{
+			name: "non-cluster-aware service account as global kcp service account",
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
+			want: false,
+		},
+		{
 			name: "non-cluster-aware service account as warrant",
 			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa"}`}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
@@ -347,30 +389,6 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 			name: "in-scope warrant",
 			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a","extra":{"authentication.kcp.io/scopes":["cluster:this"]}}`}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
-			want: true,
-		},
-		{
-			name: "in-scope service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: true,
-		},
-		{
-			name: "out-of-scope service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
-			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
-			want: false,
-		},
-		{
-			name: "service account with cluster as global kcp service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
-			want: true,
-		},
-		{
-			name: "service account with scope as global kcp service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
-			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
 			want: true,
 		},
 	}

@@ -71,10 +71,10 @@ func withWarrants(appliesToUser appliesToUserFuncCtx) appliesToUserFuncCtx {
 		}
 
 		if IsServiceAccount(u) {
-			if cluster := genericapirequest.ClusterFrom(ctx); cluster != nil && cluster.Name != "" {
+			if clusters := u.GetExtra()[authserviceaccount.ClusterNameKey]; len(clusters) == 1 {
 				nsNameSuffix := strings.TrimPrefix(u.GetName(), "system:serviceaccount:")
 				rewritten := &user.DefaultInfo{
-					Name:   fmt.Sprintf("system:kcp:serviceaccount:%s:%s", cluster.Name, nsNameSuffix),
+					Name:   fmt.Sprintf("system:kcp:serviceaccount:%s:%s", clusters[0], nsNameSuffix),
 					Groups: []string{user.AllAuthenticated},
 					Extra:  u.GetExtra(),
 				}
@@ -151,13 +151,17 @@ func IsServiceAccount(attr user.Info) bool {
 // IsForeign returns true if the service account is not from the given cluster.
 func IsForeign(attr user.Info, cluster logicalcluster.Name) bool {
 	clusters := attr.GetExtra()[authserviceaccount.ClusterNameKey]
-	if clusters == nil {
+	switch {
+	case len(clusters) == 0:
 		// an unqualified service account is considered local: think of some
 		// local SubjectAccessReview specifying a service account without the
 		// cluster scope.
 		return false
+	case len(clusters) != 1:
+		return true
+	default:
+		return !sets.New(clusters...).Has(string(cluster))
 	}
-	return !sets.New(clusters...).Has(string(cluster))
 }
 
 // IsInScope checks if the user is valid for the given cluster.
