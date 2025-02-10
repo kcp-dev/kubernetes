@@ -45,6 +45,7 @@ kube::codegen::gen_openapi \
     --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
     "${SCRIPT_ROOT}/pkg"
 
+# kcp: TODO(gman0) re-add `--prefers-protobuf` once kcp-dev/{client-go,kcp} supports protobuf codec.
 kube::codegen::gen_client \
     --with-watch \
     --with-applyconfig \
@@ -52,5 +53,4 @@ kube::codegen::gen_client \
     --output-pkg "${THIS_PKG}/pkg/client" \
     --versioned-name "clientset" \
     --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    --prefers-protobuf \
     "${SCRIPT_ROOT}/pkg/apis"

@@ -636,6 +636,7 @@ function codegen::clients() {
         || true) \
         | xargs -0 rm -f
 
+    # kcp: TODO(gman0) re-add `--prefers-protobuf` once kcp-dev/{client-go,kcp} supports protobuf codec.
     client-gen \
         -v "${KUBE_VERBOSE}" \
         --go-header-file "${BOILERPLATE_FILENAME}" \
@@ -645,9 +646,9 @@ function codegen::clients() {
         --input-base="k8s.io/api" \
         --plural-exceptions "${PLURAL_EXCEPTIONS}" \
         --apply-configuration-package "${APPLYCONFIG_PKG}" \
-        --prefers-protobuf \
         $(printf -- " --input %s" "${gv_dirs[@]}") \
         "$@"
+
 
     if [[ "${DBG_CODEGEN}" == 1 ]]; then
         kube::log::status "Generated client code"
