@@ -35,6 +35,9 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250207161408-e1833e4a94f2
+	github.com/kcp-dev/client-go v0.0.0-20250210163812-5ae6774ab861
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kr/text v0.2.0 // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

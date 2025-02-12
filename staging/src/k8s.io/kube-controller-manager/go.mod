@@ -20,6 +20,9 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250207161408-e1833e4a94f2
+	github.com/kcp-dev/client-go v0.0.0-20250210163812-5ae6774ab861
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
