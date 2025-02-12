@@ -65,7 +65,6 @@ func newPriorityClasses(c *SchedulingV1beta1Client) *priorityClasses {
 			"",
 			func() *schedulingv1beta1.PriorityClass { return &schedulingv1beta1.PriorityClass{} },
 			func() *schedulingv1beta1.PriorityClassList { return &schedulingv1beta1.PriorityClassList{} },
-			gentype.PrefersProtobuf[*schedulingv1beta1.PriorityClass](),
 		),
 	}
 }

@@ -65,7 +65,6 @@ func newClusterRoles(c *RbacV1Client) *clusterRoles {
 			"",
 			func() *rbacv1.ClusterRole { return &rbacv1.ClusterRole{} },
 			func() *rbacv1.ClusterRoleList { return &rbacv1.ClusterRoleList{} },
-			gentype.PrefersProtobuf[*rbacv1.ClusterRole](),
 		),
 	}
 }

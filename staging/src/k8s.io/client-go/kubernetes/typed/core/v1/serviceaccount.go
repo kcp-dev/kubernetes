@@ -68,7 +68,6 @@ func newServiceAccounts(c *CoreV1Client, namespace string) *serviceAccounts {
 			namespace,
 			func() *corev1.ServiceAccount { return &corev1.ServiceAccount{} },
 			func() *corev1.ServiceAccountList { return &corev1.ServiceAccountList{} },
-			gentype.PrefersProtobuf[*corev1.ServiceAccount](),
 		),
 	}
 }
@@ -77,7 +76,6 @@ func newServiceAccounts(c *CoreV1Client, namespace string) *serviceAccounts {
 func (c *serviceAccounts) CreateToken(ctx context.Context, serviceAccountName string, tokenRequest *authenticationv1.TokenRequest, opts metav1.CreateOptions) (result *authenticationv1.TokenRequest, err error) {
 	result = &authenticationv1.TokenRequest{}
 	err = c.GetClient().Post().
-		UseProtobufAsDefault().
 		Namespace(c.GetNamespace()).
 		Resource("serviceaccounts").
 		Name(serviceAccountName).
