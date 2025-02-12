@@ -167,7 +167,7 @@ func serveWatchHandler(watcher watch.Interface, scope *RequestScope, mediaTypeOp
 		Encoder:         encoder,
 		EmbeddedEncoder: embeddedEncoder,
 
-		watchListTransformerFn: newWatchListTransformer(initialEventsListBlueprint, mediaTypeOptions.Convert, negotiatedEncoder).transform,
+		watchListTransformerFn: newWatchListTransformer(ctx, initialEventsListBlueprint, mediaTypeOptions.Convert, negotiatedEncoder).transform,
 
 		MemoryAllocator:      memoryAllocator,
 		TimeoutFactory:       &realTimeoutFactory{timeout},

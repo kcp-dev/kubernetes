@@ -35,6 +35,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/cryptobyte"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -893,7 +894,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 	if c.SharedInformerFactory != nil {
 		if !s.isPostStartHookRegistered(genericApiServerHookName) {
 			err := s.AddPostStartHook(genericApiServerHookName, func(hookContext PostStartHookContext) error {
-				c.SharedInformerFactory.Start(hookContext.Done())
+				informerfactoryhack.Unwrap(c.SharedInformerFactory).Start(hookContext.Done())
 				return nil
 			})
 			if err != nil {
@@ -901,7 +902,7 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 			}
 		}
 		// TODO: Once we get rid of /healthz consider changing this to post-start-hook.
-		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(c.SharedInformerFactory))
+		err := s.AddReadyzChecks(healthz.NewInformerSyncHealthz(informerfactoryhack.Unwrap(c.SharedInformerFactory)))
 		if err != nil {
 			return nil, err
 		}
@@ -998,16 +999,34 @@ func (c completedConfig) New(name string, delegationTarget DelegationTarget) (*G
 func BuildHandlerChainWithStorageVersionPrecondition(apiHandler http.Handler, c *Config) http.Handler {
 	// WithStorageVersionPrecondition needs the WithRequestInfo to run first
 	handler := genericapifilters.WithStorageVersionPrecondition(apiHandler, c.StorageVersionManager, c.Serializer)
-	return DefaultBuildHandlerChain(handler, c)
+	return DefaultBuildHandlerChainFromAuthzToCompletion(handler, c)
 }
 
-func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
-	handler := apiHandler
+// These handlers are split into 3, allowing us to insert additional handlers between them.
+// {DefaultBuildHandlerChain}FromStartToBeforeImpersonation
+//                           FromImpersonationToAuthz
+//                           FromAuthzToCompletion
+// Note that they are called in reverse order, so the first handler in the chain is the last one to run.
 
+func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
+	handler := DefaultBuildHandlerChainFromAuthzToCompletion(apiHandler, c)
+	handler = DefaultBuildHandlerChainFromImpersonationToAuthz(handler, c)
+	handler = DefaultBuildHandlerChainFromStartToBeforeImpersonation(handler, c)
+	return handler
+}
+
+// DefaultBuildHandlerChainFromAuthzToCompletion builds the handler chain from authorization to completion. Its last in the chain.
+func DefaultBuildHandlerChainFromAuthzToCompletion(apiHandler http.Handler, c *Config) http.Handler {
+	handler := apiHandler
 	handler = filterlatency.TrackCompleted(handler)
 	handler = genericapifilters.WithAuthorization(handler, c.Authorization.Authorizer, c.Serializer)
 	handler = filterlatency.TrackStarted(handler, c.TracerProvider, "authorization")
+	return handler
+}
 
+// DefaultBuildHandlerChainFromImpersonationToAuthz builds the handler chain from impersonation to authorization. Its Middle in the chain.
+func DefaultBuildHandlerChainFromImpersonationToAuthz(apiHandler http.Handler, c *Config) http.Handler {
+	handler := apiHandler
 	if c.FlowControl != nil {
 		workEstimatorCfg := flowcontrolrequest.DefaultWorkEstimatorConfig()
 		requestWorkEstimator := flowcontrolrequest.NewWorkEstimator(
@@ -1023,6 +1042,12 @@ func DefaultBuildHandlerChain(apiHandler http.Handler, c *Config) http.Handler {
 	handler = genericapifilters.WithImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
 	handler = filterlatency.TrackStarted(handler, c.TracerProvider, "impersonation")
 
+	return handler
+}
+
+// DefaultBuildHandlerChainFromStartToBeforeImpersonation builds the handler chain from the start to before impersonation. Its first in the chain.
+func DefaultBuildHandlerChainFromStartToBeforeImpersonation(apiHandler http.Handler, c *Config) http.Handler {
+	handler := apiHandler
 	handler = filterlatency.TrackCompleted(handler)
 	handler = genericapifilters.WithAudit(handler, c.AuditBackend, c.AuditPolicyRuleEvaluator, c.LongRunningFunc)
 	handler = filterlatency.TrackStarted(handler, c.TracerProvider, "audit")

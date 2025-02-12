@@ -25,10 +25,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster/v3"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/kubernetes"
 	"go.opentelemetry.io/otel/attribute"
+	"k8s.io/apiserver/pkg/kcp"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -39,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/audit"
+	endpointsrequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
@@ -203,6 +206,11 @@ func (s *store) Versioner() storage.Versioner {
 
 // Get implements storage.Interface.Get.
 func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, out runtime.Object) error {
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in Get action for key %s : %s", key, err.Error())
+	}
+
 	preparedKey, err := s.prepareKey(key)
 	if err != nil {
 		return err
@@ -229,7 +237,8 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 		return storage.NewInternalError(err)
 	}
 
-	err = s.decoder.Decode(data, out, getResp.KV.ModRevision)
+	shardName := endpointsrequest.ShardFrom(ctx)
+	err = decode(s.codec, s.versioner, data, out, getResp.KV.ModRevision, clusterName, shardName)
 	if err != nil {
 		recordDecodeError(s.groupResourceString, preparedKey)
 		return err
@@ -239,6 +248,11 @@ func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, ou
 
 // Create implements storage.Interface.Create.
 func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object, ttl uint64) error {
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in Create action for key %s : %s", key, err.Error())
+	}
+
 	preparedKey, err := s.prepareKey(key)
 	if err != nil {
 		return err
@@ -293,7 +307,8 @@ func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object,
 	}
 
 	if out != nil {
-		err = s.decoder.Decode(data, out, txnResp.Revision)
+		shardName := endpointsrequest.ShardFrom(ctx)
+		err = decode(s.codec, s.versioner, data, out, txnResp.Revision, clusterName, shardName)
 		if err != nil {
 			span.AddEvent("decode failed", attribute.Int("len", len(data)), attribute.String("err", err.Error()))
 			recordDecodeError(s.groupResourceString, preparedKey)
@@ -327,10 +342,15 @@ func (s *store) Delete(
 func (s *store) conditionalDelete(
 	ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions,
 	validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object, skipTransformDecode bool) error {
-	getCurrentState := s.getCurrentState(ctx, key, v, false, skipTransformDecode)
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in conditionalDelete action for key %s : %s", key, err.Error())
+	}
+	shardName := endpointsrequest.ShardFrom(ctx)
+
+	getCurrentState := s.getCurrentState(ctx, key, v, false, skipTransformDecode, clusterName, shardName)
 
 	var origState *objState
-	var err error
 	var origStateIsCurrent bool
 	if cachedExistingObject != nil {
 		origState, err = s.getStateFromObject(cachedExistingObject)
@@ -406,7 +426,7 @@ func (s *store) conditionalDelete(
 		}
 		if !txnResp.Succeeded {
 			klog.V(4).Infof("deletion of %s failed because of a conflict, going to retry", key)
-			origState, err = s.getState(ctx, txnResp.KV, key, v, false, skipTransformDecode)
+			origState, err = s.getState(ctx, txnResp.KV, key, v, false, skipTransformDecode, clusterName, shardName)
 			if err != nil {
 				return err
 			}
@@ -415,13 +435,13 @@ func (s *store) conditionalDelete(
 		}
 
 		if !skipTransformDecode {
-			err = s.decoder.Decode(origState.data, out, txnResp.Revision)
+			err = decode(s.codec, s.versioner, origState.data, out, txnResp.Revision, clusterName, shardName)
 			if err != nil {
 				recordDecodeError(s.groupResourceString, key)
 				return err
 			}
+			return nil
 		}
-		return nil
 	}
 }
 
@@ -429,6 +449,12 @@ func (s *store) conditionalDelete(
 func (s *store) GuaranteedUpdate(
 	ctx context.Context, key string, destination runtime.Object, ignoreNotFound bool,
 	preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
+	clusterName, err := endpointsrequest.ClusterNameFrom(ctx)
+	if err != nil {
+		klog.Errorf("No cluster defined in GuaranteedUpdate action for key %s : %s", key, err.Error())
+	}
+	shardName := endpointsrequest.ShardFrom(ctx)
+
 	preparedKey, err := s.prepareKey(key)
 	if err != nil {
 		return err
@@ -446,7 +472,7 @@ func (s *store) GuaranteedUpdate(
 	}
 
 	skipTransformDecode := false
-	getCurrentState := s.getCurrentState(ctx, preparedKey, v, ignoreNotFound, skipTransformDecode)
+	getCurrentState := s.getCurrentState(ctx, preparedKey, v, ignoreNotFound, skipTransformDecode, clusterName, shardName)
 
 	var origState *objState
 	var origStateIsCurrent bool
@@ -532,7 +558,7 @@ func (s *store) GuaranteedUpdate(
 			}
 			// recheck that the data from etcd is not stale before short-circuiting a write
 			if !origState.stale {
-				err = s.decoder.Decode(origState.data, destination, origState.rev)
+				err = decode(s.codec, s.versioner, origState.data, destination, origState.rev, clusterName, shardName)
 				if err != nil {
 					recordDecodeError(s.groupResourceString, preparedKey)
 					return err
@@ -572,7 +598,7 @@ func (s *store) GuaranteedUpdate(
 		span.AddEvent("Transaction committed")
 		if !txnResp.Succeeded {
 			klog.V(4).Infof("GuaranteedUpdate of %s failed because of a conflict, going to retry", preparedKey)
-			origState, err = s.getState(ctx, txnResp.KV, preparedKey, v, ignoreNotFound, skipTransformDecode)
+			origState, err = s.getState(ctx, txnResp.KV, preparedKey, v, ignoreNotFound, skipTransformDecode, clusterName, shardName)
 			if err != nil {
 				return err
 			}
@@ -581,7 +607,7 @@ func (s *store) GuaranteedUpdate(
 			continue
 		}
 
-		err = s.decoder.Decode(data, destination, txnResp.Revision)
+		err = decode(s.codec, s.versioner, data, destination, txnResp.Revision, clusterName, shardName)
 		if err != nil {
 			span.AddEvent("decode failed", attribute.Int("len", len(data)), attribute.String("err", err.Error()))
 			recordDecodeError(s.groupResourceString, preparedKey)
@@ -725,6 +751,15 @@ func (s *store) GetList(ctx context.Context, key string, opts storage.ListOption
 		return err
 	}
 
+	// kcp
+	cluster, err := endpointsrequest.ValidClusterFrom(ctx)
+	if err != nil {
+		return storage.NewInternalError(fmt.Errorf("unable to get cluster for list key %q: %v", keyPrefix, err))
+	}
+	shard := endpointsrequest.ShardFrom(ctx)
+	crdIndicator := kcp.CustomResourceIndicatorFrom(ctx)
+	// end kcp
+
 	// loop until we have filled the requested limit from etcd or there are no more results
 	var lastKey []byte
 	var hasMore bool
@@ -801,7 +836,10 @@ func (s *store) GetList(ctx context.Context, key string, opts storage.ListOption
 			default:
 			}
 
-			obj, err := s.decoder.DecodeListItem(ctx, data, uint64(kv.ModRevision), newItemFunc)
+			// kcp
+			clusterName := adjustClusterNameIfWildcard(shard, cluster, crdIndicator, keyPrefix, string(kv.Key))
+			shardName := adjustShardNameIfWildcard(shard, keyPrefix, string(kv.Key))
+			obj, err := decodeListItem(ctx, data, uint64(kv.ModRevision), s.codec, s.versioner, newItemFunc, clusterName, shardName)
 			if err != nil {
 				recordDecodeError(s.groupResourceString, string(kv.Key))
 				if done := aggregator.Aggregate(string(kv.Key), err); done {
@@ -918,7 +956,7 @@ func (s *store) Watch(ctx context.Context, key string, opts storage.ListOptions)
 	if err != nil {
 		return nil, err
 	}
-	return s.watcher.Watch(s.watchContext(ctx), preparedKey, int64(rev), opts)
+	return s.watcher.Watch(s.watchContext(ctx), preparedKey, int64(rev), opts, nil)
 }
 
 func (s *store) watchContext(ctx context.Context) context.Context {
@@ -932,7 +970,7 @@ func (s *store) watchContext(ctx context.Context) context.Context {
 	return clientv3.WithRequireLeader(ctx)
 }
 
-func (s *store) getCurrentState(ctx context.Context, key string, v reflect.Value, ignoreNotFound bool, skipTransformDecode bool) func() (*objState, error) {
+func (s *store) getCurrentState(ctx context.Context, key string, v reflect.Value, ignoreNotFound bool, skipTransformDecode bool, clusterName logicalcluster.Name, shardName endpointsrequest.Shard) func() (*objState, error) {
 	return func() (*objState, error) {
 		startTime := time.Now()
 		getResp, err := s.client.Kubernetes.Get(ctx, key, kubernetes.GetOptions{})
@@ -940,7 +978,7 @@ func (s *store) getCurrentState(ctx context.Context, key string, v reflect.Value
 		if err != nil {
 			return nil, err
 		}
-		return s.getState(ctx, getResp.KV, key, v, ignoreNotFound, skipTransformDecode)
+		return s.getState(ctx, getResp.KV, key, v, ignoreNotFound, skipTransformDecode, clusterName, shardName)
 	}
 }
 
@@ -950,7 +988,7 @@ func (s *store) getCurrentState(ctx context.Context, key string, v reflect.Value
 // storage will be transformed and decoded.
 // NOTE: when skipTransformDecode is true, the 'data', and the 'obj' fields
 // of the objState will be nil, and 'stale' will be set to true.
-func (s *store) getState(ctx context.Context, kv *mvccpb.KeyValue, key string, v reflect.Value, ignoreNotFound bool, skipTransformDecode bool) (*objState, error) {
+func (s *store) getState(ctx context.Context, kv *mvccpb.KeyValue, key string, v reflect.Value, ignoreNotFound bool, skipTransformDecode bool, clusterName logicalcluster.Name, shardName endpointsrequest.Shard) (*objState, error) {
 	state := &objState{
 		meta: &storage.ResponseMeta{},
 	}
@@ -986,8 +1024,7 @@ func (s *store) getState(ctx context.Context, kv *mvccpb.KeyValue, key string, v
 
 		state.data = data
 		state.stale = stale
-
-		if err := s.decoder.Decode(state.data, state.obj, state.rev); err != nil {
+		if err := decode(s.codec, s.versioner, state.data, state.obj, state.rev, clusterName, shardName); err != nil {
 			recordDecodeError(s.groupResourceString, key)
 			return nil, err
 		}
@@ -1079,6 +1116,49 @@ func (s *store) prepareKey(key string) (string, error) {
 		startIndex = 1
 	}
 	return s.pathPrefix + key[startIndex:], nil
+}
+
+// decode decodes value of bytes into object. It will also set the object resource version to rev.
+// On success, objPtr would be set to the object.
+func decode(codec runtime.Codec, versioner storage.Versioner, value []byte, objPtr runtime.Object, rev int64, clusterName logicalcluster.Name, shardName endpointsrequest.Shard) error {
+	if _, err := conversion.EnforcePtr(objPtr); err != nil {
+		return fmt.Errorf("unable to convert output object to pointer: %v", err)
+	}
+	_, _, err := codec.Decode(value, nil, objPtr)
+	if err != nil {
+		return err
+	}
+	// being unable to set the version does not prevent the object from being extracted
+	if err := versioner.UpdateObject(objPtr, uint64(rev)); err != nil {
+		klog.Errorf("failed to update object version: %v", err)
+	}
+
+	// kcp: apply clusterName to the decoded object, as the name is not persisted in storage.
+	annotateDecodedObjectWith(objPtr, clusterName, shardName)
+
+	return nil
+}
+
+// decodeListItem decodes bytes value in array into object.
+func decodeListItem(ctx context.Context, data []byte, rev uint64, codec runtime.Codec, versioner storage.Versioner, newItemFunc func() runtime.Object, clusterName logicalcluster.Name, shardName endpointsrequest.Shard) (runtime.Object, error) {
+	startedAt := time.Now()
+	defer func() {
+		endpointsrequest.TrackDecodeLatency(ctx, time.Since(startedAt))
+	}()
+
+	obj, _, err := codec.Decode(data, nil, newItemFunc())
+	if err != nil {
+		return nil, err
+	}
+
+	if err := versioner.UpdateObject(obj, rev); err != nil {
+		klog.Errorf("failed to update object version: %v", err)
+	}
+
+	// kcp: apply clusterName and shardName to the decoded object, as the name is not persisted in storage.
+	annotateDecodedObjectWith(obj, clusterName, shardName)
+
+	return obj, nil
 }
 
 // recordDecodeError record decode error split by object type.

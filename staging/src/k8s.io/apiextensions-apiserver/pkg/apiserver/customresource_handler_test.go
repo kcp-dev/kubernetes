@@ -22,13 +22,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 	"time"
 
@@ -59,7 +56,6 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/server/options"
 	etcd3testing "k8s.io/apiserver/pkg/storage/etcd3/testing"
-	"k8s.io/apiserver/pkg/util/webhook"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 )
@@ -119,11 +115,7 @@ func TestConvertFieldLabel(t *testing.T) {
 			} else {
 				crd.Spec.Scope = apiextensionsv1.NamespaceScoped
 			}
-			f, err := conversion.NewCRConverterFactory(nil, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, c, err := f.NewConverter(&crd)
+			_, c, err := conversion.NewDelegatingConverter(&crd, conversion.NewNOPConverter())
 			if err != nil {
 				t.Fatalf("Failed to create CR converter. error: %v", err)
 			}
@@ -176,20 +168,24 @@ func TestRouting(t *testing.T) {
 		crdLister: crdLister,
 		delegate:  delegate,
 		versionDiscoveryHandler: &versionDiscoveryHandler{
-			discovery: map[schema.GroupVersion]*discovery.APIVersionHandler{
-				customV1: discovery.NewAPIVersionHandler(Codecs, customV1, discovery.APIResourceListerFunc(func() []metav1.APIResource {
-					return nil
-				})),
+			discovery: map[string]map[schema.GroupVersion]*discovery.APIVersionHandler{
+				"": {
+					customV1: discovery.NewAPIVersionHandler(Codecs, customV1, discovery.APIResourceListerFunc(func() []metav1.APIResource {
+						return nil
+					})),
+				},
 			},
 			delegate: delegate,
 		},
 		groupDiscoveryHandler: &groupDiscoveryHandler{
-			discovery: map[string]*discovery.APIGroupHandler{
-				"custom": discovery.NewAPIGroupHandler(Codecs, metav1.APIGroup{
-					Name:             customV1.Group,
-					Versions:         []metav1.GroupVersionForDiscovery{{GroupVersion: customV1.String(), Version: customV1.Version}},
-					PreferredVersion: metav1.GroupVersionForDiscovery{GroupVersion: customV1.String(), Version: customV1.Version},
-				}),
+			discovery: map[string]map[string]*discovery.APIGroupHandler{
+				"": {
+					"custom": discovery.NewAPIGroupHandler(Codecs, metav1.APIGroup{
+						Name:             customV1.Group,
+						Versions:         []metav1.GroupVersionForDiscovery{{GroupVersion: customV1.String(), Version: customV1.Version}},
+						PreferredVersion: metav1.GroupVersionForDiscovery{GroupVersion: customV1.String(), Version: customV1.Version},
+					}),
+				},
 			},
 			delegate: delegate,
 		},
@@ -465,6 +461,12 @@ func TestHandlerConversionWithoutWatchCache(t *testing.T) {
 	testHandlerConversion(t, false)
 }
 
+type noneConverterFactory struct{}
+
+func (f *noneConverterFactory) NewConverter(_ *apiextensionsv1.CustomResourceDefinition) (conversion.CRConverter, error) {
+	return conversion.NewNOPConverter(), nil
+}
+
 func testHandlerConversion(t *testing.T, enableWatchCache bool) {
 	cl := fake.NewSimpleClientset()
 	informers := informers.NewSharedInformerFactory(fake.NewSimpleClientset(), 0)
@@ -505,16 +507,15 @@ func testHandlerConversion(t *testing.T, enableWatchCache bool) {
 		restOptionsGetter,
 		dummyAdmissionImpl{},
 		&establish.EstablishingController{},
-		dummyServiceResolverImpl{},
-		func(r webhook.AuthenticationInfoResolver) webhook.AuthenticationInfoResolver { return r },
+		&noneConverterFactory{},
 		1,
 		dummyAuthorizerImpl{},
-		time.Minute, time.Minute, nil, 3*1024*1024)
+		time.Minute, time.Minute, nil, 3*1024*1024, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	crdInfo, err := handler.getOrCreateServingInfoFor(crd.UID, crd.Name)
+	crdInfo, err := handler.getOrCreateServingInfoFor(crd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -846,12 +847,6 @@ func (dummyAuthorizerImpl) Authorize(ctx context.Context, a authorizer.Attribute
 	return authorizer.DecisionAllow, "", nil
 }
 
-type dummyServiceResolverImpl struct{}
-
-func (dummyServiceResolverImpl) ResolveEndpoint(namespace, name string, port int32) (*url.URL, error) {
-	return &url.URL{Scheme: "https", Host: net.JoinHostPort(name+"."+namespace+".svc", strconv.Itoa(int(port)))}, nil
-}
-
 var multiVersionFixture = &apiextensionsv1.CustomResourceDefinition{
 	ObjectMeta: metav1.ObjectMeta{Name: "multiversion.stable.example.com", UID: types.UID("12345")},
 	Spec: apiextensionsv1.CustomResourceDefinitionSpec{
@@ -1040,7 +1035,7 @@ func TestBuildOpenAPIModelsForApply(t *testing.T) {
 
 	for i, test := range tests {
 		crd.Spec.Versions[0].Schema = &test
-		models, err := buildOpenAPIModelsForApply(convertedDefs, &crd)
+		models, err := buildOpenAPIModelsForApply(convertedDefs, &crd, true)
 		if err != nil {
 			t.Fatalf("failed to convert to apply model: %v", err)
 		}

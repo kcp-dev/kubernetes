@@ -75,6 +75,7 @@ func (a statusStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.O
 
 	// set status
 	newCustomResourceObject.SetManagedFields(managedFields)
+
 	newCustomResource = newCustomResourceObject.UnstructuredContent()
 	if ok {
 		newCustomResource["status"] = status

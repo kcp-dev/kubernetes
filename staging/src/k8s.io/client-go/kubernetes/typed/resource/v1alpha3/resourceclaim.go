@@ -69,7 +69,6 @@ func newResourceClaims(c *ResourceV1alpha3Client, namespace string) *resourceCla
 			namespace,
 			func() *resourcev1alpha3.ResourceClaim { return &resourcev1alpha3.ResourceClaim{} },
 			func() *resourcev1alpha3.ResourceClaimList { return &resourcev1alpha3.ResourceClaimList{} },
-			gentype.PrefersProtobuf[*resourcev1alpha3.ResourceClaim](),
 		),
 	}
 }

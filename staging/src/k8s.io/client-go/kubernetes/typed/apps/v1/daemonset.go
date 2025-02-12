@@ -69,7 +69,6 @@ func newDaemonSets(c *AppsV1Client, namespace string) *daemonSets {
 			namespace,
 			func() *appsv1.DaemonSet { return &appsv1.DaemonSet{} },
 			func() *appsv1.DaemonSetList { return &appsv1.DaemonSetList{} },
-			gentype.PrefersProtobuf[*appsv1.DaemonSet](),
 		),
 	}
 }
