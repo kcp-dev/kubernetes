@@ -12,6 +12,8 @@ import (
 	authserviceaccount "k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
 )
 
 const (
@@ -88,6 +90,7 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 
 	var wantAuthenticated bool
 	var wantUnauthenticated bool
+	globalsa := utilfeature.DefaultFeatureGate.Enabled(features.GlobalServiceAccount)
 
 	var recursive func(u user.Info)
 	recursive = func(u user.Info) {
@@ -105,7 +108,7 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 			wantUnauthenticated = wantUnauthenticated || !found
 		}
 
-		if IsServiceAccount(u) {
+		if IsServiceAccount(u) && globalsa {
 			if clusters := u.GetExtra()[authserviceaccount.ClusterNameKey]; len(clusters) == 1 {
 				nsNameSuffix := strings.TrimPrefix(u.GetName(), "system:serviceaccount:")
 				rewritten := &user.DefaultInfo{
