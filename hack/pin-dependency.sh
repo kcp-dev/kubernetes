@@ -69,6 +69,12 @@ if [[ -z "${dep}" || -z "${replacement}" || -z "${sha}" ]]; then
   exit 1
 fi
 
+replacementPath=""
+if [ -d "$replacement" ]; then
+    replacementPath="$(realpath "$replacement")"
+    replacement="$dep"
+fi
+
 # Find the resolved version before trying to use it.
 echo "Running: go mod download ${replacement}@${sha}"
 if meta=$(go mod download -json "${replacement}@${sha}"); then
@@ -88,6 +94,9 @@ go mod edit -require "${dep}@${rev}"
 if [ "${replacement}" != "${dep}" ]; then
   echo "Running: go mod edit -replace ${dep}=${replacement}@${rev}"
   go mod edit -replace "${dep}=${replacement}@${rev}"
+elif [ -d "$replacementPath" ]; then
+  echo "Running: go mod edit -replace ${dep}=${replacementPath}"
+  go mod edit -replace "${dep}=${replacementPath}"
 fi
 
 # Propagate pinned version to staging repos
@@ -103,7 +112,11 @@ for repo in $(kube::util::list_staging_repos); do
     # isn't that important to get this exactly right.
     if [ "${replacement}" != "${dep}" ]; then
         find . -name go.mod -print | while read -r modfile; do
+          if [ -d "$replacementPath" ]; then
+            (cd "$(dirname "${modfile}")" && go mod edit -replace "${dep}=${replacementPath}")
+          else
             (cd "$(dirname "${modfile}")" && go mod edit -replace "${dep}=${replacement}@${rev}")
+          fi
         done
     fi
   popd >/dev/null 2>&1
