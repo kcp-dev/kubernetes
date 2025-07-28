@@ -14,8 +14,8 @@ require (
 	github.com/google/gnostic-models v0.6.9
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250717064240-78e565b4a69a
-	github.com/kcp-dev/client-go v0.0.0-20250721105427-d4a93d7c5fc9
+	github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250728122101-adbf20db3e51
+	github.com/kcp-dev/client-go v0.0.0-20250728134101-0355faa9361b
 	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
