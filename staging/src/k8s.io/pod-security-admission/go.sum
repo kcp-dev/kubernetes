@@ -101,10 +101,10 @@ github.com/jpillora/backoff v1.0.0/go.mod h1:J/6gKK9jxlEcS3zixgDgUAsiuZ7yrSoa/FX
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
 github.com/julienschmidt/httprouter v1.3.0/go.mod h1:JR6WtHb+2LUe8TCKY3cZOxFyyO8IZAc4RVcycCCAKdM=
-github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250717064240-78e565b4a69a h1:MG1AMJQrRI/Y644cJsZ2qdtdWzVQMRt37DNJd+k4KoI=
-github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250717064240-78e565b4a69a/go.mod h1:rF1jfvUfPjFXs+HV/LN1BtPzAz1bfjJOwVa+hAVfroQ=
-github.com/kcp-dev/client-go v0.0.0-20250721105427-d4a93d7c5fc9 h1:tiXWfCv3wpFUuL22RjIU8uTDaACnAdrHb46MRq0Kc2g=
-github.com/kcp-dev/client-go v0.0.0-20250721105427-d4a93d7c5fc9/go.mod h1:QdO8AaGAZPr/rIZ1iVanCM3tUOiiuX897GWv7WTByLE=
+github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250728122101-adbf20db3e51 h1:l38RDS+VUMx9etvyaCgJIZa4nM7FaNevNubWN0kDZY4=
+github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250728122101-adbf20db3e51/go.mod h1:rF1jfvUfPjFXs+HV/LN1BtPzAz1bfjJOwVa+hAVfroQ=
+github.com/kcp-dev/client-go v0.0.0-20250728134101-0355faa9361b h1:2LGrXvY9sc4l5yjKIbMZ86GEou7NyrHhA4qBPaeFfxs=
+github.com/kcp-dev/client-go v0.0.0-20250728134101-0355faa9361b/go.mod h1:QdO8AaGAZPr/rIZ1iVanCM3tUOiiuX897GWv7WTByLE=
 github.com/kcp-dev/code-generator/v3 v3.0.0-20250717064843-0c8e5fec4f71/go.mod h1:PZBfAWJtztxgGCiIjH+txB7aZbMBUOCN5HFms7h7CwE=
 github.com/kcp-dev/logicalcluster/v3 v3.0.5 h1:JbYakokb+5Uinz09oTXomSUJVQsqfxEvU4RyHUYxHOU=
 github.com/kcp-dev/logicalcluster/v3 v3.0.5/go.mod h1:EWBUBxdr49fUB1cLMO4nOdBWmYifLbP1LfoL20KkXYY=

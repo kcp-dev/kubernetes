@@ -352,12 +352,12 @@ github.com/json-iterator/go
 # github.com/karrick/godirwalk v1.17.0
 ## explicit; go 1.13
 github.com/karrick/godirwalk
-# github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250717064240-78e565b4a69a
+# github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250728122101-adbf20db3e51
 ## explicit; go 1.24.0
 github.com/kcp-dev/apimachinery/v2/pkg/cache
 github.com/kcp-dev/apimachinery/v2/pkg/client
 github.com/kcp-dev/apimachinery/v2/third_party/informers
-# github.com/kcp-dev/client-go v0.0.0-20250721105427-d4a93d7c5fc9
+# github.com/kcp-dev/client-go v0.0.0-20250728134101-0355faa9361b
 ## explicit; go 1.24.0
 github.com/kcp-dev/client-go/apiextensions/client
 github.com/kcp-dev/client-go/apiextensions/client/scheme

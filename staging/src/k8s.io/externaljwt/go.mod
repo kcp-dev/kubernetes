@@ -14,9 +14,6 @@ require (
 
 require (
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/kcp-dev/apimachinery/v2 v2.0.1-0.20250728122101-adbf20db3e51
-	github.com/kcp-dev/client-go v0.0.0-20250728134101-0355faa9361b
-	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	go.opentelemetry.io/otel v1.33.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.33.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
