@@ -125,7 +125,6 @@ function kube::codegen::gen_helpers() {
             conversion-gen"${CODEGEN_VERSION_SPEC}"
             deepcopy-gen"${CODEGEN_VERSION_SPEC}"
             defaulter-gen"${CODEGEN_VERSION_SPEC}"
-            validation-gen"${CODEGEN_VERSION_SPEC}"
         )
         # shellcheck disable=2046 # printf word-splitting is intentional
         GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s " "${BINS[@]}")
