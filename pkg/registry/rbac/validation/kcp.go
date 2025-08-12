@@ -115,10 +115,14 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 					Name:  fmt.Sprintf("system:kcp:serviceaccount:%s:%s", clusters[0], nsNameSuffix),
 					Extra: u.GetExtra(),
 				}
+				// Filter groups to only include system:authenticated
+				// and system:cluster:*
 				for _, g := range u.GetGroups() {
 					if g == user.AllAuthenticated {
-						rewritten.Groups = []string{user.AllAuthenticated}
-						break
+						rewritten.Groups = append(rewritten.Groups, user.AllAuthenticated)
+					}
+					if strings.HasPrefix(g, "system:cluster:") {
+						rewritten.Groups = append(rewritten.Groups, g)
 					}
 				}
 				ret = append(ret, rewritten)
@@ -147,7 +151,16 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 	recursive(u)
 
 	if wantAuthenticated {
-		ret = append(ret, authenticated)
+		authed := &user.DefaultInfo{
+			Name:   user.Anonymous,
+			Groups: []string{user.AllAuthenticated},
+		}
+		for _, g := range u.GetGroups() {
+			if strings.HasPrefix(g, "system:cluster:") {
+				authed.Groups = append(authed.Groups, g)
+			}
+		}
+		ret = append(ret, authed)
 	}
 	if wantUnauthenticated {
 		ret = append(ret, unauthenticated)
