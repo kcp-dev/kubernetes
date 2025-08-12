@@ -117,8 +117,13 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 				}
 				for _, g := range u.GetGroups() {
 					if g == user.AllAuthenticated {
-						rewritten.Groups = []string{user.AllAuthenticated}
-						break
+						rewritten.Groups = append(rewritten.Groups, user.AllAuthenticated)
+					}
+					// system:cluster:* groups are used to allow
+					// controlling binding APIExports between workspaces
+					// via RBAC
+					if strings.HasPrefix(g, "system:cluster:") {
+						rewritten.Groups = append(rewritten.Groups, g)
 					}
 				}
 				ret = append(ret, rewritten)
@@ -147,7 +152,18 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 	recursive(u)
 
 	if wantAuthenticated {
-		ret = append(ret, authenticated)
+		authed := &user.DefaultInfo{
+			Name:   user.Anonymous,
+			Groups: []string{user.AllAuthenticated},
+		}
+		for _, g := range u.GetGroups() {
+			// system:cluster:* groups are used to allow controlling
+			// binding APIExports between workspaces via RBAC
+			if strings.HasPrefix(g, "system:cluster:") {
+				authed.Groups = append(authed.Groups, g)
+			}
+		}
+		ret = append(ret, authed)
 	}
 	if wantUnauthenticated {
 		ret = append(ret, unauthenticated)
