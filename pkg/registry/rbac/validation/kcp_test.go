@@ -89,13 +89,13 @@ func TestIsInScope(t *testing.T) {
 		},
 		{
 			name:    "serviceaccount from other cluster",
-			info:    user.DefaultInfo{Name: "system:serviceaccount:default:foo", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"anotherws"}}},
+			info:    user.DefaultInfo{Name: "system:serviceaccount:default:foo", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"anotherws"}}},
 			cluster: logicalcluster.Name("this"),
 			want:    false,
 		},
 		{
 			name:    "serviceaccount from same cluster",
-			info:    user.DefaultInfo{Name: "system:serviceaccount:default:foo", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
+			info:    user.DefaultInfo{Name: "system:serviceaccount:default:foo", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this"}}},
 			cluster: logicalcluster.Name("this"),
 			want:    true,
 		},
@@ -111,8 +111,8 @@ func TestIsInScope(t *testing.T) {
 		{
 			name: "scoped service account",
 			info: user.DefaultInfo{Name: "system:serviceaccount:default:foo", Extra: map[string][]string{
-				"authentication.kubernetes.io/cluster-name": {"this"},
-				"authentication.kcp.io/scopes":              {"cluster:this"},
+				"authentication.kcp.io/cluster-name": {"this"},
+				"authentication.kcp.io/scopes":       {"cluster:this"},
 			}},
 			cluster: logicalcluster.Name("this"),
 			want:    true,
@@ -120,8 +120,8 @@ func TestIsInScope(t *testing.T) {
 		{
 			name: "scoped foreign service account",
 			info: user.DefaultInfo{Name: "system:serviceaccount:default:foo", Extra: map[string][]string{
-				"authentication.kubernetes.io/cluster-name": {"another"},
-				"authentication.kcp.io/scopes":              {"cluster:this"},
+				"authentication.kcp.io/cluster-name": {"another"},
+				"authentication.kcp.io/scopes":       {"cluster:this"},
 			}},
 			cluster: logicalcluster.Name("this"),
 			want:    false,
@@ -129,8 +129,8 @@ func TestIsInScope(t *testing.T) {
 		{
 			name: "scoped service account to another clusters",
 			info: user.DefaultInfo{Name: "system:serviceaccount:default:foo", Extra: map[string][]string{
-				"authentication.kubernetes.io/cluster-name": {"this"},
-				"authentication.kcp.io/scopes":              {"cluster:another"},
+				"authentication.kcp.io/cluster-name": {"this"},
+				"authentication.kcp.io/scopes":       {"cluster:another"},
 			}},
 			want: false,
 		},
@@ -226,37 +226,37 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 		// service accounts with cluster
 		{
 			name: "local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: true,
 		},
 		{
 			name: "foreign service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
 		{
 			name: "foreign service account with local warrant",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["this"]}}`}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kcp.io/cluster-name":["this"]}}`}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: true,
 		},
 		{
 			name: "foreign service account with foreign warrant",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kubernetes.io/cluster-name":["other"]}}`}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kcp.io/cluster-name":["other"]}}`}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
 		{
 			name: "local service account with multiple clusters",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this", "this"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this", "this"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
 		{
 			name: "out-of-scope local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}, "authentication.kcp.io/scopes": {"cluster:other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this"}, "authentication.kcp.io/scopes": {"cluster:other"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
@@ -264,13 +264,13 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 		// global service accounts
 		{
 			name: "local service account as global kcp service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"this"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this"}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
 			want: true,
 		},
 		{
 			name: "foreign service account as global kcp service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
 			want: false,
 		},
@@ -346,25 +346,25 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 		},
 		{
 			name: "foreign service-account does not match itself",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Name: "system:serviceaccount:ns:sa"},
 			want: false,
 		},
 		{
 			name: "foreign unauthenticated service-account does not match system:authenticated",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}}},
 			sub:  rbacv1.Subject{Kind: "Group", Name: "system:authenticated"},
 			want: false,
 		},
 		{
 			name: "foreign unauthenticated service-account matches system:unauthenticated",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}}},
 			sub:  rbacv1.Subject{Kind: "Group", Name: "system:unauthenticated"},
 			want: true,
 		},
 		{
 			name: "foreign authenticated service-account matches system:authenticated",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Groups: []string{user.AllAuthenticated}, Extra: map[string][]string{"authentication.kubernetes.io/cluster-name": {"other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Groups: []string{user.AllAuthenticated}, Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}}},
 			sub:  rbacv1.Subject{Kind: "Group", Name: "system:authenticated"},
 			want: true,
 		},

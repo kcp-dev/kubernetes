@@ -74,7 +74,7 @@ const (
 	// "extra" to specify the "admissionReviewAPIGroups" claim.
 	AttestationAdmissionReviewAPIGroupsKey = AttestationKeyPrefix + authenticationv1.AttestationAdmissionReviewAPIGroups
 	// ClusterNameKey is the logical cluster name this service-account comes from.
-	ClusterNameKey = "authentication.kubernetes.io/cluster-name"
+	ClusterNameKey = "authentication.kcp.io/cluster-name"
 )
 
 // MakeUsername generates a username from the given namespace and ServiceAccount name.
