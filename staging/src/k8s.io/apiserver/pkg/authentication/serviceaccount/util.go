@@ -52,6 +52,8 @@ const (
 	NodeUIDKey = "authentication.kubernetes.io/node-uid"
 	// ClusterNameKey is the logical cluster name this service-account comes from.
 	ClusterNameKey = "authentication.kcp.io/cluster-name"
+	// ClusterScopeKey additionally sets the scope for the service-account to the cluster it belongs to.
+	ClusterScopeKey = "authentication.kcp.io/scopes"
 )
 
 // MakeUsername generates a username from the given namespace and ServiceAccount name.
@@ -170,6 +172,7 @@ func (sa *ServiceAccountInfo) UserInfo() user.Info {
 		info.Extra = map[string][]string{}
 	}
 	info.Extra[ClusterNameKey] = []string{sa.ClusterName.String()}
+	info.Extra[ClusterScopeKey] = []string{"cluster:" + sa.ClusterName.String()}
 	return info
 }
 
