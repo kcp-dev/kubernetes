@@ -3,6 +3,7 @@ package validation
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/kcp-dev/logicalcluster/v3"
@@ -31,6 +32,10 @@ const (
 	// The clusters in one extra value are or'ed, multiple extra values
 	// are and'ed.
 	ScopeExtraKey = "authentication.kcp.io/scopes"
+
+	// ClusterExtraKey is the key used in a user's "extra" to specify
+	// the origin cluster of the user.
+	ClusterExtraKey = "authentication.kcp.io/cluster-name"
 
 	// ClusterPrefix is the prefix for cluster scopes.
 	clusterPrefix = "cluster:"
@@ -79,6 +84,35 @@ func withScopesAndWarrants(appliesToUser appliesToUserFunc) appliesToUserFuncCtx
 	}
 }
 
+// EffectiveScopes takes the scopes of a user and returns the
+// intersection of all scopes.
+func EffectiveScopes(in []string) []string {
+	if len(in) == 0 {
+		return in
+	}
+
+	effectiveScopes := strings.Split(in[0], ",")
+	if len(effectiveScopes) == 0 || len(in) == 1 {
+		return effectiveScopes
+	}
+
+	for _, further := range in[1:] {
+		furtherScopes := strings.Split(further, ",")
+		newEffective := make([]string, 0, len(effectiveScopes))
+		for _, es := range effectiveScopes {
+			if slices.Contains(furtherScopes, es) {
+				newEffective = append(newEffective, es)
+			}
+		}
+		effectiveScopes = newEffective
+		if len(effectiveScopes) == 0 {
+			return []string{}
+		}
+	}
+
+	return effectiveScopes
+}
+
 var (
 	authenticated   = &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllAuthenticated}}
 	unauthenticated = &user.DefaultInfo{Name: user.Anonymous, Groups: []string{user.AllUnauthenticated}}
@@ -96,6 +130,10 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 	recursive = func(u user.Info) {
 		if IsInScope(u, clusterName) {
 			ret = append(ret, u)
+			// TODO(ntnn): Add system:cluster:<cluster> group?
+			// Though the user is in scope so it shouldn't need the
+			// group added but it might be better for consistency?
+			// Leaving it out for now but could be revisited.
 		} else {
 			found := false
 			for _, g := range u.GetGroups() {
@@ -119,15 +157,27 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 					if g == user.AllAuthenticated {
 						rewritten.Groups = append(rewritten.Groups, user.AllAuthenticated)
 					}
-					// system:cluster:* groups are used to allow
-					// controlling binding APIExports between workspaces
-					// via RBAC
-					if strings.HasPrefix(g, "system:cluster:") {
-						rewritten.Groups = append(rewritten.Groups, g)
+				}
+				// Add the system:cluster:<cluster> group if the SA has
+				// an effective scope for the cluster the effective
+				// users are calculated for.
+				for _, g := range EffectiveScopes(u.GetExtra()[ScopeExtraKey]) {
+					if strings.HasPrefix(g, clusterPrefix) {
+						rewritten.Groups = append(rewritten.Groups, "system:"+g)
 					}
 				}
 				ret = append(ret, rewritten)
 			}
+		}
+
+		if len(u.GetExtra()[WarrantExtraKey]) > 0 && len(u.GetExtra()[ClusterExtraKey]) > 0 && !IsServiceAccount(u) {
+			// Users that are not SAs and have a cluster extra key
+			// cannot have warrants, as they would be coming from
+			// per-workspace authentication.
+			// If this happens it is either a misconfiguration from the
+			// admin or a malicious actor that tries to escalate
+			// privileges through warrants.
+			return
 		}
 
 		for _, v := range u.GetExtra()[WarrantExtraKey] {
@@ -143,8 +193,16 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 				Extra:  w.Extra,
 			}
 			if IsServiceAccount(wu) && len(w.Extra[authserviceaccount.ClusterNameKey]) == 0 {
-				// warrants must be scoped to a cluster
+				// For SAs warrants must be scoped to a cluster.
 				continue
+			}
+			// Add the system:cluster:<cluster> group if the warrant has
+			// an effective scope for the cluster the effective
+			// users are calculated for.
+			for _, g := range EffectiveScopes(wu.GetExtra()[ScopeExtraKey]) {
+				if strings.HasPrefix(g, clusterPrefix) {
+					wu.Groups = append(wu.Groups, "system:"+g)
+				}
 			}
 			recursive(wu)
 		}
@@ -156,11 +214,9 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 			Name:   user.Anonymous,
 			Groups: []string{user.AllAuthenticated},
 		}
-		for _, g := range u.GetGroups() {
-			// system:cluster:* groups are used to allow controlling
-			// binding APIExports between workspaces via RBAC
-			if strings.HasPrefix(g, "system:cluster:") {
-				authed.Groups = append(authed.Groups, g)
+		for _, g := range EffectiveScopes(u.GetExtra()[ScopeExtraKey]) {
+			if strings.HasPrefix(g, clusterPrefix) {
+				authed.Groups = append(authed.Groups, "system:"+g)
 			}
 		}
 		ret = append(ret, authed)
