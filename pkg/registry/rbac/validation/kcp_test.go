@@ -177,10 +177,28 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "simple matching user with warrants and from this cluster",
+			user: &user.DefaultInfo{Name: "user-a", Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"user-b"}`},
+				ClusterExtraKey: {"this"},
+			}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: true, // user is subject
+		},
+		{
 			name: "simple non-matching user with matching warrants",
 			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-a"}`}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
 			want: true,
+		},
+		{
+			name: "simple non-matching user with matching warrants but with cluster-name",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"user-a"}`},
+				ClusterExtraKey: {"this"},
+			}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: false, // Warrants are ineffective on users with cluster
 		},
 		{
 			name: "simple non-matching user with non-matching warrants",
@@ -193,6 +211,15 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"user-b"}`, `{"user":"user-a"}`, `{"user":"user-c"}`}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
 			want: true,
+		},
+		{
+			name: "simple non-matching user with multiple warrants and cluster-name",
+			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{
+				WarrantExtraKey: {`{"user":"user-b"}`, `{"user":"user-a"}`, `{"user":"user-c"}`},
+				ClusterExtraKey: {"this"},
+			}},
+			sub:  rbacv1.Subject{Kind: "User", Name: "user-a"},
+			want: false, // Warrants are ineffective on users with cluster
 		},
 		{
 			name: "simple non-matching user with nested warrants",
@@ -210,18 +237,18 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 		},
 		{
 			name: "non-cluster-aware service account with this scope",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:this"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{ScopeExtraKey: {"cluster:this"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: true,
 		},
 		{
 			name: "non-cluster-aware service account with other scope",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/scopes": {"cluster:other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{ScopeExtraKey: {"cluster:other"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
 		{
-			name: "non-cluster-aware service account as warrant",
+			name: "non-cluster-aware service account as warrant", // TODO what is this supposed to test?
 			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa"}`}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
@@ -230,37 +257,46 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 		// service accounts with cluster
 		{
 			name: "local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{ClusterExtraKey: {"this"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: true,
 		},
 		{
 			name: "foreign service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{ClusterExtraKey: {"other"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
 		{
 			name: "foreign service account with local warrant",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kcp.io/cluster-name":["this"]}}`}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{
+				ClusterExtraKey: {"other"},
+				WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kcp.io/cluster-name":["this"]}}`},
+			}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: true,
 		},
 		{
 			name: "foreign service account with foreign warrant",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"other"}, WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kcp.io/cluster-name":["other"]}}`}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{
+				ClusterExtraKey: {"other"},
+				WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa","extra":{"authentication.kcp.io/cluster-name":["other"]}}`},
+			}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
 		{
 			name: "local service account with multiple clusters",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this", "this"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{ClusterExtraKey: {"this", "this"}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
 		{
 			name: "out-of-scope local service account",
-			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this"}, "authentication.kcp.io/scopes": {"cluster:other"}}},
+			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{
+				ClusterExtraKey: {"this"},
+				ScopeExtraKey:   {"cluster:other"},
+			}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
 		},
@@ -492,6 +528,71 @@ func TestPrefixUser(t *testing.T) {
 			got := PrefixUser(tt.u, tt.prefix)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("prefixUser() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestEffectiveUsers(t *testing.T) {
+	tests := map[string]struct {
+		in   []string
+		want []string
+	}{
+		"empty": {
+			in:   []string{},
+			want: []string{},
+		},
+		"one scope entry, one cluster": {
+			in:   []string{"cluster:this"},
+			want: []string{"cluster:this"},
+		},
+		"one scope entry, multiple clusters": {
+			in:   []string{"cluster:this,cluster:that"},
+			want: []string{"cluster:this", "cluster:that"},
+		},
+		"multiple scope entries, multiple clusters, empty result": {
+			in: []string{
+				"cluster:this,cluster:that",
+				"cluster:other",
+			},
+			want: []string{},
+		},
+		"multiple scope entries, multiple clusters, non-empty result": {
+			in: []string{
+				"cluster:this,cluster:that",
+				"cluster:other,cluster:this",
+			},
+			want: []string{"cluster:this"},
+		},
+		"multiple scopes entries, multiple clusters, multiple others": {
+			in: []string{
+				"cluster:this,foo:bar",
+				"cluster:this,cluster:other,foo:bar",
+				"cluster:third,foo:bar,foo:baz",
+			},
+			want: []string{
+				"foo:bar",
+			},
+		},
+		"multiple equal scopes entries": {
+			in: []string{
+				"cluster:this,cluster:other,foo:bar",
+				"cluster:this,cluster:other,foo:bar",
+				"cluster:this,cluster:other,foo:bar",
+			},
+			want: []string{
+				"cluster:this",
+				"cluster:other",
+				"foo:bar",
+			},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := EffectiveScopes(tt.in)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("EffectiveScopes() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
