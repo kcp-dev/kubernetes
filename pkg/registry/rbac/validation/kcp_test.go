@@ -248,7 +248,7 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "non-cluster-aware service account as warrant", // TODO what is this supposed to test?
+			name: "non-cluster-aware service account as warrant",
 			user: &user.DefaultInfo{Name: "user-b", Extra: map[string][]string{WarrantExtraKey: {`{"user":"system:serviceaccount:ns:sa"}`}}},
 			sub:  rbacv1.Subject{Kind: "ServiceAccount", Namespace: "ns", Name: "sa"},
 			want: false,
