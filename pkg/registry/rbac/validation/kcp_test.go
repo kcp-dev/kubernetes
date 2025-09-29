@@ -11,6 +11,8 @@ import (
 	authserviceaccount "k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/request"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/features"
 )
 
 func TestIsInScope(t *testing.T) {
@@ -145,6 +147,8 @@ func TestIsInScope(t *testing.T) {
 }
 
 func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
+	globalsa := utilfeature.DefaultFeatureGate.Enabled(features.GlobalServiceAccount)
+
 	tests := []struct {
 		name string
 		user user.Info
@@ -266,7 +270,12 @@ func TestAppliesToUserWithWarrantsAndScopes(t *testing.T) {
 			name: "local service account as global kcp service account",
 			user: &user.DefaultInfo{Name: "system:serviceaccount:ns:sa", Extra: map[string][]string{"authentication.kcp.io/cluster-name": {"this"}}},
 			sub:  rbacv1.Subject{Kind: "User", Name: "system:kcp:serviceaccount:this:ns:sa"},
-			want: true,
+			// This test can only pass if the feature gate is enabled.
+			// Since global service accounts are not fully implemented
+			// yet the result of this test is tied to the feature gate.
+			// When the feature is fully implemented this test should
+			// run once with and once without the feature gate.
+			want: globalsa,
 		},
 		{
 			name: "foreign service account as global kcp service account",

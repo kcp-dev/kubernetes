@@ -1330,6 +1330,13 @@ const (
 	// Enables the Job controller to automatically create Workload and PodGroup
 	// objects for Jobs that qualify for gang scheduling.
 	WorkloadWithJob featuregate.Feature = "WorkloadWithJob"
+
+	// TODO(cnvergence): Remove when not applicable
+	// owner: @cnvergence
+	// alpha: v1.31
+	//
+	// GlobalServiceAccount is a feature gate that enables the cross-workspace service accounts feature.
+	GlobalServiceAccount featuregate.Feature = "GlobalServiceAccount"
 )
 
 // defaultVersionedKubernetesFeatureGates consists of all known Kubernetes-specific feature keys with VersionedSpecs.
