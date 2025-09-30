@@ -170,16 +170,6 @@ func EffectiveUsers(clusterName logicalcluster.Name, u user.Info) []user.Info {
 			}
 		}
 
-		if len(u.GetExtra()[WarrantExtraKey]) > 0 && len(u.GetExtra()[ClusterExtraKey]) > 0 && !IsServiceAccount(u) {
-			// Users that are not SAs and have a cluster extra key
-			// cannot have warrants, as they would be coming from
-			// per-workspace authentication.
-			// If this happens it is either a misconfiguration from the
-			// admin or a malicious actor that tries to escalate
-			// privileges through warrants.
-			return
-		}
-
 		for _, v := range u.GetExtra()[WarrantExtraKey] {
 			var w Warrant
 			if err := json.Unmarshal([]byte(v), &w); err != nil {
