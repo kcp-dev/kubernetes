@@ -94,6 +94,15 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 	fakeReq := &http.Request{Header: http.Header{}}
 	fakeReq.Header.Add("Authorization", "Bearer "+tokenReview.Spec.Token)
 
+	// kcp
+	cluster := genericapirequest.ClusterFrom(ctx)
+	if cluster == nil {
+		return nil, apierrors.NewBadRequest("cannot handle TokenReviews wihout a cluster in the context")
+	}
+	// For the per-workspace-authentication in kcp to work, the authenticator needs access to the cluster name.
+	fakeReq = fakeReq.WithContext(genericapirequest.WithCluster(fakeReq.Context(), *cluster))
+	// end kcp
+
 	auds := tokenReview.Spec.Audiences
 	if len(auds) == 0 {
 		auds = r.apiAudiences
