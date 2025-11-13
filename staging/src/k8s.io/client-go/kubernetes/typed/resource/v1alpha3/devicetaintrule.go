@@ -65,7 +65,6 @@ func newDeviceTaintRules(c *ResourceV1alpha3Client) *deviceTaintRules {
 			"",
 			func() *resourcev1alpha3.DeviceTaintRule { return &resourcev1alpha3.DeviceTaintRule{} },
 			func() *resourcev1alpha3.DeviceTaintRuleList { return &resourcev1alpha3.DeviceTaintRuleList{} },
-			gentype.PrefersProtobuf[*resourcev1alpha3.DeviceTaintRule](),
 		),
 	}
 }

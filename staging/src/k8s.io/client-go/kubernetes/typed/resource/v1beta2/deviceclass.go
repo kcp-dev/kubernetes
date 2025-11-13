@@ -65,7 +65,6 @@ func newDeviceClasses(c *ResourceV1beta2Client) *deviceClasses {
 			"",
 			func() *resourcev1beta2.DeviceClass { return &resourcev1beta2.DeviceClass{} },
 			func() *resourcev1beta2.DeviceClassList { return &resourcev1beta2.DeviceClassList{} },
-			gentype.PrefersProtobuf[*resourcev1beta2.DeviceClass](),
 		),
 	}
 }

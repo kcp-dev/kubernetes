@@ -65,7 +65,6 @@ func newEndpoints(c *CoreV1Client, namespace string) *endpoints {
 			namespace,
 			func() *corev1.Endpoints { return &corev1.Endpoints{} },
 			func() *corev1.EndpointsList { return &corev1.EndpointsList{} },
-			gentype.PrefersProtobuf[*corev1.Endpoints](),
 		),
 	}
 }
