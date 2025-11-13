@@ -60,6 +60,9 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kcp-dev/apimachinery/v2 v2.29.0-rc.1.0.20251112143648-9e5d2b714f33
+	github.com/kcp-dev/client-go v0.28.1-0.20251112153209-b37f4c1ff9a2
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
