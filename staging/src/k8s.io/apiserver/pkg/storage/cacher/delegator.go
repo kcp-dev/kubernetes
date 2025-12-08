@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/audit"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/cacher/delegator"
@@ -332,6 +333,7 @@ func (c consistencyChecker) startChecking(stopCh <-chan struct{}) {
 }
 
 func (c *consistencyChecker) check(ctx context.Context) {
+	ctx = genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Wildcard: true})
 	digests, err := c.calculateDigests(ctx)
 	if err != nil {
 		klog.ErrorS(err, "Cache consistency check error", "group", c.groupResource.Group, "resource", c.groupResource.Resource)
