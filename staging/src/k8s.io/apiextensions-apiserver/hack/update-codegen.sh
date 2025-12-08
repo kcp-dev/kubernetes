@@ -53,5 +53,4 @@ kube::codegen::gen_client \
     --output-pkg "${THIS_PKG}/pkg/client" \
     --versioned-name "clientset" \
     --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
-    --prefers-protobuf \
     "${SCRIPT_ROOT}/pkg/apis"

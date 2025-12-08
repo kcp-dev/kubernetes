@@ -688,7 +688,6 @@ function kube::codegen::gen_client() {
         --apply-configuration-package "${applyconfig_pkg}" \
         --input-base "$(cd "${in_dir}" && pwd -P)" `# must be absolute path or Go import path"` \
         --plural-exceptions "${plural_exceptions}" \
-        --prefers-protobuf="${prefers_protobuf}" \
         "${inputs[@]}"
 
     if [ "${watchable}" == "true" ]; then
