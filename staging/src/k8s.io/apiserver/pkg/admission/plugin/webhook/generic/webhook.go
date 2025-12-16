@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 
-	"k8s.io/apiserver/pkg/cel/environment"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
@@ -152,8 +151,8 @@ func NewWebhook(handler *admission.Handler, configFile io.Reader, sourceFactory 
 		namespaceMatcher:           &namespace.Matcher{},
 		objectMatcher:              &object.Matcher{},
 		dispatcher:                 dispatcherFactory(&cm),
-		filterCompiler:             cel.NewConditionCompiler(environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion())),
 		excludedAdmissionResources: sets.New[schema.GroupResource](),
+		filterCompiler:             sharedFilterCompiler,
 	}, nil
 }
 

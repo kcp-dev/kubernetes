@@ -1,6 +1,8 @@
 package generic
 
 import (
+	"k8s.io/apiserver/pkg/admission/plugin/cel"
+	"k8s.io/apiserver/pkg/cel/environment"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 )
 
@@ -17,3 +19,5 @@ func (a *Webhook) SetReadyFuncFromKCP(namespaceInformer coreinformers.NamespaceI
 		return namespaceInformer.Informer().HasSynced() && a.hookSource.HasSynced()
 	})
 }
+
+var sharedFilterCompiler = cel.NewConditionCompiler(environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion()))
