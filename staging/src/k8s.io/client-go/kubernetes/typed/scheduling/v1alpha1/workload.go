@@ -65,7 +65,6 @@ func newWorkloads(c *SchedulingV1alpha1Client, namespace string) *workloads {
 			namespace,
 			func() *schedulingv1alpha1.Workload { return &schedulingv1alpha1.Workload{} },
 			func() *schedulingv1alpha1.WorkloadList { return &schedulingv1alpha1.WorkloadList{} },
-			gentype.PrefersProtobuf[*schedulingv1alpha1.Workload](),
 		),
 	}
 }

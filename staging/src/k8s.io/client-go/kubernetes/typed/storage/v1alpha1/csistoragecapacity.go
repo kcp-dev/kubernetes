@@ -65,7 +65,6 @@ func newCSIStorageCapacities(c *StorageV1alpha1Client, namespace string) *cSISto
 			namespace,
 			func() *storagev1alpha1.CSIStorageCapacity { return &storagev1alpha1.CSIStorageCapacity{} },
 			func() *storagev1alpha1.CSIStorageCapacityList { return &storagev1alpha1.CSIStorageCapacityList{} },
-			gentype.PrefersProtobuf[*storagev1alpha1.CSIStorageCapacity](),
 		),
 	}
 }

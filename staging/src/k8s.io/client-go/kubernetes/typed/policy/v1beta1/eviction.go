@@ -49,7 +49,6 @@ func newEvictions(c *PolicyV1beta1Client, namespace string) *evictions {
 			scheme.ParameterCodec,
 			namespace,
 			func() *policyv1beta1.Eviction { return &policyv1beta1.Eviction{} },
-			gentype.PrefersProtobuf[*policyv1beta1.Eviction](),
 		),
 	}
 }

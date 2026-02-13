@@ -73,7 +73,6 @@ func newValidatingAdmissionPolicies(c *AdmissionregistrationV1alpha1Client) *val
 			func() *admissionregistrationv1alpha1.ValidatingAdmissionPolicyList {
 				return &admissionregistrationv1alpha1.ValidatingAdmissionPolicyList{}
 			},
-			gentype.PrefersProtobuf[*admissionregistrationv1alpha1.ValidatingAdmissionPolicy](),
 		),
 	}
 }

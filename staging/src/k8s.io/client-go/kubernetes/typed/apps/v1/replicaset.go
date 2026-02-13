@@ -77,7 +77,6 @@ func newReplicaSets(c *AppsV1Client, namespace string) *replicaSets {
 			namespace,
 			func() *appsv1.ReplicaSet { return &appsv1.ReplicaSet{} },
 			func() *appsv1.ReplicaSetList { return &appsv1.ReplicaSetList{} },
-			gentype.PrefersProtobuf[*appsv1.ReplicaSet](),
 		),
 	}
 }
@@ -86,7 +85,6 @@ func newReplicaSets(c *AppsV1Client, namespace string) *replicaSets {
 func (c *replicaSets) GetScale(ctx context.Context, replicaSetName string, options metav1.GetOptions) (result *autoscalingv1.Scale, err error) {
 	result = &autoscalingv1.Scale{}
 	err = c.GetClient().Get().
-		UseProtobufAsDefault().
 		Namespace(c.GetNamespace()).
 		Resource("replicasets").
 		Name(replicaSetName).
@@ -101,7 +99,6 @@ func (c *replicaSets) GetScale(ctx context.Context, replicaSetName string, optio
 func (c *replicaSets) UpdateScale(ctx context.Context, replicaSetName string, scale *autoscalingv1.Scale, opts metav1.UpdateOptions) (result *autoscalingv1.Scale, err error) {
 	result = &autoscalingv1.Scale{}
 	err = c.GetClient().Put().
-		UseProtobufAsDefault().
 		Namespace(c.GetNamespace()).
 		Resource("replicasets").
 		Name(replicaSetName).
@@ -127,7 +124,6 @@ func (c *replicaSets) ApplyScale(ctx context.Context, replicaSetName string, sca
 
 	result = &autoscalingv1.Scale{}
 	err = request.
-		UseProtobufAsDefault().
 		Namespace(c.GetNamespace()).
 		Resource("replicasets").
 		Name(replicaSetName).
