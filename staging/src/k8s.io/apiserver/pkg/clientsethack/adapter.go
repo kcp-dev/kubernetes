@@ -77,7 +77,7 @@ import (
 	storagev1 "k8s.io/client-go/kubernetes/typed/storage/v1"
 	storagev1alpha1 "k8s.io/client-go/kubernetes/typed/storage/v1alpha1"
 	storagev1beta1 "k8s.io/client-go/kubernetes/typed/storage/v1beta1"
-	storagemigrationv1alpha1 "k8s.io/client-go/kubernetes/typed/storagemigration/v1alpha1"
+	storagemigrationv1beta1 "k8s.io/client-go/kubernetes/typed/storagemigration/v1beta1"
 )
 
 // Interface allows us to hold onto a strongly-typed cluster-aware clients here, while
@@ -320,7 +320,7 @@ func (h *hack) StorageV1alpha1() storagev1alpha1.StorageV1alpha1Interface {
 	panic("programmer error: using a cluster-unaware clientset, need to cast this to use the cluster-aware one!")
 }
 
-func (h *hack) StoragemigrationV1alpha1() storagemigrationv1alpha1.StoragemigrationV1alpha1Interface {
+func (h *hack) StoragemigrationV1beta1() storagemigrationv1beta1.StoragemigrationV1beta1Interface {
 	panic("programmer error: using a cluster-unaware clientset, need to cast this to use the cluster-aware one!")
 }
 
