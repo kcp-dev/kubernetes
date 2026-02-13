@@ -31,6 +31,9 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kcp-dev/apimachinery/v2 v2.29.1-0.20260212210446-9e71bed72902
+	github.com/kcp-dev/client-go v0.28.1-0.20260213131112-b2214014096a
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/moby/term v0.5.0 // indirect
