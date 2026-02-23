@@ -104,6 +104,24 @@ func decodeLiveOrNew(liveObj, newObj runtime.Object, ignoreManagedFieldsFromRequ
 	if err != nil || len(managed.Fields()) == 0 {
 		return emptyManagedFieldsOnErr(DecodeManagedFields(liveAccessor.GetManagedFields()))
 	}
+
+	// Drop managed field entries whose API group doesn't match the object's
+	// own group. This can happen when an object is created from a template
+	// derived from a different resource type and accidentally carries over
+	// that type's managedFields (e.g. a BoundSchema template built from a CRD
+	// carrying apiextensions.k8s.io/v1 entries).
+	if objGroup := newObj.GetObjectKind().GroupVersionKind().Group; objGroup != "" {
+		for manager, entry := range managed.Fields() {
+			entryGV, err := schema.ParseGroupVersion(string(entry.APIVersion()))
+			if err != nil || entryGV.Group != objGroup {
+				delete(managed.Fields(), manager)
+			}
+		}
+		if len(managed.Fields()) == 0 {
+			return emptyManagedFieldsOnErr(DecodeManagedFields(liveAccessor.GetManagedFields()))
+		}
+	}
+
 	return managed, nil
 }
 
