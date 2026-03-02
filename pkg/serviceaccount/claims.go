@@ -134,13 +134,24 @@ func Claims(sa core.ServiceAccount, pod *core.Pod, secret *core.Secret, node *co
 }
 
 func NewValidator(getter ServiceAccountTokenClusterGetter) Validator[privateClaims] {
+	return NewValidatorWithLookup(getter, true)
+}
+
+// NewValidatorWithLookup creates a validator with configurable lookup behavior.
+// When lookup is false, the validator skips verifying that the service account,
+// secret, pod, and node still exist. This is useful in multi-shard environments
+// where the validating server may not have access to the workspace containing the SA.
+// KCP carry patch: respect --service-account-lookup=false for JWT tokens.
+func NewValidatorWithLookup(getter ServiceAccountTokenClusterGetter, lookup bool) Validator[privateClaims] {
 	return &validator{
 		getter: getter,
+		lookup: lookup,
 	}
 }
 
 type validator struct {
 	getter ServiceAccountTokenClusterGetter
+	lookup bool
 }
 
 var _ = Validator[privateClaims](&validator{})
@@ -181,87 +192,107 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 	podref := private.Kubernetes.Pod
 	noderef := private.Kubernetes.Node
 	secref := private.Kubernetes.Secret
-	// Make sure service account still exists (name and UID)
-	serviceAccount, err := v.getter.Cluster(clusterName).GetServiceAccount(namespace, saref.Name)
-	if err != nil {
-		klog.V(4).Infof("Could not retrieve service account %s/%s: %v", namespace, saref.Name, err)
-		return nil, err
-	}
-
-	if string(serviceAccount.UID) != saref.UID {
-		klog.V(4).Infof("Service account UID no longer matches %s/%s: %q != %q", namespace, saref.Name, string(serviceAccount.UID), saref.UID)
-		return nil, fmt.Errorf("service account UID (%s) does not match claim (%s)", serviceAccount.UID, saref.UID)
-	}
-	if serviceAccount.DeletionTimestamp != nil && serviceAccount.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
-		klog.V(4).Infof("Service account has been deleted %s/%s", namespace, saref.Name)
-		return nil, fmt.Errorf("service account %s/%s has been deleted", namespace, saref.Name)
-	}
-
-	if secref != nil {
-		// Make sure token hasn't been invalidated by deletion of the secret
-		secret, err := v.getter.Cluster(clusterName).GetSecret(namespace, secref.Name)
-		if err != nil {
-			klog.V(4).Infof("Could not retrieve bound secret %s/%s for service account %s/%s: %v", namespace, secref.Name, namespace, saref.Name, err)
-			return nil, errors.New("service account token has been invalidated")
-		}
-		if secref.UID != string(secret.UID) {
-			klog.V(4).Infof("Secret UID no longer matches %s/%s: %q != %q", namespace, secref.Name, string(secret.UID), secref.UID)
-			return nil, fmt.Errorf("secret UID (%s) does not match service account secret ref claim (%s)", secret.UID, secref.UID)
-		}
-		if secret.DeletionTimestamp != nil && secret.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
-			klog.V(4).Infof("Bound secret is deleted and awaiting removal: %s/%s for service account %s/%s", namespace, secref.Name, namespace, saref.Name)
-			return nil, errors.New("service account token has been invalidated")
-		}
-	}
 
 	var podName, podUID string
-	if podref != nil {
-		// Make sure token hasn't been invalidated by deletion of the pod
-		pod, err := v.getter.Cluster(clusterName).GetPod(namespace, podref.Name)
-		if err != nil {
-			klog.V(4).Infof("Could not retrieve bound pod %s/%s for service account %s/%s: %v", namespace, podref.Name, namespace, saref.Name, err)
-			return nil, errors.New("service account token has been invalidated")
-		}
-		if podref.UID != string(pod.UID) {
-			klog.V(4).Infof("Pod UID no longer matches %s/%s: %q != %q", namespace, podref.Name, string(pod.UID), podref.UID)
-			return nil, fmt.Errorf("pod UID (%s) does not match service account pod ref claim (%s)", pod.UID, podref.UID)
-		}
-		if pod.DeletionTimestamp != nil && pod.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
-			klog.V(4).Infof("Bound pod is deleted and awaiting removal: %s/%s for service account %s/%s", namespace, podref.Name, namespace, saref.Name)
-			return nil, errors.New("service account token has been invalidated")
-		}
-		podName = podref.Name
-		podUID = podref.UID
-	}
-
 	var nodeName, nodeUID string
-	if noderef != nil {
-		switch {
-		case podref != nil:
-			if utilfeature.DefaultFeatureGate.Enabled(features.ServiceAccountTokenPodNodeInfo) {
-				// for pod-bound tokens, just extract the node claims
+
+	// KCP carry patch: skip lookups when v.lookup is false.
+	// This is controlled by --service-account-lookup flag and is needed in multi-shard
+	// environments where the validating server may not have access to the workspace
+	// containing the service account.
+	if v.lookup {
+		// Make sure service account still exists (name and UID)
+		serviceAccount, err := v.getter.Cluster(clusterName).GetServiceAccount(namespace, saref.Name)
+		if err != nil {
+			klog.V(4).Infof("Could not retrieve service account %s/%s: %v", namespace, saref.Name, err)
+			return nil, err
+		}
+
+		if string(serviceAccount.UID) != saref.UID {
+			klog.V(4).Infof("Service account UID no longer matches %s/%s: %q != %q", namespace, saref.Name, string(serviceAccount.UID), saref.UID)
+			return nil, fmt.Errorf("service account UID (%s) does not match claim (%s)", serviceAccount.UID, saref.UID)
+		}
+		if serviceAccount.DeletionTimestamp != nil && serviceAccount.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
+			klog.V(4).Infof("Service account has been deleted %s/%s", namespace, saref.Name)
+			return nil, fmt.Errorf("service account %s/%s has been deleted", namespace, saref.Name)
+		}
+
+		if secref != nil {
+			// Make sure token hasn't been invalidated by deletion of the secret
+			secret, err := v.getter.Cluster(clusterName).GetSecret(namespace, secref.Name)
+			if err != nil {
+				klog.V(4).Infof("Could not retrieve bound secret %s/%s for service account %s/%s: %v", namespace, secref.Name, namespace, saref.Name, err)
+				return nil, errors.New("service account token has been invalidated")
+			}
+			if secref.UID != string(secret.UID) {
+				klog.V(4).Infof("Secret UID no longer matches %s/%s: %q != %q", namespace, secref.Name, string(secret.UID), secref.UID)
+				return nil, fmt.Errorf("secret UID (%s) does not match service account secret ref claim (%s)", secret.UID, secref.UID)
+			}
+			if secret.DeletionTimestamp != nil && secret.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
+				klog.V(4).Infof("Bound secret is deleted and awaiting removal: %s/%s for service account %s/%s", namespace, secref.Name, namespace, saref.Name)
+				return nil, errors.New("service account token has been invalidated")
+			}
+		}
+
+		if podref != nil {
+			// Make sure token hasn't been invalidated by deletion of the pod
+			pod, err := v.getter.Cluster(clusterName).GetPod(namespace, podref.Name)
+			if err != nil {
+				klog.V(4).Infof("Could not retrieve bound pod %s/%s for service account %s/%s: %v", namespace, podref.Name, namespace, saref.Name, err)
+				return nil, errors.New("service account token has been invalidated")
+			}
+			if podref.UID != string(pod.UID) {
+				klog.V(4).Infof("Pod UID no longer matches %s/%s: %q != %q", namespace, podref.Name, string(pod.UID), podref.UID)
+				return nil, fmt.Errorf("pod UID (%s) does not match service account pod ref claim (%s)", pod.UID, podref.UID)
+			}
+			if pod.DeletionTimestamp != nil && pod.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
+				klog.V(4).Infof("Bound pod is deleted and awaiting removal: %s/%s for service account %s/%s", namespace, podref.Name, namespace, saref.Name)
+				return nil, errors.New("service account token has been invalidated")
+			}
+			podName = podref.Name
+			podUID = podref.UID
+		}
+
+		if noderef != nil {
+			switch {
+			case podref != nil:
+				if utilfeature.DefaultFeatureGate.Enabled(features.ServiceAccountTokenPodNodeInfo) {
+					// for pod-bound tokens, just extract the node claims
+					nodeName = noderef.Name
+					nodeUID = noderef.UID
+				}
+			case podref == nil:
+				if !utilfeature.DefaultFeatureGate.Enabled(features.ServiceAccountTokenNodeBindingValidation) {
+					klog.V(4).Infof("ServiceAccount token is bound to a Node object, but the node bound token validation feature is disabled")
+					return nil, fmt.Errorf("token is bound to a Node object but the %s feature gate is disabled", features.ServiceAccountTokenNodeBindingValidation)
+				}
+
+				node, err := v.getter.Cluster(clusterName).GetNode(noderef.Name)
+				if err != nil {
+					klog.V(4).Infof("Could not retrieve node object %q for service account %s/%s: %v", noderef.Name, namespace, saref.Name, err)
+					return nil, errors.New("service account token has been invalidated")
+				}
+				if noderef.UID != string(node.UID) {
+					klog.V(4).Infof("Node UID no longer matches %s: %q != %q", noderef.Name, string(node.UID), noderef.UID)
+					return nil, fmt.Errorf("node UID (%s) does not match service account node ref claim (%s)", node.UID, noderef.UID)
+				}
+				if node.DeletionTimestamp != nil && node.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
+					klog.V(4).Infof("Node %q is deleted and awaiting removal for service account %s/%s", node.Name, namespace, saref.Name)
+					return nil, errors.New("service account token has been invalidated")
+				}
 				nodeName = noderef.Name
 				nodeUID = noderef.UID
 			}
-		case podref == nil:
-			if !utilfeature.DefaultFeatureGate.Enabled(features.ServiceAccountTokenNodeBindingValidation) {
-				klog.V(4).Infof("ServiceAccount token is bound to a Node object, but the node bound token validation feature is disabled")
-				return nil, fmt.Errorf("token is bound to a Node object but the %s feature gate is disabled", features.ServiceAccountTokenNodeBindingValidation)
-			}
-
-			node, err := v.getter.Cluster(clusterName).GetNode(noderef.Name)
-			if err != nil {
-				klog.V(4).Infof("Could not retrieve node object %q for service account %s/%s: %v", noderef.Name, namespace, saref.Name, err)
-				return nil, errors.New("service account token has been invalidated")
-			}
-			if noderef.UID != string(node.UID) {
-				klog.V(4).Infof("Node UID no longer matches %s: %q != %q", noderef.Name, string(node.UID), noderef.UID)
-				return nil, fmt.Errorf("node UID (%s) does not match service account node ref claim (%s)", node.UID, noderef.UID)
-			}
-			if node.DeletionTimestamp != nil && node.DeletionTimestamp.Time.Before(invalidIfDeletedBefore) {
-				klog.V(4).Infof("Node %q is deleted and awaiting removal for service account %s/%s", node.Name, namespace, saref.Name)
-				return nil, errors.New("service account token has been invalidated")
-			}
+		}
+	} else {
+		// When lookup is disabled, extract pod/node info from claims without verification.
+		// This is needed for multi-shard environments where the validating server
+		// may not have access to the workspace containing the service account.
+		if podref != nil {
+			podName = podref.Name
+			podUID = podref.UID
+		}
+		if noderef != nil {
 			nodeName = noderef.Name
 			nodeUID = noderef.UID
 		}
