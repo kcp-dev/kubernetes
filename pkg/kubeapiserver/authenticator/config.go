@@ -147,7 +147,7 @@ func (config Config) New(serverLifecycle context.Context) (authenticator.Request
 		tokenAuthenticators = append(tokenAuthenticators, serviceAccountAuth)
 	}
 	if len(config.ServiceAccountIssuers) > 0 && config.ServiceAccountPublicKeysGetter != nil {
-		serviceAccountAuth, err := newServiceAccountAuthenticator(config.ServiceAccountIssuers, config.ServiceAccountPublicKeysGetter, config.APIAudiences, config.ServiceAccountTokenGetter)
+		serviceAccountAuth, err := newServiceAccountAuthenticator(config.ServiceAccountIssuers, config.ServiceAccountPublicKeysGetter, config.APIAudiences, config.ServiceAccountTokenGetter, config.ServiceAccountLookup)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -392,11 +392,13 @@ func newLegacyServiceAccountAuthenticator(publicKeysGetter serviceaccount.Public
 }
 
 // newServiceAccountAuthenticator returns an authenticator.Token or an error
-func newServiceAccountAuthenticator(issuers []string, publicKeysGetter serviceaccount.PublicKeysGetter, apiAudiences authenticator.Audiences, serviceAccountGetter serviceaccount.ServiceAccountTokenClusterGetter) (authenticator.Token, error) {
+// KCP carry patch: added lookup parameter to respect --service-account-lookup flag
+// for JWT tokens in multi-shard environments.
+func newServiceAccountAuthenticator(issuers []string, publicKeysGetter serviceaccount.PublicKeysGetter, apiAudiences authenticator.Audiences, serviceAccountGetter serviceaccount.ServiceAccountTokenClusterGetter, lookup bool) (authenticator.Token, error) {
 	if publicKeysGetter == nil {
 		return nil, fmt.Errorf("no public key getter provided")
 	}
-	tokenAuthenticator := serviceaccount.JWTTokenAuthenticator(issuers, publicKeysGetter, apiAudiences, serviceaccount.NewValidator(serviceAccountGetter))
+	tokenAuthenticator := serviceaccount.JWTTokenAuthenticator(issuers, publicKeysGetter, apiAudiences, serviceaccount.NewValidatorWithLookup(serviceAccountGetter, lookup))
 	return tokenAuthenticator, nil
 }
 

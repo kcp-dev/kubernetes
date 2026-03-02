@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kcp-dev/logicalcluster/v3"
 	"gopkg.in/go-jose/go-jose.v2/jwt"
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
@@ -389,7 +390,7 @@ type deletionTestCase struct {
 
 type claimTestCase struct {
 	name      string
-	getter    ServiceAccountTokenGetter
+	getter    ServiceAccountTokenClusterGetter
 	private   *privateClaims
 	expiry    jwt.NumericDate
 	notBefore jwt.NumericDate
@@ -668,6 +669,10 @@ type fakeGetter struct {
 	node                           *v1.Node
 	validatingWebhookConfiguration *admissionregistrationv1.ValidatingWebhookConfiguration
 	mutatingWebhookConfiguration   *admissionregistrationv1.MutatingWebhookConfiguration
+}
+
+func (f fakeGetter) Cluster(_ logicalcluster.Name) ServiceAccountTokenGetter {
+	return f
 }
 
 func (f fakeGetter) GetServiceAccount(ctx context.Context, namespace, name string) (*v1.ServiceAccount, error) {
