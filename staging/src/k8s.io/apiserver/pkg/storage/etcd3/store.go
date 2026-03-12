@@ -28,7 +28,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/kcp-dev/logicalcluster/v3"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -1359,7 +1358,6 @@ func (s *store) decode(codec runtime.Codec, versioner storage.Versioner, value [
 	}
 	err := s.decoder.Decode(value, objPtr, rev)
 	if err != nil {
-		spew.Dump(err)
 		return err
 	}
 	// being unable to set the version does not prevent the object from being extracted
