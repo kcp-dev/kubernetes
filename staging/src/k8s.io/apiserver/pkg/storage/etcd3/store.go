@@ -1072,9 +1072,9 @@ func (s *store) processListItem(ctx context.Context, kv *mvccpb.KeyValue, pred s
 	default:
 	}
 
-			// kcp
-			clusterName := adjustClusterNameIfWildcard(shard, cluster, crdIndicator, keyPrefix, string(kv.Key))
-			shardName := adjustShardNameIfWildcard(shard, keyPrefix, string(kv.Key))
+	// kcp
+	clusterName := adjustClusterNameIfWildcard(shard, cluster, crdIndicator, keyPrefix, string(kv.Key))
+	shardName := adjustShardNameIfWildcard(shard, cluster, crdIndicator, keyPrefix, string(kv.Key))
 	obj, err := s.decodeListItem(ctx, data, kv.ModRevision, s.codec, s.versioner, newItemFunc, clusterName, shardName)
 	if err != nil {
 		recordDecodeError(s.groupResource, string(kv.Key))
