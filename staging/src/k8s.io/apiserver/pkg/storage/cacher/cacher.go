@@ -350,6 +350,9 @@ type Cacher struct {
 	expiredBookmarkWatchers []*cacheWatcher
 	compactor               *compactor
 	watcherMetrics          *metrics.WatcherMetricsObservers
+
+	// kcp
+	kcpExtraStorageMetadata *storagebackend.KcpStorageMetadata
 }
 
 // NewCacherFromConfig creates a new Cacher responsible for servicing WATCH and LIST requests from
@@ -454,6 +457,7 @@ func NewCacherFromConfig(config Config) (*Cacher, error) {
 	watchCache := newWatchCache(
 		config.KeyFunc, cacher.processEvent, config.GetAttrsFunc, config.Versioner, config.Indexers,
 		config.Clock, eventFreshDuration, config.GroupResource, progressRequester, config.Storage.GetCurrentResourceVersion)
+	cacher.kcpExtraStorageMetadata = config.KcpExtraStorageMetadata
 	listerWatcher := NewListerWatcher(config.Storage, resourcePrefix, config.NewListFunc, contextMetadata, config.KcpExtraStorageMetadata)
 	reflectorName := "storage/cacher.go:" + resourcePrefix
 

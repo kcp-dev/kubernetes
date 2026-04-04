@@ -53,7 +53,7 @@ func TestConsistencyCheckerDigestMatches(t *testing.T) {
 		t.Errorf("Expect to get %d pods, got %d", storageWatchListPageSize+1, len(outList.Items))
 	}
 
-	checker := consistency.NewChecker("/pods/", schema.GroupResource{}, store.cacher.newListFunc, store.cacher, store.storage)
+	checker := consistency.NewChecker("/pods/", schema.GroupResource{}, store.cacher.newListFunc, store.cacher, store.storage, store.cacher.kcpExtraStorageMetadata)
 	digest, err := checker.CalculateDigests(ctx)
 	if err != nil {
 		t.Fatal(err)

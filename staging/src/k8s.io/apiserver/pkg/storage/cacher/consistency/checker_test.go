@@ -236,7 +236,7 @@ func TestConsistencyCheckerDigest(t *testing.T) {
 					},
 				},
 			}
-			checker := NewChecker("", schema.GroupResource{}, newListFunc, cacher, etcd)
+			checker := NewChecker("", schema.GroupResource{}, newListFunc, cacher, etcd, nil)
 			digest, err := checker.CalculateDigests(context.Background())
 			if (err != nil) != tc.expectErr {
 				t.Fatalf("Expect error: %v, got: %v", tc.expectErr, err)
@@ -281,7 +281,7 @@ func TestConsistencyCheckerListOpts(t *testing.T) {
 			},
 		},
 	}
-	checker := NewChecker("", schema.GroupResource{}, newListFunc, cacher, etcd)
+	checker := NewChecker("", schema.GroupResource{}, newListFunc, cacher, etcd, nil)
 	_, err := checker.CalculateDigests(context.Background())
 	if err != nil {
 		t.Fatal(err)

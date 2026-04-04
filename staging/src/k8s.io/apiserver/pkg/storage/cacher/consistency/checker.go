@@ -31,8 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
+	kcpapi "k8s.io/apiserver/pkg/kcp"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/cacher/metrics"
+	"k8s.io/apiserver/pkg/storage/storagebackend"
 	"k8s.io/klog/v2"
 )
 
@@ -52,20 +54,22 @@ func init() {
 	PanicOnCacheInconsistency, _ = strconv.ParseBool(os.Getenv("KUBE_WATCHCACHE_CONSISTENCY_CHECKER"))
 }
 
-func NewChecker(resourcePrefix string, groupResource schema.GroupResource, newListFunc func() runtime.Object, cacher cacher, etcd getLister) *Checker {
+func NewChecker(resourcePrefix string, groupResource schema.GroupResource, newListFunc func() runtime.Object, cacher cacher, etcd getLister, kcpStorageMetadata *storagebackend.KcpStorageMetadata) *Checker {
 	return &Checker{
-		groupResource:  groupResource,
-		resourcePrefix: resourcePrefix,
-		newListFunc:    newListFunc,
-		cacher:         cacher,
-		etcd:           etcd,
+		groupResource:      groupResource,
+		resourcePrefix:     resourcePrefix,
+		newListFunc:        newListFunc,
+		cacher:             cacher,
+		etcd:               etcd,
+		kcpStorageMetadata: kcpStorageMetadata,
 	}
 }
 
 type Checker struct {
-	resourcePrefix string
-	groupResource  schema.GroupResource
-	newListFunc    func() runtime.Object
+	resourcePrefix     string
+	groupResource      schema.GroupResource
+	newListFunc        func() runtime.Object
+	kcpStorageMetadata *storagebackend.KcpStorageMetadata
 
 	cacher cacher
 	etcd   getLister
@@ -94,7 +98,19 @@ func (c Checker) Run(stopCh <-chan struct{}) {
 }
 
 func (c *Checker) check(ctx context.Context) {
-	ctx = genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Wildcard: true})
+	// The checker lists both etcd and the cache; its context must carry the
+	// same cluster scope the cacher was built for (wildcard for built-in
+	// resources, a specific cluster or CRD identity otherwise). We cannot use
+	// cacher.createKCPClusterAwareContext here without an import cycle, so the
+	// equivalent is inlined.
+	if meta := c.kcpStorageMetadata; meta != nil {
+		if meta.IsCRD {
+			ctx = kcpapi.WithCustomResourceIndicator(ctx)
+		}
+		ctx = genericapirequest.WithCluster(ctx, meta.Cluster)
+	} else {
+		ctx = genericapirequest.WithCluster(ctx, genericapirequest.Cluster{Wildcard: true})
+	}
 	digests, err := c.CalculateDigests(ctx)
 	if err != nil {
 		klog.ErrorS(err, "Cache consistency check error", "group", c.groupResource.Group, "resource", c.groupResource.Resource)
