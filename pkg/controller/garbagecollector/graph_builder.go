@@ -43,6 +43,8 @@ import (
 	"k8s.io/controller-manager/pkg/informerfactory"
 	"k8s.io/kubernetes/pkg/controller/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/controller/garbagecollector/metaonly"
+
+	"github.com/kcp-dev/logicalcluster/v3"
 )
 
 type eventType int
@@ -429,8 +431,10 @@ func (gb *GraphBuilder) enqueueVirtualDeleteEvent(ref objectReference) {
 		eventType: deleteEvent,
 		gvk:       gv.WithKind(ref.Kind),
 		obj: &metaonly.MetadataOnlyObject{
-			TypeMeta:   metav1.TypeMeta{APIVersion: ref.APIVersion, Kind: ref.Kind},
-			ObjectMeta: metav1.ObjectMeta{Namespace: ref.Namespace, UID: ref.UID, Name: ref.Name},
+			TypeMeta: metav1.TypeMeta{APIVersion: ref.APIVersion, Kind: ref.Kind},
+			ObjectMeta: metav1.ObjectMeta{Namespace: ref.Namespace, UID: ref.UID, Name: ref.Name,
+				Annotations: map[string]string{logicalcluster.AnnotationKey: ref.Cluster.String()},
+			},
 		},
 	})
 }
