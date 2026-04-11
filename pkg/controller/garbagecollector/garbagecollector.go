@@ -385,7 +385,7 @@ func (gc *GarbageCollector) isDangling(ctx context.Context, reference metav1.Own
 
 	logger := klog.FromContext(ctx)
 	// check for recorded absent cluster-scoped parent
-	absentOwnerCacheKey := objectReference{OwnerReference: ownerReferenceCoordinates(reference)}
+	absentOwnerCacheKey := objectReference{OwnerReference: ownerReferenceCoordinates(reference), Cluster: item.identity.Cluster}
 	if gc.absentOwnerCache.Has(absentOwnerCacheKey) {
 		logger.V(5).Info("according to the absentOwnerCache, item's owner does not exist",
 			"item", item.identity,
@@ -431,7 +431,7 @@ func (gc *GarbageCollector) isDangling(ctx context.Context, reference metav1.Own
 	// TODO: It's only necessary to talk to the API server if the owner node
 	// is a "virtual" node. The local graph could lag behind the real
 	// status, but in practice, the difference is small.
-	owner, err = gc.metadataClient.Resource(resource).Namespace(resourceDefaultNamespace(namespaced, item.identity.Namespace)).Get(ctx, reference.Name, metav1.GetOptions{})
+	owner, err = gc.metadataClient.Resource(resource).Namespace(resourceDefaultNamespace(namespaced, item.identity.Namespace)).Get(WithCluster(ctx, item.identity.Cluster), reference.Name, metav1.GetOptions{})
 	switch {
 	case errors.IsNotFound(err):
 		gc.absentOwnerCache.Add(absentOwnerCacheKey)
