@@ -32,3 +32,7 @@ func ClusterFrom(ctx context.Context) logicalcluster.Name {
 	v, _ := ctx.Value(clusterContextKey{}).(logicalcluster.Name)
 	return v
 }
+
+func contextForCluster(ref objectReference) context.Context {
+	return WithCluster(context.TODO(), ref.Cluster)
+}
