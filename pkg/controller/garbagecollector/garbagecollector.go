@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,9 +34,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/discovery"
-	clientset "k8s.io/client-go/kubernetes" // import known versions
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/discovery" // import known versions
 	"k8s.io/client-go/metadata"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -72,8 +71,8 @@ type GarbageCollector struct {
 	// GC caches the owners that do not exist according to the API server.
 	absentOwnerCache *ReferenceCache
 
-	kubeClient       clientset.Interface
-	eventBroadcaster record.EventBroadcaster
+	kubeClusterClient *kcpkubernetesclientset.ClusterClientset
+	eventBroadcaster  record.EventBroadcaster
 }
 
 var _ controller.Interface = (*GarbageCollector)(nil)
@@ -82,7 +81,7 @@ var _ controller.Debuggable = (*GarbageCollector)(nil)
 // NewGarbageCollector creates a new GarbageCollector.
 func NewGarbageCollector(
 	ctx context.Context,
-	kubeClient clientset.Interface,
+	kubeClusterClient *kcpkubernetesclientset.ClusterClientset,
 	metadataClient metadata.Interface,
 	mapper meta.ResettableRESTMapper,
 	ignoredResources map[schema.GroupResource]struct{},
@@ -90,12 +89,12 @@ func NewGarbageCollector(
 	informersStarted <-chan struct{},
 ) (*GarbageCollector, error) {
 	graphBuilder := NewDependencyGraphBuilder(ctx, metadataClient, mapper, ignoredResources, sharedInformers, informersStarted)
-	return NewComposedGarbageCollector(ctx, kubeClient, metadataClient, mapper, graphBuilder)
+	return NewComposedGarbageCollector(ctx, kubeClusterClient, metadataClient, mapper, graphBuilder)
 }
 
 func NewComposedGarbageCollector(
 	ctx context.Context,
-	kubeClient clientset.Interface,
+	kubeClusterClient *kcpkubernetesclientset.ClusterClientset,
 	metadataClient metadata.Interface,
 	mapper meta.ResettableRESTMapper,
 	graphBuilder *GraphBuilder,
@@ -108,7 +107,7 @@ func NewComposedGarbageCollector(
 		attemptToDelete:        attemptToDelete,
 		attemptToOrphan:        attemptToOrphan,
 		absentOwnerCache:       absentOwnerCache,
-		kubeClient:             kubeClient,
+		kubeClusterClient:      kubeClusterClient,
 		eventBroadcaster:       graphBuilder.eventBroadcaster,
 		dependencyGraphBuilder: graphBuilder,
 	}
@@ -134,7 +133,7 @@ func (gc *GarbageCollector) Run(ctx context.Context, workers int, initialSyncTim
 
 	// Start events processing pipeline.
 	gc.eventBroadcaster.StartStructuredLogging(3)
-	gc.eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: gc.kubeClient.CoreV1().Events("")})
+	gc.eventBroadcaster.StartRecordingToSink(&clusterEventSinkImpl{client: gc.kubeClusterClient})
 	defer gc.eventBroadcaster.Shutdown()
 
 	logger := klog.FromContext(ctx)

@@ -44,6 +44,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/controller/garbagecollector/metaonly"
 
+	kcpcache "github.com/kcp-dev/apimachinery/v2/pkg/cache"
 	"github.com/kcp-dev/logicalcluster/v3"
 )
 
@@ -524,8 +525,12 @@ func (gb *GraphBuilder) reportInvalidNamespaceOwnerRef(n *node, invalidOwnerUID 
 		Kind:       n.identity.Kind,
 		APIVersion: n.identity.APIVersion,
 		Namespace:  n.identity.Namespace,
-		Name:       n.identity.Name,
-		UID:        n.identity.UID,
+		// This is only safe because the recorder points at
+		// a broadcaster that is pushing the events to
+		// clusterEventSinkImpl, which is then splitting the cluster and
+		// name and edits the event before passing it along.
+		Name: kcpcache.ToClusterAwareKey(n.identity.Cluster.String(), "", n.identity.Name),
+		UID:  n.identity.UID,
 	}
 	invalidIdentity := objectReference{
 		OwnerReference: metav1.OwnerReference{
