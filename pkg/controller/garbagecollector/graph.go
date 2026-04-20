@@ -24,29 +24,34 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/kcp-dev/logicalcluster/v3"
 )
 
 type objectReference struct {
 	metav1.OwnerReference
 	// This is needed by the dynamic client
 	Namespace string
+	Cluster   logicalcluster.Name
 }
 
 // String is used when logging an objectReference in text format.
 func (s objectReference) String() string {
-	return fmt.Sprintf("[%s/%s, namespace: %s, name: %s, uid: %s]", s.APIVersion, s.Kind, s.Namespace, s.Name, s.UID)
+	return fmt.Sprintf("[%s/%s, cluster: %s, namespace: %s, name: %s, uid: %s]", s.APIVersion, s.Kind, s.Cluster, s.Namespace, s.Name, s.UID)
 }
 
 // MarshalLog is used when logging an objectReference in JSON format.
 func (s objectReference) MarshalLog() interface{} {
 	return struct {
-		Name       string    `json:"name"`
-		Namespace  string    `json:"namespace"`
-		APIVersion string    `json:"apiVersion"`
-		UID        types.UID `json:"uid"`
+		Name       string              `json:"name"`
+		Namespace  string              `json:"namespace"`
+		Cluster    logicalcluster.Name `json:"cluster,omitempty"`
+		APIVersion string              `json:"apiVersion"`
+		UID        types.UID           `json:"uid"`
 	}{
 		Namespace:  s.Namespace,
 		Name:       s.Name,
+		Cluster:    s.Cluster,
 		APIVersion: s.APIVersion,
 		UID:        s.UID,
 	}
