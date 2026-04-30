@@ -23,8 +23,10 @@ import (
 	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
 	"github.com/kcp-dev/logicalcluster/v3"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 )
 
 type clusterContextKey struct{}
@@ -88,4 +90,10 @@ func (sink *clusterEventSinkImpl) Update(event *v1.Event) (*v1.Event, error) {
 
 func (sink *clusterEventSinkImpl) Patch(event *v1.Event, data []byte) (*v1.Event, error) {
 	return sink.getClient(event).PatchWithEventNamespace(event, data)
+}
+
+// ResyncMonitors allows kcp to directly sync monitors in the graph
+// builder, skipping GarbageCollector.Sync.
+func (gc *GarbageCollector) ResyncMonitors(logger klog.Logger, deletableResources map[schema.GroupVersionResource]struct{}) error {
+	return gc.resyncMonitors(logger, deletableResources)
 }
