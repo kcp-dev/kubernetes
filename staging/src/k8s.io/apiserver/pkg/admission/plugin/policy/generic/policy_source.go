@@ -419,13 +419,16 @@ func (s *policySource[P, B, E]) ensureParamsForPolicyLocked(paramSource *schema.
 	// Try to see if our provided informer factory has an informer for this type.
 	// We assume the informer is already started, and starts all types associated
 	// with it.
-	if genericInformer, err := s.informerFactory.ForResource(mapping.Resource); err == nil {
-		informer = genericInformer
+	if s.informerFactory != nil {
+		if genericInformer, err := s.informerFactory.ForResource(mapping.Resource); err == nil {
+			informer = genericInformer
 
-		// Start the informer
-		s.informerFactory.Start(instanceContext.Done())
+			// Start the informer
+			s.informerFactory.Start(instanceContext.Done())
+		}
+	}
 
-	} else {
+	if informer == nil {
 		// Dynamic JSON informer fallback.
 		// Cannot use shared dynamic informer since it would be impossible
 		// to clean CRD informers properly with multiple dependents
