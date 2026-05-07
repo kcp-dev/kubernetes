@@ -8,16 +8,11 @@ import (
 
 func (a *Webhook) SetNamespaceInformer(namespaceInformer coreinformers.NamespaceInformer) {
 	a.namespaceMatcher.NamespaceLister = namespaceInformer.Lister()
+	a.namespaceInformer = namespaceInformer
 }
 
-func (a *Webhook) SetHookSource(hookSource Source) {
-	a.hookSource = hookSource
-}
-
-func (a *Webhook) SetReadyFuncFromKCP(namespaceInformer coreinformers.NamespaceInformer) {
-	a.SetReadyFunc(func() bool {
-		return namespaceInformer.Informer().HasSynced() && a.hookSource.HasSynced()
-	})
+func (a *Webhook) SetAPISource(apiSource Source) {
+	a.apiSource = apiSource
 }
 
 var sharedFilterCompiler = cel.NewConditionCompiler(environment.MustBaseEnvSet(environment.DefaultCompatibilityVersion()))
