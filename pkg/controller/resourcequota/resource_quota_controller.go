@@ -381,7 +381,7 @@ func (rq *Controller) syncResourceQuota(ctx context.Context, resourceQuota *v1.R
 
 	var errs []error
 
-	newUsage, err := quota.CalculateUsage(resourceQuota.Namespace, resourceQuota.Spec.Scopes, hardLimits, rq.registry, resourceQuota.Spec.ScopeSelector)
+	newUsage, err := quota.CalculateUsage(namespaceToCheck(resourceQuota), resourceQuota.Spec.Scopes, hardLimits, rq.registry, resourceQuota.Spec.ScopeSelector)
 	if err != nil {
 		// if err is non-nil, remember it to return, but continue updating status with any resources in newUsage
 		errs = append(errs, err)
