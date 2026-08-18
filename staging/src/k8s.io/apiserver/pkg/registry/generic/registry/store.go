@@ -1655,12 +1655,14 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 		if err != nil {
 			return "", err
 		}
+		name := accessor.GetName()
+		namespace := accessor.GetNamespace()
 
-		if isNamespaced {
-			return e.KeyFunc(genericapirequest.WithNamespace(ctx, accessor.GetNamespace()), accessor.GetName())
+		if isNamespaced && namespace != "" {
+			return e.KeyFunc(genericapirequest.WithNamespace(ctx, namespace), name)
 		}
 
-		return e.KeyFunc(ctx, accessor.GetName())
+		return NoNamespaceKeyFunc(ctx, prefix, name)
 	}
 
 	if e.DeleteCollectionWorkers == 0 {
