@@ -65,7 +65,6 @@ func newEndpointSlices(c *DiscoveryV1Client, namespace string) *endpointSlices {
 			namespace,
 			func() *discoveryv1.EndpointSlice { return &discoveryv1.EndpointSlice{} },
 			func() *discoveryv1.EndpointSliceList { return &discoveryv1.EndpointSliceList{} },
-			gentype.PrefersProtobuf[*discoveryv1.EndpointSlice](),
 		),
 	}
 }

@@ -69,7 +69,6 @@ func newCompositePodGroups(c *SchedulingV1alpha3Client, namespace string) *compo
 			namespace,
 			func() *schedulingv1alpha3.CompositePodGroup { return &schedulingv1alpha3.CompositePodGroup{} },
 			func() *schedulingv1alpha3.CompositePodGroupList { return &schedulingv1alpha3.CompositePodGroupList{} },
-			gentype.PrefersProtobuf[*schedulingv1alpha3.CompositePodGroup](),
 		),
 	}
 }

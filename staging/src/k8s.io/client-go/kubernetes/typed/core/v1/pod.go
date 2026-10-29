@@ -72,7 +72,6 @@ func newPods(c *CoreV1Client, namespace string) *pods {
 			namespace,
 			func() *corev1.Pod { return &corev1.Pod{} },
 			func() *corev1.PodList { return &corev1.PodList{} },
-			gentype.PrefersProtobuf[*corev1.Pod](),
 		),
 	}
 }
@@ -81,7 +80,6 @@ func newPods(c *CoreV1Client, namespace string) *pods {
 func (c *pods) UpdateEphemeralContainers(ctx context.Context, podName string, pod *corev1.Pod, opts metav1.UpdateOptions) (result *corev1.Pod, err error) {
 	result = &corev1.Pod{}
 	err = c.GetClient().Put().
-		UseProtobufAsDefault().
 		Namespace(c.GetNamespace()).
 		Resource("pods").
 		Name(podName).
@@ -97,7 +95,6 @@ func (c *pods) UpdateEphemeralContainers(ctx context.Context, podName string, po
 func (c *pods) UpdateResize(ctx context.Context, podName string, pod *corev1.Pod, opts metav1.UpdateOptions) (result *corev1.Pod, err error) {
 	result = &corev1.Pod{}
 	err = c.GetClient().Put().
-		UseProtobufAsDefault().
 		Namespace(c.GetNamespace()).
 		Resource("pods").
 		Name(podName).

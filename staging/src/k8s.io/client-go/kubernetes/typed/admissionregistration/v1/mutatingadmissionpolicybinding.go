@@ -69,7 +69,6 @@ func newMutatingAdmissionPolicyBindings(c *AdmissionregistrationV1Client) *mutat
 			func() *admissionregistrationv1.MutatingAdmissionPolicyBindingList {
 				return &admissionregistrationv1.MutatingAdmissionPolicyBindingList{}
 			},
-			gentype.PrefersProtobuf[*admissionregistrationv1.MutatingAdmissionPolicyBinding](),
 		),
 	}
 }

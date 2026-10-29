@@ -65,7 +65,6 @@ func newLimitRanges(c *CoreV1Client, namespace string) *limitRanges {
 			namespace,
 			func() *corev1.LimitRange { return &corev1.LimitRange{} },
 			func() *corev1.LimitRangeList { return &corev1.LimitRangeList{} },
-			gentype.PrefersProtobuf[*corev1.LimitRange](),
 		),
 	}
 }

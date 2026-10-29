@@ -57,7 +57,6 @@ func newPodMetricses(c *MetricsV1Client, namespace string) *podMetricses {
 			namespace,
 			func() *metricsv1.PodMetrics { return &metricsv1.PodMetrics{} },
 			func() *metricsv1.PodMetricsList { return &metricsv1.PodMetricsList{} },
-			gentype.PrefersProtobuf[*metricsv1.PodMetrics](),
 		),
 	}
 }
