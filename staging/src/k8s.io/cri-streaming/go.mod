@@ -10,7 +10,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/goleak v1.3.0
+	go.uber.org/goleak v1.3.1-0.20251210191316-2b7fd8a0d244
 	google.golang.org/grpc v1.82.1
 	k8s.io/cri-api v0.0.0
 	k8s.io/klog/v2 v2.140.0
@@ -21,9 +21,6 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
-	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
-	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
-	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kr/text v0.2.0 // indirect
 	github.com/moby/spdystream v0.5.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect

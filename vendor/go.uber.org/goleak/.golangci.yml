@@ -13,10 +13,13 @@ linters-settings:
   govet:
     # These govet checks are disabled by default, but they're useful.
     enable:
-      - niliness
+      - nilness
       - reflectvaluecompare
       - sortslice
       - unusedwrite
+  errcheck:
+    exclude-functions:
+      - fmt.Fprintf
 
 issues:
   # Print all issues reported by all linters.

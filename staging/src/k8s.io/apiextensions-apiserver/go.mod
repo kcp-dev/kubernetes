@@ -10,9 +10,12 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0
 	github.com/fxamacker/cbor/v2 v2.9.1
 	github.com/google/cel-go v0.29.2
-	github.com/google/gnostic-models v0.7.0
+	github.com/google/gnostic-models v0.7.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
+	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
+	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
@@ -25,12 +28,12 @@ require (
 	golang.org/x/text v0.40.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
 	gopkg.in/evanphx/json-patch.v4 v4.13.0
-	k8s.io/api v0.0.0
-	k8s.io/apimachinery v0.0.0
-	k8s.io/apiserver v0.0.0
-	k8s.io/client-go v0.0.0
-	k8s.io/code-generator v0.0.0
-	k8s.io/component-base v0.0.0
+	k8s.io/api v0.37.0
+	k8s.io/apimachinery v0.37.0
+	k8s.io/apiserver v0.37.0
+	k8s.io/client-go v0.37.0
+	k8s.io/code-generator v0.37.0
+	k8s.io/component-base v0.37.0
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd
@@ -79,9 +82,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
-	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
-	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/moby/spdystream v0.5.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

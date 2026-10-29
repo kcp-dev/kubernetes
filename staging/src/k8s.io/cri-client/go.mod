@@ -17,7 +17,7 @@ require (
 	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
-	k8s.io/component-base v0.0.0
+	k8s.io/component-base v0.37.0
 	k8s.io/cri-api v0.0.0
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd
@@ -29,12 +29,10 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
-	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
-	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
+	go.uber.org/goleak v1.3.1-0.20251210191316-2b7fd8a0d244 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect

@@ -14,9 +14,4 @@ require (
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd
 )
 
-require (
-	github.com/go-logr/logr v1.4.3 // indirect
-	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
-	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
-	github.com/kcp-dev/logicalcluster/v3 v3.0.5
-)
+require github.com/go-logr/logr v1.4.3 // indirect

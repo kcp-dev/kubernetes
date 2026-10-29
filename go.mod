@@ -31,11 +31,14 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/google/cadvisor/lib v0.60.5
 	github.com/google/cel-go v0.29.2
-	github.com/google/gnostic-models v0.7.0
+	github.com/google/gnostic-models v0.7.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/ishidawataru/sctp v0.0.0-20250521072954-ae8eb7fa7995
+	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
+	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/lithammer/dedent v1.1.0
 	github.com/moby/ipvs v1.1.0
 	github.com/moby/sys/userns v0.1.0
@@ -64,7 +67,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.opentelemetry.io/proto/otlp v1.10.0
-	go.uber.org/goleak v1.3.0
+	go.uber.org/goleak v1.3.1-0.20251210191316-2b7fd8a0d244
 	go.uber.org/zap v1.27.1
 	go.yaml.in/yaml/v2 v2.4.4
 	golang.org/x/crypto v0.54.0
@@ -82,16 +85,16 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0
 	gopkg.in/go-jose/go-jose.v2 v2.6.3
 	gopkg.in/inf.v0 v0.9.1
-	k8s.io/api v0.0.0
-	k8s.io/apiextensions-apiserver v0.0.0
-	k8s.io/apimachinery v0.0.0
-	k8s.io/apiserver v0.0.0
+	k8s.io/api v0.37.0
+	k8s.io/apiextensions-apiserver v0.37.0
+	k8s.io/apimachinery v0.37.0
+	k8s.io/apiserver v0.37.0
 	k8s.io/cli-runtime v0.0.0
-	k8s.io/client-go v0.0.0
+	k8s.io/client-go v0.37.0
 	k8s.io/cloud-provider v0.0.0
 	k8s.io/cluster-bootstrap v0.0.0
-	k8s.io/code-generator v0.0.0
-	k8s.io/component-base v0.0.0
+	k8s.io/code-generator v0.37.0
+	k8s.io/component-base v0.37.0
 	k8s.io/component-helpers v0.0.0
 	k8s.io/controller-manager v0.0.0
 	k8s.io/cri-api v0.0.0
@@ -177,9 +180,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
-	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
-	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/mdlayher/netlink v1.11.2 // indirect
