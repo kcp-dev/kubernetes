@@ -84,7 +84,7 @@ type alsoApplier[T objectWithMeta, C namedObject] struct {
 type Option[T objectWithMeta] func(*Client[T])
 
 func PrefersProtobuf[T objectWithMeta]() Option[T] {
-	return func(c *Client[T]) { c.prefersProtobuf = true }
+	return func(c *Client[T]) { c.prefersProtobuf = false }
 }
 
 // NewClient constructs a client, namespaced or not, with no support for lists or apply.

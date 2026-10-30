@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kcp-dev/logicalcluster/v3"
+
 	authenticationv1 "k8s.io/api/authentication/v1"
 	v1 "k8s.io/api/core/v1"
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
@@ -71,6 +73,10 @@ const (
 	// AttestationAdmissionReviewAPIGroupsKey is the key used in a user's
 	// "extra" to specify the "admissionReviewAPIGroups" claim.
 	AttestationAdmissionReviewAPIGroupsKey = AttestationKeyPrefix + authenticationv1.AttestationAdmissionReviewAPIGroups
+	// ClusterNameKey is the logical cluster name this service-account comes from.
+	ClusterNameKey = "authentication.kcp.io/cluster-name"
+	// ClusterScopeKey additionally sets the scope for the service-account to the cluster it belongs to.
+	ClusterScopeKey = "authentication.kcp.io/scopes"
 )
 
 // MakeUsername generates a username from the given namespace and ServiceAccount name.
@@ -137,15 +143,17 @@ func MakeNamespaceGroupName(namespace string) string {
 }
 
 // UserInfo returns a user.Info interface for the given namespace, service account name and UID
-func UserInfo(namespace, name, uid string) user.Info {
+func UserInfo(clusterName logicalcluster.Name, namespace, name, uid string) user.Info {
 	return (&ServiceAccountInfo{
-		Name:      name,
-		Namespace: namespace,
-		UID:       uid,
+		ClusterName: clusterName,
+		Name:        name,
+		Namespace:   namespace,
+		UID:         uid,
 	}).UserInfo()
 }
 
 type ServiceAccountInfo struct {
+	ClusterName                                                           logicalcluster.Name
 	Name, Namespace, UID                                                  string
 	PodName, PodUID                                                       string
 	CredentialID                                                          string
@@ -208,6 +216,11 @@ func (sa *ServiceAccountInfo) UserInfo() user.Info {
 		info.Extra[AttestationAdmissionReviewAPIGroupsKey] = sa.AttestationAdmissionReviewAPIGroups
 	}
 
+	if info.Extra == nil {
+		info.Extra = map[string][]string{}
+	}
+	info.Extra[ClusterNameKey] = []string{sa.ClusterName.String()}
+	info.Extra[ClusterScopeKey] = []string{"cluster:" + sa.ClusterName.String()}
 	return info
 }
 

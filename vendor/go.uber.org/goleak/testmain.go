@@ -45,7 +45,7 @@ type TestingM interface {
 //	  goleak.VerifyTestMain(m)
 //	}
 //
-// See https://golang.org/pkg/testing/#hdr-Main for more details.
+// See https://pkg.go.dev/testing#hdr-Main for more details.
 //
 // This will run all tests as per normal, and if they were successful, look
 // for any goroutine leaks and fail the tests if any leaks were found.
@@ -60,10 +60,26 @@ func VerifyTestMain(m TestingM, options ...Option) {
 	}
 	defer func() { cleanup(exitCode) }()
 
-	if exitCode == 0 {
+	var (
+		run      bool
+		errorMsg string
+	)
+
+	if !opts.runOnFailure && exitCode == 0 {
+		errorMsg = "goleak: Errors on successful test run:%v\n"
+		run = true
+	} else if opts.runOnFailure {
+		errorMsg = "goleak: Errors on unsuccessful test run: %v\n"
+		run = true
+	}
+
+	if run {
 		if err := Find(opts); err != nil {
-			fmt.Fprintf(_osStderr, "goleak: Errors on successful test run: %v\n", err)
-			exitCode = 1
+			fmt.Fprintf(_osStderr, errorMsg, err)
+			// rewrite exitCode if test passed and is set to 0.
+			if exitCode == 0 {
+				exitCode = 1
+			}
 		}
 	}
 }

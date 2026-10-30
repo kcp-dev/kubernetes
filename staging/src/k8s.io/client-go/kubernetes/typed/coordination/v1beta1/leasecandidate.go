@@ -65,7 +65,6 @@ func newLeaseCandidates(c *CoordinationV1beta1Client, namespace string) *leaseCa
 			namespace,
 			func() *coordinationv1beta1.LeaseCandidate { return &coordinationv1beta1.LeaseCandidate{} },
 			func() *coordinationv1beta1.LeaseCandidateList { return &coordinationv1beta1.LeaseCandidateList{} },
-			gentype.PrefersProtobuf[*coordinationv1beta1.LeaseCandidate](),
 		),
 	}
 }

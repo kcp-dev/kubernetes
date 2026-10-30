@@ -267,7 +267,7 @@ const (
 // NamespaceKeyRootFunc is the default function for constructing storage paths
 // to resource directories enforcing namespace rules.
 func NamespaceKeyRootFunc(ctx context.Context, prefix string) string {
-	key := prefix
+	key := NoNamespaceKeyRootFunc(ctx, prefix)
 	ns, ok := genericapirequest.NamespaceFrom(ctx)
 	if ok && len(ns) > 0 {
 		key = key + "/" + ns
@@ -303,7 +303,7 @@ func NoNamespaceKeyFunc(ctx context.Context, prefix string, name string) (string
 	if msgs := content.IsPathSegmentName(name); len(msgs) != 0 {
 		return "", apierrors.NewBadRequest(fmt.Sprintf("Name parameter invalid: %q: %s", name, strings.Join(msgs, ";")))
 	}
-	key := prefix + "/" + name
+	key := NoNamespaceKeyRootFunc(ctx, prefix) + "/" + name
 	return key, nil
 }
 
@@ -316,8 +316,10 @@ type storeKeyFuncs struct {
 	storageKeyFunc func(ctx context.Context, name string) (string, error)
 	// cacheKeyFunc returns the resource-relative storage path for one object.
 	// It is passed to cache layers that receive objects instead of request
-	// contexts, so it derives the namespace and name from object metadata.
-	cacheKeyFunc func(obj runtime.Object) (string, error)
+	// contexts, so it derives the namespace and name from object metadata. The
+	// passed context carries no request data, only the cluster scope derived
+	// from the object by the cache layer.
+	cacheKeyFunc func(ctx context.Context, obj runtime.Object) (string, error)
 }
 
 func defaultStoreKeyFuncs(prefix string, isNamespaced bool) storeKeyFuncs {
@@ -336,7 +338,7 @@ func defaultStoreKeyFuncs(prefix string, isNamespaced bool) storeKeyFuncs {
 	return newStoreKeyFuncs(
 		isNamespaced,
 		func(ctx context.Context) string {
-			return prefix
+			return NoNamespaceKeyRootFunc(ctx, prefix)
 		},
 		func(ctx context.Context, name string) (string, error) {
 			return NoNamespaceKeyFunc(ctx, prefix, name)
@@ -352,13 +354,12 @@ func newStoreKeyFuncs(
 	return storeKeyFuncs{
 		storageRootKeyFunc: storageRootKeyFunc,
 		storageKeyFunc:     storageKeyFunc,
-		cacheKeyFunc: func(obj runtime.Object) (string, error) {
+		cacheKeyFunc: func(ctx context.Context, obj runtime.Object) (string, error) {
 			accessor, err := meta.Accessor(obj)
 			if err != nil {
 				return "", err
 			}
 
-			ctx := genericapirequest.NewContext()
 			if isNamespaced {
 				ctx = genericapirequest.WithNamespace(ctx, accessor.GetNamespace())
 			}
@@ -546,7 +547,8 @@ func (e *Store) create(ctx context.Context, obj runtime.Object, createValidation
 	var finishCreate FinishFunc = finishNothing
 
 	// Init metadata as early as possible.
-	if objectMeta, err := meta.Accessor(obj); err != nil {
+	objectMeta, err := meta.Accessor(obj)
+	if err != nil {
 		return nil, err
 	} else {
 		rest.FillObjectMetaSystemFields(objectMeta)
@@ -569,6 +571,12 @@ func (e *Store) create(ctx context.Context, obj runtime.Object, createValidation
 	if err := rest.BeforeCreate(e.CreateStrategy, ctx, obj); err != nil {
 		return nil, err
 	}
+
+	if _, found := objectMeta.GetAnnotations()[genericapirequest.ShardAnnotationKey]; found {
+		// Remove the shard annotation so it is not persisted
+		delete(objectMeta.GetAnnotations(), genericapirequest.ShardAnnotationKey)
+	}
+
 	// at this point we have a fully formed object.  It is time to call the validators that the apiserver
 	// handling chain wants to enforce.
 	if createValidation != nil {
@@ -1143,6 +1151,13 @@ func (e *Store) updateForGracefulDeletionAndFinalizers(ctx context.Context, name
 			if err != nil {
 				return nil, err
 			}
+
+			// the following annotation key indicates that the request is from the cache server
+			// in that case we've decided not to require finalization, the object will be deleted immediately
+			if _, hasShardAnnotation := existingAccessor.GetAnnotations()[genericapirequest.ShardAnnotationKey]; hasShardAnnotation {
+				return existing, nil
+			}
+
 			needsUpdate, newFinalizers := deletionFinalizersForGarbageCollection(ctx, e, existingAccessor, options)
 			if needsUpdate {
 				existingAccessor.SetFinalizers(newFinalizers)
@@ -1590,6 +1605,9 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 	if (e.KeyRootFunc == nil) != (e.KeyFunc == nil) {
 		return fmt.Errorf("store for %s must set both KeyRootFunc and KeyFunc or neither", e.DefaultQualifiedResource.String())
 	}
+	if e.KeyFunc != nil {
+		return fmt.Errorf("keyfunc must be non-nil for all resources", e.DefaultQualifiedResource.String())
+	}
 
 	if e.TableConvertor == nil {
 		return fmt.Errorf("store for %s must set TableConvertor; rest.NewDefaultTableConvertor(e.DefaultQualifiedResource) can be used to output just name/creation time", e.DefaultQualifiedResource.String())
@@ -1720,7 +1738,9 @@ func (e *Store) CompleteWithOptions(options *generic.StoreOptions) error {
 
 // startObservingCount starts monitoring given prefix and periodically updating metrics. It returns a function to stop collection.
 func (e *Store) startObservingCount(period time.Duration, objectCountTracker flowcontrolrequest.StorageObjectCountTracker) func() {
-	ctx := genericapirequest.NewContext()
+	// Count objects across all logical clusters; the wildcard cluster keeps
+	// the key root at the resource prefix.
+	ctx := genericapirequest.WithCluster(genericapirequest.NewContext(), genericapirequest.Cluster{Wildcard: true})
 	prefix := e.KeyRootFunc(ctx)
 	resourceName := e.DefaultQualifiedResource.String()
 	klog.V(2).InfoS("Monitoring resource count at path", "resource", resourceName, "path", "<storage-prefix>/"+prefix)

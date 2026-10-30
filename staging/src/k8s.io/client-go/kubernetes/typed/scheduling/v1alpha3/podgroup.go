@@ -69,7 +69,6 @@ func newPodGroups(c *SchedulingV1alpha3Client, namespace string) *podGroups {
 			namespace,
 			func() *schedulingv1alpha3.PodGroup { return &schedulingv1alpha3.PodGroup{} },
 			func() *schedulingv1alpha3.PodGroupList { return &schedulingv1alpha3.PodGroupList{} },
-			gentype.PrefersProtobuf[*schedulingv1alpha3.PodGroup](),
 		),
 	}
 }

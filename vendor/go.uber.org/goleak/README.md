@@ -34,6 +34,33 @@ func TestMain(m *testing.M) {
 }
 ```
 
+### Note
+
+For tests that use [t.Parallel](https://pkg.go.dev/testing#T.Parallel), `goleak` does
+not know how to distinguish a leaky goroutine from tests that have not finished running.
+
+
+```go
+func TestA(t *testing.T) {
+	tt := struct{
+		name  	 string
+		input 	 SomeType
+		expected string
+	}{
+		// ...
+	}
+
+	for _, t := range tt {
+		t.Run(t.name, func(t *testing.T) {
+			t.Parallel() // <- goleak gets confused here!
+
+			// ...
+		}
+	}
+}
+```
+For such cases you should also defer to using `goleak.VerifyTestMain` as shown above.
+
 ## Determine Source of Package Leaks
 
 When verifying leaks using `TestMain`, the leak test is only run once after all tests
@@ -65,8 +92,8 @@ goleak is v1 and follows [SemVer](http://semver.org/) strictly.
 
 No breaking changes will be made to exported APIs before 2.0.
 
-[doc-img]: https://godoc.org/go.uber.org/goleak?status.svg
-[doc]: https://godoc.org/go.uber.org/goleak
+[doc-img]: https://pkg.go.dev/badge/go.uber.org/goleak.svg
+[doc]: https://pkg.go.dev/go.uber.org/goleak
 [ci-img]: https://github.com/uber-go/goleak/actions/workflows/ci.yml/badge.svg
 [ci]: https://github.com/uber-go/goleak/actions/workflows/ci.yml
 [cov-img]: https://codecov.io/gh/uber-go/goleak/branch/master/graph/badge.svg

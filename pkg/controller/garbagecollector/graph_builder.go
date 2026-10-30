@@ -43,6 +43,9 @@ import (
 	"k8s.io/controller-manager/pkg/informerfactory"
 	"k8s.io/kubernetes/pkg/controller/apis/config/scheme"
 	"k8s.io/kubernetes/pkg/controller/garbagecollector/metaonly"
+
+	kcpcache "github.com/kcp-dev/apimachinery/v2/pkg/cache"
+	"github.com/kcp-dev/logicalcluster/v3"
 )
 
 type eventType int
@@ -429,8 +432,10 @@ func (gb *GraphBuilder) enqueueVirtualDeleteEvent(ref objectReference) {
 		eventType: deleteEvent,
 		gvk:       gv.WithKind(ref.Kind),
 		obj: &metaonly.MetadataOnlyObject{
-			TypeMeta:   metav1.TypeMeta{APIVersion: ref.APIVersion, Kind: ref.Kind},
-			ObjectMeta: metav1.ObjectMeta{Namespace: ref.Namespace, UID: ref.UID, Name: ref.Name},
+			TypeMeta: metav1.TypeMeta{APIVersion: ref.APIVersion, Kind: ref.Kind},
+			ObjectMeta: metav1.ObjectMeta{Namespace: ref.Namespace, UID: ref.UID, Name: ref.Name,
+				Annotations: map[string]string{logicalcluster.AnnotationKey: ref.Cluster.String()},
+			},
 		},
 	})
 }
@@ -453,6 +458,7 @@ func (gb *GraphBuilder) addDependentToOwners(logger klog.Logger, n *node, owners
 				identity: objectReference{
 					OwnerReference: ownerReferenceCoordinates(owner),
 					Namespace:      n.identity.Namespace,
+					Cluster:        n.identity.Cluster,
 				},
 				dependents: make(map[*node]struct{}),
 				virtual:    true,
@@ -519,8 +525,12 @@ func (gb *GraphBuilder) reportInvalidNamespaceOwnerRef(n *node, invalidOwnerUID 
 		Kind:       n.identity.Kind,
 		APIVersion: n.identity.APIVersion,
 		Namespace:  n.identity.Namespace,
-		Name:       n.identity.Name,
-		UID:        n.identity.UID,
+		// This is only safe because the recorder points at
+		// a broadcaster that is pushing the events to
+		// clusterEventSinkImpl, which is then splitting the cluster and
+		// name and edits the event before passing it along.
+		Name: kcpcache.ToClusterAwareKey(n.identity.Cluster.String(), "", n.identity.Name),
+		UID:  n.identity.UID,
 	}
 	invalidIdentity := objectReference{
 		OwnerReference: metav1.OwnerReference{
@@ -530,6 +540,7 @@ func (gb *GraphBuilder) reportInvalidNamespaceOwnerRef(n *node, invalidOwnerUID 
 			UID:        invalidOwnerRef.UID,
 		},
 		Namespace: n.identity.Namespace,
+		Cluster:   n.identity.Cluster,
 	}
 	gb.eventRecorder.Eventf(ref, v1.EventTypeWarning, "OwnerRefInvalidNamespace", "ownerRef %s does not exist in namespace %q", invalidIdentity, n.identity.Namespace)
 }
@@ -695,6 +706,7 @@ func identityFromEvent(event *event, accessor metav1.Object) objectReference {
 			Name:       accessor.GetName(),
 		},
 		Namespace: accessor.GetNamespace(),
+		Cluster:   logicalcluster.From(accessor),
 	}
 }
 

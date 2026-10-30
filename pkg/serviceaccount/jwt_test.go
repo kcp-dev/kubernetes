@@ -375,12 +375,6 @@ func TestTokenGenerateAndValidate(t *testing.T) {
 			v1listers.NewServiceAccountLister(newIndexer(func(namespace, name string) (interface{}, error) {
 				return tc.Client.CoreV1().ServiceAccounts(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 			})),
-			v1listers.NewPodLister(newIndexer(func(namespace, name string) (interface{}, error) {
-				return tc.Client.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-			})),
-			v1listers.NewNodeLister(newIndexer(func(_, name string) (interface{}, error) {
-				return tc.Client.CoreV1().Nodes().Get(context.TODO(), name, metav1.GetOptions{})
-			})),
 			admissionregistrationv1listers.NewValidatingWebhookConfigurationLister(newIndexer(func(_, name string) (interface{}, error) {
 				return tc.Client.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(context.TODO(), name, metav1.GetOptions{})
 			})),

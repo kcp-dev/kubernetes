@@ -10,9 +10,12 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0
 	github.com/fxamacker/cbor/v2 v2.9.1
 	github.com/google/cel-go v0.29.2
-	github.com/google/gnostic-models v0.7.0
+	github.com/google/gnostic-models v0.7.1
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
+	github.com/kcp-dev/apimachinery/v2 v2.33.3-0.20261028133859-2f2114efcdf6
+	github.com/kcp-dev/client-go v0.28.1-0.20261029093446-53d4d08e390f
+	github.com/kcp-dev/logicalcluster/v3 v3.0.5
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1

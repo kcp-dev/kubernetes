@@ -28,6 +28,8 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	genericfeatures "k8s.io/apiserver/pkg/features"
 	"k8s.io/apiserver/pkg/quota/v1/generic"
 	"k8s.io/client-go/discovery"
@@ -550,7 +552,9 @@ func newModifiedNamespaceController(
 		return nil, err
 	}
 
-	discoverResourcesFn := namespaceKubeClient.Discovery().ServerPreferredNamespacedResources
+	discoverResourcesFn := func(clusterName logicalcluster.Name) ([]*metav1.APIResourceList, error) {
+		return namespaceKubeClient.Discovery().ServerPreferredNamespacedResources()
+	}
 
 	namespaceController := namespacecontroller.NewNamespaceController(
 		ctx,

@@ -73,7 +73,6 @@ func newStorageVersionMigrations(c *StoragemigrationV1Client) *storageVersionMig
 			func() *storagemigrationv1.StorageVersionMigrationList {
 				return &storagemigrationv1.StorageVersionMigrationList{}
 			},
-			gentype.PrefersProtobuf[*storagemigrationv1.StorageVersionMigration](),
 		),
 	}
 }

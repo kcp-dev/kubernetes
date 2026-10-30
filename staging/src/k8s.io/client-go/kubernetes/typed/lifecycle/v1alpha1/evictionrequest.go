@@ -69,7 +69,6 @@ func newEvictionRequests(c *LifecycleV1alpha1Client, namespace string) *eviction
 			namespace,
 			func() *lifecyclev1alpha1.EvictionRequest { return &lifecyclev1alpha1.EvictionRequest{} },
 			func() *lifecyclev1alpha1.EvictionRequestList { return &lifecyclev1alpha1.EvictionRequestList{} },
-			gentype.PrefersProtobuf[*lifecyclev1alpha1.EvictionRequest](),
 		),
 	}
 }

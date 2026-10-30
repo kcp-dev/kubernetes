@@ -73,7 +73,6 @@ func newResourcePoolStatusRequests(c *ResourceV1alpha3Client) *resourcePoolStatu
 			func() *resourcev1alpha3.ResourcePoolStatusRequestList {
 				return &resourcev1alpha3.ResourcePoolStatusRequestList{}
 			},
-			gentype.PrefersProtobuf[*resourcev1alpha3.ResourcePoolStatusRequest](),
 		),
 	}
 }

@@ -28,6 +28,8 @@ import (
 	"sync"
 	"time"
 
+	kcpinformers "github.com/kcp-dev/client-go/informers"
+	kcpkubernetesclientset "github.com/kcp-dev/client-go/kubernetes"
 	"github.com/spf13/pflag"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,19 +47,14 @@ import (
 	"k8s.io/apiserver/pkg/server/egressselector"
 	genericoptions "k8s.io/apiserver/pkg/server/options"
 	authenticationconfigmetrics "k8s.io/apiserver/pkg/server/options/authenticationconfig/metrics"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/util/filesystem"
 	"k8s.io/apiserver/plugin/pkg/authenticator/token/oidc"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	v1listers "k8s.io/client-go/listers/core/v1"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/client-go/util/keyutil"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
 	serviceaccountcontroller "k8s.io/kubernetes/pkg/controller/serviceaccount"
-	"k8s.io/kubernetes/pkg/features"
 	kubeauthenticator "k8s.io/kubernetes/pkg/kubeapiserver/authenticator"
 	authzmodes "k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes"
 	"k8s.io/kubernetes/pkg/serviceaccount"
@@ -138,7 +135,7 @@ type ServiceAccountAuthenticationOptions struct {
 	MaxExtendedExpiration time.Duration
 	// OptionalTokenGetter is a function that returns a service account token getter.
 	// If not set, the default token getter will be used.
-	OptionalTokenGetter func(factory informers.SharedInformerFactory) serviceaccount.ServiceAccountTokenGetter
+	OptionalTokenGetter func(factory kcpinformers.SharedInformerFactory) serviceaccount.ServiceAccountTokenClusterGetter
 	// ExternalPublicKeysGetter gets set if `--service-account-signing-endpoint` is passed.
 	// ExternalPublicKeysGetter is mutually exclusive with KeyFiles.
 	ExternalPublicKeysGetter serviceaccount.PublicKeysGetter
@@ -674,8 +671,8 @@ func (o *BuiltInAuthenticationOptions) ApplyTo(
 	egressSelector *egressselector.EgressSelector,
 	openAPIConfig *openapicommon.Config,
 	openAPIV3Config *openapicommon.OpenAPIV3Config,
-	extclient kubernetes.Interface,
-	versionedInformer informers.SharedInformerFactory,
+	extclient kcpkubernetesclientset.ClusterInterface,
+	versionedInformer kcpinformers.SharedInformerFactory,
 	apiServerID string) error {
 	if o == nil {
 		return nil
@@ -711,26 +708,20 @@ func (o *BuiltInAuthenticationOptions) ApplyTo(
 	if o.ServiceAccounts != nil && o.ServiceAccounts.OptionalTokenGetter != nil {
 		authenticatorConfig.ServiceAccountTokenGetter = o.ServiceAccounts.OptionalTokenGetter(versionedInformer)
 	} else {
-		var nodeLister v1listers.NodeLister
-		if utilfeature.DefaultFeatureGate.Enabled(features.ServiceAccountTokenNodeBindingValidation) {
-			nodeLister = versionedInformer.Core().V1().Nodes().Lister()
-		}
-
-		authenticatorConfig.ServiceAccountTokenGetter = serviceaccountcontroller.NewGetterFromClient(
+		authenticatorConfig.ServiceAccountTokenGetter = serviceaccountcontroller.NewClusterGetterFromClient(
 			extclient,
 			versionedInformer.Core().V1().Secrets().Lister(),
 			versionedInformer.Core().V1().ServiceAccounts().Lister(),
-			versionedInformer.Core().V1().Pods().Lister(),
-			nodeLister,
 			versionedInformer.Admissionregistration().V1().ValidatingWebhookConfigurations().Lister(),
 			versionedInformer.Admissionregistration().V1().MutatingWebhookConfigurations().Lister(),
 		)
 	}
-	authenticatorConfig.SecretsWriter = extclient.CoreV1()
+	authenticatorConfig.SecretsWriter = extclient.CoreV1().Secrets()
 
 	if authenticatorConfig.BootstrapToken {
 		authenticatorConfig.BootstrapTokenAuthenticator = bootstrap.NewTokenAuthenticator(
-			versionedInformer.Core().V1().Secrets().Lister().Secrets(metav1.NamespaceSystem),
+			// TODO(sttts): make it possible to reference LocalAdminCluster here without import cycle
+			versionedInformer.Core().V1().Secrets().Lister().Cluster("system:admin").Secrets(metav1.NamespaceSystem), //TODO(kcp): This should be a cluster scoped lister?
 		)
 	}
 

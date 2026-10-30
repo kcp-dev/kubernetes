@@ -1,4 +1,5 @@
 /*
+
 Copyright 2023 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +24,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/kcp-dev/client-go/dynamic"
+	kcpinformers "github.com/kcp-dev/client-go/informers"
+	kcpclient "github.com/kcp-dev/client-go/kubernetes"
+	"github.com/kcp-dev/logicalcluster/v3"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -32,9 +38,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
+	"k8s.io/apiserver/pkg/clientsethack"
+	"k8s.io/apiserver/pkg/dynamichack"
 	"k8s.io/apiserver/pkg/endpoints/discovery/aggregated"
 	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericfeatures "k8s.io/apiserver/pkg/features"
+	"k8s.io/apiserver/pkg/informerfactoryhack"
 	peerreconcilers "k8s.io/apiserver/pkg/reconcilers"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/egressselector"
@@ -45,9 +54,7 @@ import (
 	"k8s.io/apiserver/pkg/util/openapi"
 	utilpeerproxy "k8s.io/apiserver/pkg/util/peerproxy"
 	"k8s.io/apiserver/pkg/util/proxy"
-	"k8s.io/client-go/dynamic"
 	clientgoinformers "k8s.io/client-go/informers"
-	clientgoclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/keyutil"
 	basecompatibility "k8s.io/component-base/compatibility"
@@ -63,6 +70,10 @@ import (
 	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 )
+
+// LocalAdminCluster is the default logical cluster that kube-apiserver's
+// objects, e.g. the RBAC bootstrap policy land in.
+var LocalAdminCluster = logicalcluster.Name("system:admin")
 
 // Config defines configuration for the master
 type Config struct {
@@ -108,7 +119,7 @@ type Extra struct {
 
 	SystemNamespaces []string
 
-	VersionedInformers clientgoinformers.SharedInformerFactory
+	VersionedInformers kcpinformers.SharedInformerFactory
 
 	// Coordinated Leader Election timers
 	CoordinatedLeadershipLeaseDuration time.Duration
@@ -127,7 +138,7 @@ func BuildGenericConfig(
 	informerName *cache.InformerName,
 ) (
 	genericConfig *genericapiserver.Config,
-	versionedInformers clientgoinformers.SharedInformerFactory,
+	versionedInformers kcpinformers.SharedInformerFactory,
 	storageFactory *serverstorage.DefaultStorageFactory,
 	lastErr error,
 ) {
@@ -147,19 +158,14 @@ func BuildGenericConfig(
 		return
 	}
 
-	// Use protobufs for self-communication.
-	// Since not every generic apiserver has to support protobufs, we
-	// cannot default to it in generic apiserver and need to explicitly
-	// set it in kube-apiserver.
-	genericConfig.LoopbackClientConfig.ContentConfig.ContentType = "application/vnd.kubernetes.protobuf"
 	// Disable compression for self-communication, since we are going to be
 	// on a fast local network
 	genericConfig.LoopbackClientConfig.DisableCompression = true
 
 	kubeClientConfig := genericConfig.LoopbackClientConfig
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(kubeClientConfig)
+	clusterClient, err := kcpclient.NewForConfig(kubeClientConfig)
 	if err != nil {
-		lastErr = fmt.Errorf("failed to create real external clientset: %w", err)
+		lastErr = fmt.Errorf("failed to create cluster clientset: %v", err)
 		return
 	}
 	trim := func(obj interface{}) (interface{}, error) {
@@ -168,14 +174,17 @@ func BuildGenericConfig(
 		}
 		return obj, nil
 	}
-	versionedInformers = clientgoinformers.NewSharedInformerFactoryWithOptions(
-		clientgoExternalClient,
+	versionedInformers = kcpinformers.NewSharedInformerFactoryWithOptions(
+		clusterClient,
 		10*time.Minute,
-		clientgoinformers.WithTransform(trim),
-		clientgoinformers.WithInformerName(informerName),
+		kcpinformers.WithTransform(trim),
+		// Upstream additionally sets WithInformerName(informerName) for informer
+		// identity metrics; the kcp cluster informer factory does not support
+		// informer names (yet), so the identifier is unused here.
 	)
 
-	if lastErr = s.Features.ApplyTo(genericConfig, clientgoExternalClient, versionedInformers); lastErr != nil {
+	// TODO(embik): this creates flowcontrol for system:admin, but that's probably wrong.
+	if lastErr = s.Features.ApplyTo(genericConfig, clusterClient.Cluster(LocalAdminCluster.Path()), clientgoinformers.NewSharedInformerFactory(clusterClient.Cluster(LocalAdminCluster.Path()), 10*time.Minute)); lastErr != nil {
 		return
 	}
 	if lastErr = s.APIEnablement.ApplyTo(genericConfig, resourceConfig, legacyscheme.Scheme); lastErr != nil {
@@ -222,7 +231,7 @@ func BuildGenericConfig(
 	ctx := wait.ContextForChannel(genericConfig.DrainedNotify())
 
 	// Authentication.ApplyTo requires already applied OpenAPIConfig and EgressSelector if present
-	if lastErr = s.Authentication.ApplyTo(ctx, &genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig, genericConfig.OpenAPIV3Config, clientgoExternalClient, versionedInformers, genericConfig.APIServerID); lastErr != nil {
+	if lastErr = s.Authentication.ApplyTo(ctx, &genericConfig.Authentication, genericConfig.SecureServing, genericConfig.EgressSelector, genericConfig.OpenAPIConfig, genericConfig.OpenAPIV3Config, clusterClient, versionedInformers, genericConfig.APIServerID); lastErr != nil {
 		return
 	}
 
@@ -232,7 +241,7 @@ func BuildGenericConfig(
 		s,
 		genericConfig.EgressSelector,
 		genericConfig.APIServerID,
-		versionedInformers,
+		informerfactoryhack.Wrap(versionedInformers),
 	)
 	if err != nil {
 		lastErr = fmt.Errorf("invalid authorization config: %w", err)
@@ -288,7 +297,7 @@ func BuildAuthorizer(ctx context.Context, s options.CompletedOptions, egressSele
 func CreateConfig(
 	opts options.CompletedOptions,
 	genericConfig *genericapiserver.Config,
-	versionedInformers clientgoinformers.SharedInformerFactory,
+	versionedInformers kcpinformers.SharedInformerFactory,
 	endpointSliceGetter proxy.EndpointSliceGetter,
 	storageFactory *serverstorage.DefaultStorageFactory,
 	serviceResolver aggregatorapiserver.ServiceResolver,
@@ -336,7 +345,7 @@ func CreateConfig(
 			return nil, nil, err
 		}
 		if opts.PeerCAFile != "" {
-			leaseInformer := versionedInformers.Coordination().V1().Leases()
+			leaseInformer := informerfactoryhack.Wrap(versionedInformers).Coordination().V1().Leases()
 			config.PeerProxy, err = BuildPeerProxy(
 				leaseInformer,
 				genericConfig.LoopbackClientConfig,
@@ -375,7 +384,7 @@ func CreateConfig(
 
 	// setup admission
 	genericAdmissionConfig := controlplaneadmission.Config{
-		ExternalInformers:    versionedInformers,
+		ExternalInformers:    informerfactoryhack.Wrap(versionedInformers),
 		LoopbackClientConfig: genericConfig.LoopbackClientConfig,
 		APIResourceConfig:    storageFactory.APIResourceConfigSource,
 	}
@@ -383,7 +392,7 @@ func CreateConfig(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create admission plugin initializer: %w", err)
 	}
-	clientgoExternalClient, err := clientgoclientset.NewForConfig(genericConfig.LoopbackClientConfig)
+	clientgoExternalClient, err := kcpclient.NewForConfig(genericConfig.LoopbackClientConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create real client-go external client: %w", err)
 	}
@@ -393,9 +402,9 @@ func CreateConfig(
 	}
 	err = opts.Admission.ApplyTo(
 		genericConfig,
-		versionedInformers,
-		clientgoExternalClient,
-		dynamicExternalClient,
+		informerfactoryhack.Wrap(versionedInformers),
+		clientsethack.Wrap(clientgoExternalClient),
+		dynamichack.Wrap(dynamicExternalClient),
 		utilfeature.DefaultFeatureGate,
 		compatibility.DefaultComponentGlobalsRegistry.EffectiveVersionFor(basecompatibility.DefaultKubeComponent),
 		append(genericInitializers, additionalInitializers...)...,

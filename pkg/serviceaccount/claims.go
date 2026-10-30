@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kcp-dev/logicalcluster/v3"
 	"gopkg.in/go-jose/go-jose.v2/jwt"
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
@@ -58,6 +59,8 @@ type privateClaims struct {
 }
 
 type kubernetes struct {
+	ClusterName logicalcluster.Name `json:"clusterName,omitempty"`
+
 	Namespace                      string                                     `json:"namespace,omitempty"`
 	Svcacct                        ref                                        `json:"serviceaccount,omitempty"`
 	Pod                            *ref                                       `json:"pod,omitempty"`
@@ -88,7 +91,8 @@ func Claims(sa core.ServiceAccount, pod *core.Pod, secret *core.Secret, node *co
 	}
 	pc := &privateClaims{
 		Kubernetes: kubernetes{
-			Namespace: sa.Namespace,
+			ClusterName: logicalcluster.From(&sa),
+			Namespace:   sa.Namespace,
 			Svcacct: ref{
 				Name: sa.Name,
 				UID:  string(sa.UID),
@@ -147,14 +151,25 @@ func Claims(sa core.ServiceAccount, pod *core.Pod, secret *core.Secret, node *co
 	return sc, pc, nil
 }
 
-func NewValidator(getter ServiceAccountTokenGetter) Validator[privateClaims] {
+func NewValidator(getter ServiceAccountTokenClusterGetter) Validator[privateClaims] {
+	return NewValidatorWithLookup(getter, true)
+}
+
+// NewValidatorWithLookup creates a validator with configurable lookup behavior.
+// When lookup is false, the validator skips verifying that the service account,
+// secret, pod, and node still exist. This is useful in multi-shard environments
+// where the validating server may not have access to the workspace containing the SA.
+// KCP carry patch: respect --service-account-lookup=false for JWT tokens.
+func NewValidatorWithLookup(getter ServiceAccountTokenClusterGetter, lookup bool) Validator[privateClaims] {
 	return &validator{
 		getter: getter,
+		lookup: lookup,
 	}
 }
 
 type validator struct {
-	getter ServiceAccountTokenGetter
+	getter ServiceAccountTokenClusterGetter
+	lookup bool
 }
 
 var _ = Validator[privateClaims](&validator{})
@@ -190,14 +205,45 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 	// consider things deleted prior to now()-leeway to be invalid
 	invalidIfDeletedBefore := nowTime.Add(-jwt.DefaultLeeway)
 	namespace := private.Kubernetes.Namespace
+	clusterName := private.Kubernetes.ClusterName
 	saref := private.Kubernetes.Svcacct
 	podref := private.Kubernetes.Pod
 	noderef := private.Kubernetes.Node
 	secref := private.Kubernetes.Secret
 	valref := private.Kubernetes.ValidatingWebhookConfiguration
 	mutref := private.Kubernetes.MutatingWebhookConfiguration
+
+	// KCP carry patch: skip lookups when v.lookup is false.
+	// This is controlled by the --service-account-lookup flag and is needed in
+	// multi-shard environments where the validating server may not have access
+	// to the workspace containing the service account. Identifying data is
+	// taken from the token claims without verifying the objects still exist.
+	if !v.lookup {
+		var podName, podUID string
+		if podref != nil {
+			podName = podref.Name
+			podUID = podref.UID
+		}
+		var nodeName, nodeUID string
+		if noderef != nil {
+			nodeName = noderef.Name
+			nodeUID = noderef.UID
+		}
+		var validatingName, validatingUID string
+		if valref != nil {
+			validatingName = valref.Name
+			validatingUID = valref.UID
+		}
+		var mutatingName, mutatingUID string
+		if mutref != nil {
+			mutatingName = mutref.Name
+			mutatingUID = mutref.UID
+		}
+		return v.finalize(ctx, public, private, nowTime, podName, podUID, nodeName, nodeUID, validatingName, validatingUID, mutatingName, mutatingUID, private.Kubernetes.Attestations[authentication.AttestationAdmissionReviewAPIGroups])
+	}
+
 	// Make sure service account still exists (name and UID)
-	serviceAccount, err := v.getter.GetServiceAccount(ctx, namespace, saref.Name)
+	serviceAccount, err := v.getter.Cluster(clusterName).GetServiceAccount(ctx, namespace, saref.Name)
 	if err != nil {
 		klog.V(4).Infof("Could not retrieve service account %s/%s: %v", namespace, saref.Name, err)
 		return nil, err
@@ -214,7 +260,7 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 
 	if secref != nil {
 		// Make sure token hasn't been invalidated by deletion of the secret
-		secret, err := v.getter.GetSecret(ctx, namespace, secref.Name)
+		secret, err := v.getter.Cluster(clusterName).GetSecret(ctx, namespace, secref.Name)
 		if err != nil {
 			klog.V(4).Infof("Could not retrieve bound secret %s/%s for service account %s/%s: %v", namespace, secref.Name, namespace, saref.Name, err)
 			return nil, errors.New("service account token has been invalidated")
@@ -232,7 +278,7 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 	var podName, podUID string
 	if podref != nil {
 		// Make sure token hasn't been invalidated by deletion of the pod
-		pod, err := v.getter.GetPod(ctx, namespace, podref.Name)
+		pod, err := v.getter.Cluster(clusterName).GetPod(ctx, namespace, podref.Name)
 		if err != nil {
 			klog.V(4).Infof("Could not retrieve bound pod %s/%s for service account %s/%s: %v", namespace, podref.Name, namespace, saref.Name, err)
 			return nil, errors.New("service account token has been invalidated")
@@ -264,7 +310,7 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 				return nil, fmt.Errorf("token is bound to a Node object but the %s feature gate is disabled", features.ServiceAccountTokenNodeBindingValidation)
 			}
 
-			node, err := v.getter.GetNode(ctx, noderef.Name)
+			node, err := v.getter.Cluster(clusterName).GetNode(ctx, noderef.Name)
 			if err != nil {
 				klog.V(4).Infof("Could not retrieve node object %q for service account %s/%s: %v", noderef.Name, namespace, saref.Name, err)
 				return nil, errors.New("service account token has been invalidated")
@@ -299,18 +345,22 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 	}
 
 	if valref != nil {
-		validatingName, validatingUID, err = validateWebhookCfgRef(ctx, v.getValidatingWebhookMeta, "ValidatingWebhookConfiguration", &private.Kubernetes, valref, invalidIfDeletedBefore)
+		validatingName, validatingUID, err = validateWebhookCfgRef(ctx, v.getValidatingWebhookMeta(clusterName), "ValidatingWebhookConfiguration", &private.Kubernetes, valref, invalidIfDeletedBefore)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if mutref != nil {
-		mutatingName, mutatingUID, err = validateWebhookCfgRef(ctx, v.getMutatingWebhookMeta, "MutatingWebhookConfiguration", &private.Kubernetes, mutref, invalidIfDeletedBefore)
+		mutatingName, mutatingUID, err = validateWebhookCfgRef(ctx, v.getMutatingWebhookMeta(clusterName), "MutatingWebhookConfiguration", &private.Kubernetes, mutref, invalidIfDeletedBefore)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	return v.finalize(ctx, public, private, nowTime, podName, podUID, nodeName, nodeUID, validatingName, validatingUID, mutatingName, mutatingUID, attestationAdmissionReviewAPIGroups)
+}
+
+func (v *validator) finalize(ctx context.Context, public *jwt.Claims, private *privateClaims, nowTime time.Time, podName, podUID, nodeName, nodeUID, validatingName, validatingUID, mutatingName, mutatingUID string, attestationAdmissionReviewAPIGroups []string) (*apiserverserviceaccount.ServiceAccountInfo, error) {
 	// Check special 'warnafter' field for projected service account token transition.
 	warnafter := private.Kubernetes.WarnAfter
 	if warnafter != nil && *warnafter != 0 {
@@ -329,6 +379,7 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 		jti = public.ID
 	}
 	return &apiserverserviceaccount.ServiceAccountInfo{
+		ClusterName:                         private.Kubernetes.ClusterName,
 		Namespace:                           private.Kubernetes.Namespace,
 		Name:                                private.Kubernetes.Svcacct.Name,
 		UID:                                 private.Kubernetes.Svcacct.UID,
@@ -345,20 +396,27 @@ func (v *validator) Validate(ctx context.Context, _ string, public *jwt.Claims, 
 	}, nil
 }
 
-func (v *validator) getValidatingWebhookMeta(ctx context.Context, name string) (metav1.ObjectMeta, error) {
-	obj, err := v.getter.GetValidatingWebhookConfiguration(ctx, name)
-	if err != nil {
-		return metav1.ObjectMeta{}, err
+// KCP carry patch: the webhook configuration getters are scoped to the token's
+// logical cluster, so these helpers bind the cluster and return the plain
+// getter signature validateWebhookCfgRef expects.
+func (v *validator) getValidatingWebhookMeta(clusterName logicalcluster.Name) getter {
+	return func(ctx context.Context, name string) (metav1.ObjectMeta, error) {
+		obj, err := v.getter.Cluster(clusterName).GetValidatingWebhookConfiguration(ctx, name)
+		if err != nil {
+			return metav1.ObjectMeta{}, err
+		}
+		return obj.ObjectMeta, nil
 	}
-	return obj.ObjectMeta, nil
 }
 
-func (v *validator) getMutatingWebhookMeta(ctx context.Context, name string) (metav1.ObjectMeta, error) {
-	obj, err := v.getter.GetMutatingWebhookConfiguration(ctx, name)
-	if err != nil {
-		return metav1.ObjectMeta{}, err
+func (v *validator) getMutatingWebhookMeta(clusterName logicalcluster.Name) getter {
+	return func(ctx context.Context, name string) (metav1.ObjectMeta, error) {
+		obj, err := v.getter.Cluster(clusterName).GetMutatingWebhookConfiguration(ctx, name)
+		if err != nil {
+			return metav1.ObjectMeta{}, err
+		}
+		return obj.ObjectMeta, nil
 	}
-	return obj.ObjectMeta, nil
 }
 
 type getter func(ctx context.Context, name string) (metav1.ObjectMeta, error)

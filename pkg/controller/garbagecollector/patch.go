@@ -28,33 +28,34 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/controller/garbagecollector/metaonly"
+
+	kcpcache "github.com/kcp-dev/apimachinery/v2/pkg/cache"
+	"github.com/kcp-dev/logicalcluster/v3"
 )
 
 // getMetadata tries getting object metadata from local cache, and sends GET request to apiserver when
 // local cache is not available or not latest.
-func (gc *GarbageCollector) getMetadata(apiVersion, kind, namespace, name string) (metav1.Object, error) {
+func (gc *GarbageCollector) getMetadata(cluster logicalcluster.Name, apiVersion, kind, namespace, name string) (metav1.Object, error) {
 	apiResource, _, err := gc.apiResource(apiVersion, kind)
 	if err != nil {
 		return nil, err
 	}
+	ctx := WithCluster(context.TODO(), cluster)
 	gc.dependencyGraphBuilder.monitorLock.RLock()
 	defer gc.dependencyGraphBuilder.monitorLock.RUnlock()
 	m, ok := gc.dependencyGraphBuilder.monitors[apiResource]
 	if !ok || m == nil {
 		// If local cache doesn't exist for mapping.Resource, send a GET request to API server
-		return gc.metadataClient.Resource(apiResource).Namespace(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		return gc.metadataClient.Resource(apiResource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	}
-	key := name
-	if len(namespace) != 0 {
-		key = namespace + "/" + name
-	}
+	key := kcpcache.ToClusterAwareKey(cluster.String(), namespace, name)
 	raw, exist, err := m.store.GetByKey(key)
 	if err != nil {
 		return nil, err
 	}
 	if !exist {
 		// If local cache doesn't contain the object, send a GET request to API server
-		return gc.metadataClient.Resource(apiResource).Namespace(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		return gc.metadataClient.Resource(apiResource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	}
 	obj, ok := raw.(runtime.Object)
 	if !ok {
@@ -107,7 +108,7 @@ func (gc *GarbageCollector) patch(item *node, smp []byte, jmp jsonMergePatchFunc
 
 // Returns JSON merge patch that removes the ownerReferences matching ownerUIDs.
 func (gc *GarbageCollector) deleteOwnerRefJSONMergePatch(item *node, ownerUIDs ...types.UID) ([]byte, error) {
-	accessor, err := gc.getMetadata(item.identity.APIVersion, item.identity.Kind, item.identity.Namespace, item.identity.Name)
+	accessor, err := gc.getMetadata(item.identity.Cluster, item.identity.APIVersion, item.identity.Kind, item.identity.Namespace, item.identity.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +144,7 @@ func (n *node) unblockOwnerReferencesStrategicMergePatch() ([]byte, error) {
 // Generate a JSON merge patch that unsets the BlockOwnerDeletion field of all
 // ownerReferences of node.
 func (gc *GarbageCollector) unblockOwnerReferencesJSONMergePatch(n *node) ([]byte, error) {
-	accessor, err := gc.getMetadata(n.identity.APIVersion, n.identity.Kind, n.identity.Namespace, n.identity.Name)
+	accessor, err := gc.getMetadata(n.identity.Cluster, n.identity.APIVersion, n.identity.Kind, n.identity.Namespace, n.identity.Name)
 	if err != nil {
 		return nil, err
 	}

@@ -40,7 +40,7 @@ func NewCacheDelegator(cacher *Cacher, storage storage.Interface) *CacheDelegato
 		stopCh:  make(chan struct{}),
 	}
 	if utilfeature.DefaultFeatureGate.Enabled(features.DetectCacheInconsistency) || consistency.PanicOnCacheInconsistency {
-		d.checker = consistency.NewChecker(cacher.resourcePrefix, cacher.groupResource, cacher.newListFunc, cacher, storage)
+		d.checker = consistency.NewChecker(cacher.resourcePrefix, cacher.groupResource, cacher.newListFunc, cacher, storage, cacher.kcpExtraStorageMetadata)
 		d.wg.Add(1)
 		go func() {
 			defer d.wg.Done()

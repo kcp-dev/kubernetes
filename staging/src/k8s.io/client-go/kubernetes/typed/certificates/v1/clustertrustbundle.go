@@ -65,7 +65,6 @@ func newClusterTrustBundles(c *CertificatesV1Client) *clusterTrustBundles {
 			"",
 			func() *certificatesv1.ClusterTrustBundle { return &certificatesv1.ClusterTrustBundle{} },
 			func() *certificatesv1.ClusterTrustBundleList { return &certificatesv1.ClusterTrustBundleList{} },
-			gentype.PrefersProtobuf[*certificatesv1.ClusterTrustBundle](),
 		),
 	}
 }

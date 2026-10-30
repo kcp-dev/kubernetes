@@ -65,7 +65,6 @@ func newStorageClasses(c *StorageV1beta1Client) *storageClasses {
 			"",
 			func() *storagev1beta1.StorageClass { return &storagev1beta1.StorageClass{} },
 			func() *storagev1beta1.StorageClassList { return &storagev1beta1.StorageClassList{} },
-			gentype.PrefersProtobuf[*storagev1beta1.StorageClass](),
 		),
 	}
 }

@@ -158,7 +158,6 @@ function kube::codegen::gen_helpers() {
             conversion-gen"${CODEGEN_VERSION_SPEC}"
             deepcopy-gen"${CODEGEN_VERSION_SPEC}"
             defaulter-gen"${CODEGEN_VERSION_SPEC}"
-            validation-gen"${CODEGEN_VERSION_SPEC}"
         )
         # shellcheck disable=2046 # printf word-splitting is intentional
         GO111MODULE=on go install $(printf "k8s.io/code-generator/cmd/%s " "${BINS[@]}")
@@ -758,7 +757,6 @@ function kube::codegen::gen_client() {
         --apply-configuration-package "${applyconfig_pkg}" \
         --input-base "$(cd "${in_dir}" && pwd -P)" `# must be absolute path or Go import path"` \
         --plural-exceptions "${plural_exceptions}" \
-        --prefers-protobuf="${prefers_protobuf}" \
         "${lint_args[@]:+"${lint_args[@]}"}" \
         "${inputs[@]}"
 

@@ -65,7 +65,6 @@ func newControllerRevisions(c *AppsV1beta1Client, namespace string) *controllerR
 			namespace,
 			func() *appsv1beta1.ControllerRevision { return &appsv1beta1.ControllerRevision{} },
 			func() *appsv1beta1.ControllerRevisionList { return &appsv1beta1.ControllerRevisionList{} },
-			gentype.PrefersProtobuf[*appsv1beta1.ControllerRevision](),
 		),
 	}
 }
