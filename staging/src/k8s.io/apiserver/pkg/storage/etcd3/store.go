@@ -485,8 +485,8 @@ func (s *store) conditionalDelete(
 				recordDecodeError(s.groupResource, key)
 				return err
 			}
-			return nil
 		}
+		return nil
 	}
 }
 
