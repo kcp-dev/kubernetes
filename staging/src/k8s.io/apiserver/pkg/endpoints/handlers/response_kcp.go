@@ -19,6 +19,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,6 +50,9 @@ func setKCPOriginalAPIVersionAnnotation(ctx context.Context, original any, parti
 		return
 	}
 
+	// The annotations map can be shared with the object in the watch cache, and concurrent wildcard
+	// requests may be converting the same object, so never write into it. Copy it first.
+	annotations = maps.Clone(annotations)
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
