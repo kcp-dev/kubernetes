@@ -157,7 +157,9 @@ func (l *Lifecycle) Admit(ctx context.Context, a admission.Attributes, o admissi
 
 	// forceLiveLookup if true will skip looking at local cache state and instead always make a live call to server.
 	forceLiveLookup := false
-	if _, ok := l.forceLiveLookupCache.Get(namespaceKey); ok {
+	// namespaceKey is built from a.GetName(), which is the namespace only for Namespace requests.
+	// Here a is an object inside the namespace, so look up the key of its namespace.
+	if _, ok := l.forceLiveLookupCache.Get(kcpcache.ToClusterAwareKey(clusterName.String(), "", a.GetNamespace())); ok {
 		// we think the namespace was marked for deletion, but our current local cache says otherwise, we will force a live lookup.
 		forceLiveLookup = exists && namespace.Status.Phase == v1.NamespaceActive
 	}
